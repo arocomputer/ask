@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 // Agent is an official agent package and the CLI it runs.

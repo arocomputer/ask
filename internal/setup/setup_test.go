@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fschrhunt/ask/internal/packages"
+	"github.com/arocomputer/ask/internal/packages"
 )
 
 // TestAgentsCoverBundledPackages keeps installable harnesses discoverable in ask setup.

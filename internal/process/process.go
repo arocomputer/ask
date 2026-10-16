@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 var shutdown struct {

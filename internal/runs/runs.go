@@ -15,13 +15,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fschrhunt/ask/internal/agent"
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/git"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/hooks"
-	"github.com/fschrhunt/ask/internal/process"
-	"github.com/fschrhunt/ask/internal/task"
+	"github.com/arocomputer/ask/internal/agent"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/git"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/hooks"
+	"github.com/arocomputer/ask/internal/process"
+	"github.com/arocomputer/ask/internal/task"
 )
 
 // Run is a saved run with immutable tasks and position-matched results (nil means unfinished).

@@ -13,22 +13,22 @@ class Ask < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/fschrhunt/ask/releases/download/v0.2.0/ask_v0.2.0_darwin_arm64.tar.gz"
+      url "https://github.com/arocomputer/ask/releases/download/v0.2.0/ask_v0.2.0_darwin_arm64.tar.gz"
       sha256 "67d182a9e0e3d0f10792b799867fdb1ad82dab7691f980138a77617571d2f907"
     end
     on_intel do
-      url "https://github.com/fschrhunt/ask/releases/download/v0.2.0/ask_v0.2.0_darwin_amd64.tar.gz"
+      url "https://github.com/arocomputer/ask/releases/download/v0.2.0/ask_v0.2.0_darwin_amd64.tar.gz"
       sha256 "9527a9ff1ff5d06c8ca7d32f7ac677006f25428460001571e60da0f722881ae2"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/fschrhunt/ask/releases/download/v0.2.0/ask_v0.2.0_linux_arm64.tar.gz"
+      url "https://github.com/arocomputer/ask/releases/download/v0.2.0/ask_v0.2.0_linux_arm64.tar.gz"
       sha256 "f54322466b5807e24f201f4b0c68705311a8bd9570a71179103ed121efaecece"
     end
     on_intel do
-      url "https://github.com/fschrhunt/ask/releases/download/v0.2.0/ask_v0.2.0_linux_amd64.tar.gz"
+      url "https://github.com/arocomputer/ask/releases/download/v0.2.0/ask_v0.2.0_linux_amd64.tar.gz"
       sha256 "8d8aa0784a802b5440bb0ef4adec36ec8f5e59af700b54a98fba9faddcdc6de4"
     end
   end

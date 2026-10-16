@@ -7,7 +7,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 // same compares JSON values by value, including object properties irrespective of order.

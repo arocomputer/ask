@@ -15,9 +15,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/process"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/process"
 )
 
 // Model splits the agent:model#effort specification. ID is lowercase, the one spelling of a model

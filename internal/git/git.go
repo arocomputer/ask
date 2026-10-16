@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 // git returns output and success, silently handling repositories without a HEAD.

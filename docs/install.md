@@ -27,11 +27,11 @@ commands after installation, use `ask help` or `ask help COMMAND`.
 ask's repository is its own tap:
 
 ```sh
-brew tap fschrhunt/ask https://github.com/fschrhunt/ask
+brew tap arocomputer/ask https://github.com/arocomputer/ask
 brew install ask
 ```
 
-If Homebrew refuses the tap as untrusted, run `brew trust fschrhunt/ask` and install
+If Homebrew refuses the tap as untrusted, run `brew trust arocomputer/ask` and install
 again. Each release updates the formula, [`ask.rb`](../ask.rb), so
 `brew upgrade ask` brings the latest.
 
@@ -40,7 +40,7 @@ again. Each release updates the formula, [`ask.rb`](../ask.rb), so
 Go 1.26 or newer can build and install ask (also required for the source build below):
 
 ```sh
-go install github.com/fschrhunt/ask/cmd/ask@latest
+go install github.com/arocomputer/ask/cmd/ask@latest
 ```
 
 Put `$(go env GOPATH)/bin` on your `PATH`.
@@ -48,15 +48,15 @@ Put `$(go env GOPATH)/bin` on your `PATH`.
 ## By hand
 
 Download `ask_VERSION_OS_ARCH.tar.gz` for your system and `checksums.txt` from
-[Releases](https://github.com/fschrhunt/ask/releases/latest), check the archive's SHA-256
+[Releases](https://github.com/arocomputer/ask/releases/latest), check the archive's SHA-256
 (`sha256sum` on Linux, `shasum -a 256` on macOS), extract it and put `ask` on your `PATH`. Each
 archive's build provenance can be verified with
-`gh attestation verify ask_VERSION_OS_ARCH.tar.gz -R fschrhunt/ask`.
+`gh attestation verify ask_VERSION_OS_ARCH.tar.gz -R arocomputer/ask`.
 
 ## From source
 
 ```sh
-git clone https://github.com/fschrhunt/ask
+git clone https://github.com/arocomputer/ask
 cd ask
 go build -o ask ./cmd/ask
 mkdir -p ~/.local/bin

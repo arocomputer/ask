@@ -48,5 +48,5 @@ Setting it up, or replacing the key, takes an admin of the repository:
 - `curl -fsSL https://fschrhunt.com/ask/install.sh | sh`: `install.sh` from main, which downloads
   the latest release and checks its checksum.
 - `brew install`: from `ask.rb` at the top of this repository, which Homebrew reads as a tap.
-- `go install github.com/fschrhunt/ask/cmd/ask@latest`.
+- `go install github.com/arocomputer/ask/cmd/ask@latest`.
 - `ask update`, for a direct install.

@@ -6,11 +6,11 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/fschrhunt/ask/internal/agent"
-	"github.com/fschrhunt/ask/internal/git"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/hooks"
-	"github.com/fschrhunt/ask/internal/schema"
+	"github.com/arocomputer/ask/internal/agent"
+	"github.com/arocomputer/ask/internal/git"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/hooks"
+	"github.com/arocomputer/ask/internal/schema"
 )
 
 var fence = regexp.MustCompile("(?is)^\\s*```[a-z]*\\s*\\n(.*?)\\n\\s*```\\s*$")

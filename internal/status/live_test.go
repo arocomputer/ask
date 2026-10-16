@@ -9,7 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 // TestFrame pins running rows with usage so far, queued and final rows, and a footer with total usage.

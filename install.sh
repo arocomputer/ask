@@ -5,10 +5,10 @@
 #   curl -fsSL https://fschrhunt.com/ask/install.sh | sh
 #   curl -fsSL https://fschrhunt.com/ask/install.sh | sh -s -- --version v0.1.0
 #
-# $ASK_RELEASES replaces https://github.com/fschrhunt/ask/releases, for testing.
+# $ASK_RELEASES replaces https://github.com/arocomputer/ask/releases, for testing.
 set -eu
 
-releases=${ASK_RELEASES:-https://github.com/fschrhunt/ask/releases}
+releases=${ASK_RELEASES:-https://github.com/arocomputer/ask/releases}
 dir=${ASK_INSTALL_DIR:-$HOME/.local/bin}
 version=${ASK_VERSION:-}
 

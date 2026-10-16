@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/process"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/process"
 )
 
 // Hooks keeps an invocation's declared events and paths.

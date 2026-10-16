@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/packages"
-	"github.com/fschrhunt/ask/internal/process"
-	"github.com/fschrhunt/ask/internal/status"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/packages"
+	"github.com/arocomputer/ask/internal/process"
+	"github.com/arocomputer/ask/internal/status"
 )
 
 // install clones or updates each named source and checks the agents it brings, or with no

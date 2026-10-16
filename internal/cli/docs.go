@@ -10,15 +10,15 @@ import (
 	"sort"
 	"strings"
 
-	official "github.com/fschrhunt/ask/packages"
+	official "github.com/arocomputer/ask/packages"
 
-	"github.com/fschrhunt/ask/docs"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/status"
+	"github.com/arocomputer/ask/docs"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/status"
 )
 
 // docsWeb is where the same pages are on the web, for --url.
-const docsWeb = "https://github.com/fschrhunt/ask/blob/main/"
+const docsWeb = "https://github.com/arocomputer/ask/blob/main/"
 
 // page is one documentation page: its name for ask docs, where it lives, and its text.
 type page struct{ Name, Path, Text string }

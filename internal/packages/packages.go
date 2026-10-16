@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 // git disables interactive prompts and reports the last stderr line on failure.
