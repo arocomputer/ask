@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/agent"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/status"
-	"github.com/fschrhunt/ask/internal/tui"
+	"github.com/arocomputer/ask/internal/agent"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/status"
+	"github.com/arocomputer/ask/internal/tui"
 )
 
 // models lists the models that are on, or with --all every model and whether it is on, and

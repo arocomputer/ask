@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/home"
-	official "github.com/fschrhunt/ask/packages"
+	"github.com/arocomputer/ask/internal/home"
+	official "github.com/arocomputer/ask/packages"
 )
 
 // stampFile records which build of a built-in package is installed.

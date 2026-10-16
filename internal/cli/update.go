@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/process"
-	"github.com/fschrhunt/ask/internal/status"
-	"github.com/fschrhunt/ask/internal/tui"
-	"github.com/fschrhunt/ask/internal/update"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/process"
+	"github.com/arocomputer/ask/internal/status"
+	"github.com/arocomputer/ask/internal/tui"
+	"github.com/arocomputer/ask/internal/update"
 )
 
 // updateCommand runs ask update: it replaces a directly installed ask with the latest release,
@@ -47,7 +47,7 @@ func updateCommand(p home.Paths, version string, check bool) (int, error) {
 	if e := updateProgress("Installing "+latest, func() error { return update.Apply(latest) }); e != nil {
 		return 0, e
 	}
-	fmt.Fprintf(os.Stderr, "ask: updated to %s; see what's new: https://github.com/fschrhunt/ask/releases/tag/%s\n", latest, latest)
+	fmt.Fprintf(os.Stderr, "ask: updated to %s; see what's new: https://github.com/arocomputer/ask/releases/tag/%s\n", latest, latest)
 	return 0, nil
 }
 

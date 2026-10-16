@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/runs"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/runs"
 )
 
 // TestStatusFormatting pins outcome order and cost precision for plain streams.

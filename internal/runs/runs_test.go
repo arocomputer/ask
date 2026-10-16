@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 // TestOwnerRequiresHeldLock treats a stale PID, even a reused live PID, as idle.

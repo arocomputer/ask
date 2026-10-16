@@ -6,10 +6,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/agent"
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/status"
+	"github.com/arocomputer/ask/internal/agent"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/status"
 )
 
 // modelLines groups each local agent's model ids, or why it could not list them, one agent per

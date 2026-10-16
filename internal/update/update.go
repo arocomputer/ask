@@ -24,7 +24,7 @@ func Releases() string {
 	if r := os.Getenv("ASK_RELEASES"); r != "" {
 		return strings.TrimSuffix(r, "/")
 	}
-	return "https://github.com/fschrhunt/ask/releases"
+	return "https://github.com/arocomputer/ask/releases"
 }
 
 // Latest returns the newest release's tag, read from where releases/latest redirects.
@@ -108,7 +108,7 @@ func Hint(method string) string {
 	case "brew":
 		return "brew upgrade ask"
 	case "go":
-		return "go install github.com/fschrhunt/ask/cmd/ask@latest"
+		return "go install github.com/arocomputer/ask/cmd/ask@latest"
 	}
 	return "ask update"
 }

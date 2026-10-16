@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 // filler words say little about a task, so prompt-made names skip them.

@@ -8,8 +8,8 @@
   from your terminal or from another agent. One task or many at once, recorded, with live usage.</p>
 
   <p>
-    <a href="https://github.com/fschrhunt/ask/releases/latest"><img src="https://img.shields.io/github/v/release/fschrhunt/ask?style=flat-square&color=111111&label=release" alt="Release"></a>
-    <a href="https://github.com/fschrhunt/ask/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/fschrhunt/ask/ci.yml?branch=main&style=flat-square&color=111111&label=ci" alt="CI"></a>
+    <a href="https://github.com/arocomputer/ask/releases/latest"><img src="https://img.shields.io/github/v/release/arocomputer/ask?style=flat-square&color=111111&label=release" alt="Release"></a>
+    <a href="https://github.com/arocomputer/ask/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/arocomputer/ask/ci.yml?branch=main&style=flat-square&color=111111&label=ci" alt="CI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT"></a>
   </p>
 
@@ -98,8 +98,8 @@ gives them the ask skill, and Claude Code names each ask run in its task list.
 
 ```sh
 curl -fsSL https://fschrhunt.com/ask/install.sh | sh            # macOS and Linux
-brew tap fschrhunt/ask https://github.com/fschrhunt/ask && brew install ask
-go install github.com/fschrhunt/ask/cmd/ask@latest             # Go 1.26 or newer
+brew tap arocomputer/ask https://github.com/arocomputer/ask && brew install ask
+go install github.com/arocomputer/ask/cmd/ask@latest             # Go 1.26 or newer
 ```
 
 One binary, no additional UI runtime to install. `ask update` keeps a curl install current. Each agent needs its CLI

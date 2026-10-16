@@ -9,11 +9,11 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/fschrhunt/ask/internal/agent"
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/packages"
-	"github.com/fschrhunt/ask/internal/process"
+	"github.com/arocomputer/ask/internal/agent"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/packages"
+	"github.com/arocomputer/ask/internal/process"
 )
 
 var options = map[string][]string{

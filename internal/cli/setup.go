@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/agent"
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/packages"
-	"github.com/fschrhunt/ask/internal/process"
-	"github.com/fschrhunt/ask/internal/setup"
-	"github.com/fschrhunt/ask/internal/status"
-	"github.com/fschrhunt/ask/internal/tui"
+	"github.com/arocomputer/ask/internal/agent"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/packages"
+	"github.com/arocomputer/ask/internal/process"
+	"github.com/arocomputer/ask/internal/setup"
+	"github.com/arocomputer/ask/internal/status"
+	"github.com/arocomputer/ask/internal/tui"
 )
 
 // agentState is one official agent here: its CLI, whether an agent of its name is installed,

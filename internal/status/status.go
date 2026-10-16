@@ -10,8 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/runs"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/runs"
 )
 
 // Duration prints subminute time in seconds and longer time as a compact clock.

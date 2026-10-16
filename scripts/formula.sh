@@ -2,14 +2,14 @@
 # Writes ask.rb, the Homebrew formula that installs a release's binary, from the release's
 # checksums.txt. The release workflow runs it after publishing; ask's repository is its own tap:
 #
-#   brew tap fschrhunt/ask https://github.com/fschrhunt/ask && brew install ask
+#   brew tap arocomputer/ask https://github.com/arocomputer/ask && brew install ask
 #
 # usage: scripts/formula.sh vX.Y.Z CHECKSUMS > ask.rb
 set -eu
 tag=$1
 sums=$2
 sha() { grep " ask_${tag}_$1.tar.gz\$" "$sums" | cut -d' ' -f1; }
-url() { echo "https://github.com/fschrhunt/ask/releases/download/$tag/ask_${tag}_$1.tar.gz"; }
+url() { echo "https://github.com/arocomputer/ask/releases/download/$tag/ask_${tag}_$1.tar.gz"; }
 for target in darwin_arm64 darwin_amd64 linux_arm64 linux_amd64; do
   [ -n "$(sha "$target")" ] || { echo "formula.sh: no checksum for $target in $sums" >&2; exit 1; }
 done

@@ -12,7 +12,7 @@ prod_go() { find cmd internal packages docs -name '*.go' -not -name '*_test.go';
 
 # 1. Terminal dependencies stay in presentation packages; execution stays standard-library only.
 if prod_go | xargs grep -nE '^[[:space:]]*(import[[:space:]]+|[[:alnum:]_]+[[:space:]]+)?"[[:alnum:]_.-]+\.[[:alnum:]_.-]+/' \
-    | grep -vE 'internal/(tui|status)/|"github.com/fschrhunt/ask/' | grep .; then
+    | grep -vE 'internal/(tui|status)/|"github.com/arocomputer/ask/' | grep .; then
     bad "external Go dependency outside terminal presentation packages"
 fi
 
@@ -33,7 +33,7 @@ fi
 # 3. home (paths and records), tui (prompts) and update (releases) are leaves: everything may
 #    build on them, and they build on nothing of ask's (docs/contributing/architecture.md).
 for leaf in home tui update; do
-    if grep -l '"github.com/fschrhunt/ask/internal/' "internal/$leaf"/*.go | grep .; then
+    if grep -l '"github.com/arocomputer/ask/internal/' "internal/$leaf"/*.go | grep .; then
         bad "internal/$leaf imports another ask package"
     fi
 done

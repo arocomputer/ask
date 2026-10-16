@@ -10,8 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/runs"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/runs"
 )
 
 // LiveRow holds one task's latest state; Started is reset for each follow-up round.

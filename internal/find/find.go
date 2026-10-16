@@ -8,7 +8,7 @@ import (
 	"sort"
 	"syscall"
 
-	"github.com/fschrhunt/ask/internal/home"
+	"github.com/arocomputer/ask/internal/home"
 )
 
 // Name is the accepted agent, hook and command name pattern.

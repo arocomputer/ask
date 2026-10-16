@@ -10,13 +10,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fschrhunt/ask/internal/agent"
-	"github.com/fschrhunt/ask/internal/git"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/process"
-	"github.com/fschrhunt/ask/internal/runs"
-	"github.com/fschrhunt/ask/internal/status"
-	"github.com/fschrhunt/ask/internal/tui"
+	"github.com/arocomputer/ask/internal/agent"
+	"github.com/arocomputer/ask/internal/git"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/process"
+	"github.com/arocomputer/ask/internal/runs"
+	"github.com/arocomputer/ask/internal/status"
+	"github.com/arocomputer/ask/internal/tui"
 )
 
 // attempt is one task on one model, one time; check is the task's shell command that passes it.

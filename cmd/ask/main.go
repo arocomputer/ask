@@ -5,7 +5,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/fschrhunt/ask/internal/cli"
+	"github.com/arocomputer/ask/internal/cli"
 )
 
 // version is injected by release linker flags; without them, a go install build reports the

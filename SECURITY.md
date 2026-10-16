@@ -1,7 +1,7 @@
 # Security
 
 Report vulnerabilities through GitHub private vulnerability reporting:
-https://github.com/fschrhunt/ask/security/advisories/new
+https://github.com/arocomputer/ask/security/advisories/new
 
 With `-w`, ask lets the chosen model edit files and run commands as you. That is what the flag
 does, so it is not a vulnerability. Nor is `ask bench` running a task's `check`: it is your own

@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fschrhunt/ask/internal/agent"
-	"github.com/fschrhunt/ask/internal/find"
-	"github.com/fschrhunt/ask/internal/home"
-	"github.com/fschrhunt/ask/internal/hooks"
-	"github.com/fschrhunt/ask/internal/runs"
-	"github.com/fschrhunt/ask/internal/task"
+	"github.com/arocomputer/ask/internal/agent"
+	"github.com/arocomputer/ask/internal/find"
+	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/hooks"
+	"github.com/arocomputer/ask/internal/runs"
+	"github.com/arocomputer/ask/internal/task"
 )
 
 // titlePath resolves literal host paths relative to preceding cd commands.

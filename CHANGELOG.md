@@ -56,8 +56,8 @@
   fresh worktrees from the same commit. It prints passes, median time, tokens and cost per model,
   and `ask show` prints a bench again. A command of yours named `bench` is now hidden by it.
 - Install with `curl -fsSL https://fschrhunt.com/ask/install.sh | sh` (checksum-verified, into
-  `~/.local/bin`) or Homebrew, from ask's own repository: `brew tap fschrhunt/ask
-  https://github.com/fschrhunt/ask && brew install ask`.
+  `~/.local/bin`) or Homebrew, from ask's own repository: `brew tap arocomputer/ask
+  https://github.com/arocomputer/ask && brew install ask`.
 - `ask update` replaces an installer or archive install with the latest release, after checking
   its checksum; `--check` only reports. Homebrew and go install are pointed to their own update.
   In a terminal, ask mentions a newer release at most once a day (`ASK_NO_UPDATE_CHECK=1` stops it).
