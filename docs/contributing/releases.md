@@ -12,13 +12,13 @@ tag=v0.3.0                  # replace with the next release's version
 scripts/release.sh "$tag"  # opens a PR naming CHANGELOG.md's Unreleased section
 # Merge the PR, then update your main checkout before running it again.
 git pull --ff-only
-scripts/release.sh "$tag"  # checks CI passed on main, then tags
+scripts/release.sh "$tag"  # checks CI passed on main, then dispatches Actions
 ```
 
 ## What the tag runs
 
-`.github/workflows/release.yml` checks first, publishes the release, then runs the formula and
-install jobs independently:
+`.github/workflows/release.yml` creates the tag after checking main, the changelog, and CI. The
+tag starts the build and publication jobs:
 
 1. **check**: the tag is on main and `CHANGELOG.md` has its section; `./x check` and `./x audit`.
 2. **release**: archives for macOS and Linux (arm64 and amd64) with checksums and build
@@ -27,21 +27,6 @@ install jobs independently:
 4. **install**: a real `install.sh` install of the release on both systems.
 
 When the run record format changed, pin a record from the release in `test/fixtures/run-vX.Y.Z/`.
-
-## Who can write to main
-
-Only the `formula` job. It runs in the `release` environment, which only `v*` tags can use, and
-pushes with that environment's `RELEASE_DEPLOY_KEY` secret: a deploy key explicitly
-allowed to update main under its protection policy. Nothing else in the repository
-can push to main.
-
-Setting it up, or replacing the key, takes an admin of the repository:
-
-1. Create the `release` environment, limited to tags matching `v*`.
-2. Make a key with `ssh-keygen -t ed25519 -N "" -f key` in a temporary folder.
-3. Add `key.pub` as a deploy key with write access, and `key` as the environment's
-   `RELEASE_DEPLOY_KEY` secret; then delete both files.
-4. Allow the deploy key to update main under its protection policy.
 
 ## Where people get it
 
