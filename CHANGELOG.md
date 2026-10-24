@@ -1,5 +1,10 @@
 # ask releases
 
+## Unreleased
+
+- The install one-liner and the homepage point to GitHub; the fschrhunt.com page they named
+  was retired.
+
 ## v0.3.0 · 2026-10-24
 
 - Clarify docs, setup instructions and CLI help, with consistent `ask help COMMAND` guidance,

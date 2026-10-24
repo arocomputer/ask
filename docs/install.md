@@ -6,7 +6,7 @@ worktrees and reporting changes. Your agents keep their own CLI and runtime requ
 ## The installer
 
 ```sh
-curl -fsSL https://fschrhunt.com/ask/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh
 ```
 
 It downloads the release archive for your system (macOS or Linux, Intel or ARM), checks it against
@@ -14,7 +14,7 @@ the release's `checksums.txt`, and installs `ask` into `~/.local/bin`, saying so
 your `PATH`. It never edits your shell files. Options, after `sh -s --`:
 
 ```sh
-curl -fsSL https://fschrhunt.com/ask/install.sh | sh -s -- --version v0.1.0 --dir ~/bin
+curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh -s -- --version v0.1.0 --dir ~/bin
 ```
 
 `ASK_INSTALL_DIR` and `ASK_VERSION` do the same as `--dir` and `--version`. The script is
