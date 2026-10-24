@@ -14,7 +14,7 @@
   </p>
 
 ```sh
-curl -fsSL https://fschrhunt.com/ask/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh
 ```
 
   <img src="assets/screens/dark/run.svg#gh-dark-mode-only" alt="ask answering why a test fails, then fixing it in the same conversation" width="760">
@@ -97,7 +97,7 @@ gives them the ask skill, and Claude Code names each ask run in its task list.
 ## Install
 
 ```sh
-curl -fsSL https://fschrhunt.com/ask/install.sh | sh            # macOS and Linux
+curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh            # macOS and Linux
 brew tap arocomputer/ask https://github.com/arocomputer/ask && brew install ask
 go install github.com/arocomputer/ask/cmd/ask@latest             # Go 1.26 or newer
 ```
@@ -128,4 +128,4 @@ requirements and limitations.
 
 <br>
 
-<p align="center"><sub>MIT · <a href="https://fschrhunt.com/ask">fschrhunt.com/ask</a></sub></p>
+<p align="center"><sub>MIT · <a href="https://github.com/arocomputer/ask">github.com/arocomputer/ask</a></sub></p>

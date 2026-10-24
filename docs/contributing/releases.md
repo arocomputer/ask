@@ -30,7 +30,7 @@ When the run record format changed, pin a record from the release in `test/fixtu
 
 ## Where people get it
 
-- `curl -fsSL https://fschrhunt.com/ask/install.sh | sh`: `install.sh` from main, which downloads
+- `curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh`: `install.sh` from main, which downloads
   the latest release and checks its checksum.
 - `brew install`: from `ask.rb` at the top of this repository, which Homebrew reads as a tap.
 - `go install github.com/arocomputer/ask/cmd/ask@latest`.

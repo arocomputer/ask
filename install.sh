@@ -2,8 +2,8 @@
 # Installs ask from its GitHub release: the archive for this computer, checked against the
 # release's checksums, into ~/.local/bin (or $ASK_INSTALL_DIR). Run it again to update.
 #
-#   curl -fsSL https://fschrhunt.com/ask/install.sh | sh
-#   curl -fsSL https://fschrhunt.com/ask/install.sh | sh -s -- --version v0.1.0
+#   curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh -s -- --version v0.1.0
 #
 # $ASK_RELEASES replaces https://github.com/arocomputer/ask/releases, for testing.
 set -eu
@@ -24,8 +24,8 @@ while [ $# -gt 0 ]; do
 Install ask on macOS or Linux from a checksum-verified GitHub release.
 
 Usage
-  curl -fsSL https://fschrhunt.com/ask/install.sh | sh
-  curl -fsSL https://fschrhunt.com/ask/install.sh | sh -s -- [options]
+  curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh -s -- [options]
 
 Options
   --version vX.Y.Z   Install a specific release (default: latest, or ASK_VERSION)
