@@ -1,6 +1,6 @@
 # ask releases
 
-## Unreleased
+## v0.3.0 · 2026-10-24
 
 - Clarify docs, setup instructions and CLI help, with consistent `ask help COMMAND` guidance,
   accurate benchmark and setup behavior, and clearer examples and prerequisites. Help flags
