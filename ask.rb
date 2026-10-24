@@ -13,23 +13,23 @@ class Ask < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/arocomputer/ask/releases/download/v0.2.0/ask_v0.2.0_darwin_arm64.tar.gz"
-      sha256 "67d182a9e0e3d0f10792b799867fdb1ad82dab7691f980138a77617571d2f907"
+      url "https://github.com/arocomputer/ask/releases/download/v0.3.0/ask_v0.3.0_darwin_arm64.tar.gz"
+      sha256 "a708a34ded9e5144ca541c72e15971e6552bd43bc200db43f8c98b5b28a2a0c0"
     end
     on_intel do
-      url "https://github.com/arocomputer/ask/releases/download/v0.2.0/ask_v0.2.0_darwin_amd64.tar.gz"
-      sha256 "9527a9ff1ff5d06c8ca7d32f7ac677006f25428460001571e60da0f722881ae2"
+      url "https://github.com/arocomputer/ask/releases/download/v0.3.0/ask_v0.3.0_darwin_amd64.tar.gz"
+      sha256 "7f9b01cbdcf797440591bf3a9aa30a1cd7151bf42df2c625342b8182e10bd8cb"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/arocomputer/ask/releases/download/v0.2.0/ask_v0.2.0_linux_arm64.tar.gz"
-      sha256 "f54322466b5807e24f201f4b0c68705311a8bd9570a71179103ed121efaecece"
+      url "https://github.com/arocomputer/ask/releases/download/v0.3.0/ask_v0.3.0_linux_arm64.tar.gz"
+      sha256 "9bd39df7c3775624640ae9186dd62abdd7bd182b05103c1aaa2a3da61772c8d5"
     end
     on_intel do
-      url "https://github.com/arocomputer/ask/releases/download/v0.2.0/ask_v0.2.0_linux_amd64.tar.gz"
-      sha256 "8d8aa0784a802b5440bb0ef4adec36ec8f5e59af700b54a98fba9faddcdc6de4"
+      url "https://github.com/arocomputer/ask/releases/download/v0.3.0/ask_v0.3.0_linux_amd64.tar.gz"
+      sha256 "abcde7edc1777a39aa82ed96c40324c90c188915ad78fc80e60d12602998ae06"
     end
   end
 
@@ -44,6 +44,6 @@ class Ask < Formula
   end
 
   test do
-    assert_equal "v0.2.0", shell_output("#{bin}/ask --version").strip
+    assert_equal "v0.3.0", shell_output("#{bin}/ask --version").strip
   end
 end
