@@ -1,6 +1,6 @@
 # ask releases
 
-## Unreleased
+## v0.3.1 · 2026-11-02
 
 - The `worktrees` setting takes a path inside the repository, like `.ask/worktrees/{name}`, so each
   repository keeps its runs' worktrees; `ask settings` offers it as "In each repository".
