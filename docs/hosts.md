@@ -84,6 +84,6 @@ ask title --command "$command" --description "$description"
 ```
 
 It prints the title, or nothing when the command isn't an ask task. Hosts that speak Claude Code's
-hook format can use `ask title --hook` as it is. Codex's shell tool has no description to show, but
-its agent thread is still named as described above. See [Hooks](hooks.md) for ask's own `title`
+hook format can use `ask title --hook` as it is. The shell tools of Codex, Pi and OpenCode 2 have no
+description to show, but their agent sessions are still named as described above. See [Hooks](hooks.md) for ask's own `title`
 event, which can customize host and agent-session titles.

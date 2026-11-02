@@ -44,4 +44,18 @@ func TestNames(t *testing.T) {
 		eq(t, runID(t, r.stderr), "add-rate-limiting-login")
 		match(t, r.stderr, `(?m)^ask add-rate-limiting-login · note · hook namer · failed`)
 	})
+	t.Run("a name hook is told whether the run works in a worktree, whose name its answer also sets", func(t *testing.T) {
+		s := fresh(t)
+		dir, git := s.repo()
+		s.hook("namer", []string{"name"}, `echo '{"name":"bright running fox"}'`)
+		s.ask("-m", "fake:small", "look around")
+		r := s.run([]string{"-m", "fake:small", "-w", "--worktree", "-C", dir, "go"}, "", map[string]string{"FAKE_WRITE": "b.txt=new"})
+		s.run([]string{"batch", "-m", "fake:small", "-C", dir, "-"}, `[{"prompt":"go","write":true,"worktree":true}]`, map[string]string{"FAKE_WRITE": "c.txt=new"})
+		calls := s.hookCalls()
+		eq(t, object(calls[0]["input"].(map[string]any)).b("worktree"), false)
+		eq(t, object(calls[1]["input"].(map[string]any)).b("worktree"), true)
+		eq(t, object(calls[2]["input"].(map[string]any)).b("worktree"), true)
+		eq(t, runID(t, r.stderr), "bright-running-fox-2")
+		match(t, git("branch", "--list", "ask/bright-running-fox-2"), `ask/bright-running-fox-2`)
+	})
 }
