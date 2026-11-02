@@ -1,6 +1,7 @@
 package test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,6 +22,22 @@ func TestSettings(t *testing.T) {
 		bad := s.ask("-m", "fake:small", "hi")
 		eq(t, bad.code, 2)
 		match(t, bad.stderr, `"jobs" must be a whole number of tasks, 1 or more`)
+	})
+	t.Run("a relative worktrees setting puts worktrees in the repository's main checkout", func(t *testing.T) {
+		s := fresh(t)
+		dir, git := s.repo()
+		s.write(filepath.Join(s.home, "settings.json"), `{"model": "fake:big", "worktrees": ".ask/worktrees/{name}"}`)
+		linked := filepath.Join(s.tmp, "linked")
+		git("worktree", "add", "-q", "-b", "side", linked)
+		for _, from := range []string{dir, linked} {
+			r := s.run([]string{"-w", "--worktree", "-C", from, "go"}, "", map[string]string{"FAKE_WRITE": "b.txt=new"})
+			eq(t, r.code, 0)
+		}
+		for _, name := range []string{"go", "go-2"} {
+			if _, e := os.Stat(filepath.Join(dir, ".ask", "worktrees", name, "b.txt")); e != nil {
+				t.Fatalf("no worktree %s in the main checkout: %v", name, e)
+			}
+		}
 	})
 	t.Run("ask settings set shows what it changes, then saves; get and unset read and undo", func(t *testing.T) {
 		s := fresh(t)
@@ -49,7 +66,7 @@ func TestSettings(t *testing.T) {
 	})
 	t.Run("bad values and arguments are usage errors", func(t *testing.T) {
 		s := fresh(t)
-		for _, args := range [][]string{{"settings", "set", "jobs", "0"}, {"settings", "set", "colour", "red"}, {"settings", "set", "skills", "emacs"}, {"settings", "set", "hook", "maybe"}, {"setup", "--json"}, {"setup", "extra"}, {"settings", "nobody"}} {
+		for _, args := range [][]string{{"settings", "set", "jobs", "0"}, {"settings", "set", "worktrees", "../wt/{name}"}, {"settings", "set", "colour", "red"}, {"settings", "set", "skills", "emacs"}, {"settings", "set", "hook", "maybe"}, {"setup", "--json"}, {"setup", "extra"}, {"settings", "nobody"}} {
 			eq(t, s.ask(args...).code, 2)
 		}
 	})

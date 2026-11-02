@@ -85,12 +85,15 @@ without the file, ask uses the built-in defaults below.
 | `timeout` | Seconds a task may run, unless `-t` or the task says otherwise | `900` |
 | `jobs` | Batch tasks at once, unless `-j` says otherwise | `4` |
 | `max_cost` | Dollars a task may spend before ask stops it, unless `--max-cost` or the model's own limit in [models.json](models.md#modelsjson) says otherwise; `0` for none (see [Cost limits](usage.md#cost-limits)) | none |
-| `worktrees` | Where `--worktree` puts a run's worktree: an absolute or `~` path whose last part holds `{name}` once | `~/.ask/worktrees/{name}` |
+| `worktrees` | Where `--worktree` puts a run's worktree: an absolute or `~` path, or a path inside the repository like `.ask/worktrees/{name}`, whose last part holds `{name}` once | `~/.ask/worktrees/{name}` |
 | `branches` | The branch of a run's worktree, holding `{name}` once | `ask/{name}` |
 
 `{name}` is the run's name, like `add-rate-limiting-login`, or `NAME-POSITION-TASK` for a batch
 task. With the example above, `ask --write --worktree "Add rate limiting to login"` works in
-`~/code/worktrees/ask-add-rate-limiting-login` on branch `ask/add-rate-limiting-login`.
+`~/code/worktrees/ask-add-rate-limiting-login` on branch `ask/add-rate-limiting-login`. A relative
+path is inside the repository the run starts in, at its main checkout even from a linked
+worktree: `.ask/worktrees/{name}` puts that run in `.ask/worktrees/add-rate-limiting-login` there.
+Add `.ask/worktrees/` to the repository's `.gitignore`.
 
 `ask settings set` also takes `hook` (`on` or `off`) and `skills` (`claude-code`, `codex`,
 `opencode`, `cursor`, `pi` or `all`), which live in those apps' own files. An unknown key or a

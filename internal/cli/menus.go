@@ -342,20 +342,28 @@ func (d *draft) chooseModel(t *tui.Prompter) error {
 	return d.set("model", value)
 }
 
-// chooseWorktrees picks where --worktree works: ask's home, or a folder you name.
+// chooseWorktrees picks where --worktree works: ask's home, inside each repository, or a folder
+// you name.
 func (d *draft) chooseWorktrees(t *tui.Prompter) error {
+	const inRepo = ".ask/worktrees/{name}"
 	current := d.settings.S("worktrees")
-	options := []tui.Option{{Label: "In ask's home", Note: "~/.ask/worktrees/{name}"}, {Label: "Somewhere else", Note: "like ~/code/worktrees/ask-{name}"}}
-	at := 0
-	if current != "" {
+	options := []tui.Option{{Label: "In ask's home", Note: "~/.ask/worktrees/{name}"}, {Label: "In each repository", Note: inRepo}, {Label: "Somewhere else", Note: "like ~/code/worktrees/ask-{name}"}}
+	at := 2
+	switch current {
+	case "":
+		at = 0
+	case inRepo:
 		at = 1
 	}
 	i, e := t.Select("Where should --worktree runs work?", options, at)
 	if e != nil {
 		return e
 	}
-	if i == 0 {
+	switch i {
+	case 0:
 		return d.set("worktrees", "")
+	case 1:
+		return d.set("worktrees", inRepo)
 	}
 	def := current
 	if def == "" {
