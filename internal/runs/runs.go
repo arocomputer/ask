@@ -429,7 +429,7 @@ func Prepare(p home.Paths, items []any, defaults home.Object, label string, sing
 		}
 		x.Set("write", x.B("write"))
 		if x.B("worktree") && !x.B("write") {
-			path, err := p.Worktree(x.S("worktree"))
+			path, err := p.Worktree(git.Root(x.S("dir")), x.S("worktree"))
 			if err != nil {
 				return nil, err
 			}

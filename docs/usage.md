@@ -95,7 +95,7 @@ ask add-rate-limiting-login · ok · Sonnet 5.5 · 3:05 · 4 files changed · br
 The worktree starts from the repository's `HEAD`, at `~/.ask/worktrees/RUN`, on branch `ask/RUN`
 (`RUN-2` and so on if another run's worktree has that name, so parallel runs never share one).
 The `worktrees` and `branches` [settings](settings.md) put them elsewhere, like
-`~/code/worktrees/ask-RUN`.
+`~/code/worktrees/ask-RUN`, or inside each repository with `.ask/worktrees/{name}`.
 If the run changed something, both are kept for you to review and merge:
 
 ```sh

@@ -249,34 +249,44 @@ func (p Paths) Branch(name string) (string, error) {
 	return strings.Replace(tmpl, "{name}", name, 1), nil
 }
 
-// worktreeTemplate validates a worktrees setting and returns it absolute, with ~ expanded.
+// worktreeTemplate validates a worktrees setting: an absolute or ~ path, returned absolute with ~
+// expanded, or a path inside the repository a run starts in, like ".ask/worktrees/{name}",
+// returned relative.
 func (p Paths) worktreeTemplate(v any) (string, error) {
 	s, _ := v.(string)
 	if s == "~" || strings.HasPrefix(s, "~/") {
 		h, _ := os.UserHomeDir()
 		s = filepath.Join(h, s[1:])
 	}
-	dir, last := filepath.Split(filepath.Clean(s))
-	if !filepath.IsAbs(s) || strings.Count(s, "{name}") != 1 || !strings.Contains(last, "{name}") || dir == "" {
-		return "", Usage(`%s: "worktrees" must be an absolute or ~ path whose last part holds {name} once, like "~/code/worktrees/ask-{name}"`, filepath.Join(p.Home, "settings.json"))
+	clean := filepath.Clean(s)
+	dir, last := filepath.Split(clean)
+	escapes := clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator))
+	if s == "" || escapes || strings.Count(s, "{name}") != 1 || !strings.Contains(last, "{name}") || dir == "" {
+		return "", Usage(`%s: "worktrees" must be an absolute, ~ or in-repository path whose last part holds {name} once, like "~/code/worktrees/ask-{name}" or ".ask/worktrees/{name}"`, filepath.Join(p.Home, "settings.json"))
 	}
-	return filepath.Clean(s), nil
+	return clean, nil
 }
 
-// Worktree returns where the worktree named name goes: the worktrees setting with {name}
-// replaced, or worktrees/NAME in ask's home.
-func (p Paths) Worktree(name string) (string, error) {
+// Worktree returns where the worktree named name goes for the repository whose main checkout is
+// root: the worktrees setting with {name} replaced (a relative setting under root), or
+// worktrees/NAME in ask's home.
+func (p Paths) Worktree(root, name string) (string, error) {
 	tmpl, e := p.worktreesSetting()
 	if e != nil {
 		return "", e
 	}
-	return strings.Replace(tmpl, "{name}", name, 1), nil
+	path := strings.Replace(tmpl, "{name}", name, 1)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, path)
+	}
+	return path, nil
 }
 
-// WorktreeNames returns the names of the worktrees already in the worktrees location.
+// WorktreeNames returns the names of the worktrees already in the worktrees location. A relative
+// setting has one location per repository, so it lists none; git.Add still keeps names apart.
 func (p Paths) WorktreeNames() []string {
 	tmpl, e := p.worktreesSetting()
-	if e != nil {
+	if e != nil || !filepath.IsAbs(tmpl) {
 		return nil
 	}
 	dir, last := filepath.Split(tmpl)

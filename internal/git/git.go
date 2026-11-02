@@ -198,8 +198,9 @@ func Add(p home.Paths, dir, name string, reuse bool) (*Worktree, error) {
 	if !ok || root == "" {
 		return nil, fmt.Errorf("--worktree needs a git repository; %s is not in one", dir)
 	}
+	main := Root(dir)
 	used := name
-	path, e := p.Worktree(used)
+	path, e := p.Worktree(main, used)
 	if e != nil {
 		return nil, e
 	}
@@ -209,7 +210,7 @@ func Add(p home.Paths, dir, name string, reuse bool) (*Worktree, error) {
 	e = os.Mkdir(path, 0700)
 	for i := 2; os.IsExist(e) && !reuse; i++ {
 		used = name + "-" + strconv.Itoa(i)
-		if path, e = p.Worktree(used); e == nil {
+		if path, e = p.Worktree(main, used); e == nil {
 			e = os.Mkdir(path, 0700)
 		}
 	}
@@ -243,6 +244,20 @@ func Add(p home.Paths, dir, name string, reuse bool) (*Worktree, error) {
 		base = entries[len(entries)-1]
 	}
 	return &Worktree{Path: path, Branch: branch, Dir: filepath.Join(path, rel), Base: base, Dirty: len(dirtyPaths(root)) > 0}, nil
+}
+
+// Root returns the main checkout of the repository holding dir, which a relative worktrees setting
+// is under, even when dir is inside a linked worktree; "" outside a repository.
+func Root(dir string) string {
+	top, ok := git(dir, []string{"rev-parse", "--show-toplevel"}, "")
+	if !ok {
+		return ""
+	}
+	common, ok := git(dir, []string{"rev-parse", "--path-format=absolute", "--git-common-dir"}, "")
+	if c := home.Trim(common); ok && filepath.Base(c) == ".git" {
+		return filepath.Dir(c)
+	}
+	return home.Trim(top)
 }
 
 // Unchanged trusts git status and HEAD when deciding whether removal is safe.

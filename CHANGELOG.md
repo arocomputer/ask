@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The `worktrees` setting takes a path inside the repository, like `.ask/worktrees/{name}`, so each
+  repository keeps its runs' worktrees; `ask settings` offers it as "In each repository".
 - The install one-liner and the homepage point to GitHub; the fschrhunt.com page they named
   was retired.
 
