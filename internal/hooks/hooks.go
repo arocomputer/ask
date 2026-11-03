@@ -203,14 +203,17 @@ func (h *Hooks) Title(title string, command []string, description, dir string, t
 	return title, all
 }
 
-// Name lets declared hooks rename a new run from its prompts; failures keep the name and return notes.
-func (h *Hooks) Name(name string, prompts []string, dir string) (string, []Note) {
+// Name lets declared hooks rename a new run from its prompts, and from whether it works in a
+// worktree, where the name also names the worktree and branch; failures keep the name and
+// return notes.
+func (h *Hooks) Name(name string, prompts []string, worktree bool, dir string) (string, []Note) {
 	all := []Note{}
 	for _, x := range h.forEvent("name") {
 		answer := h.call(x.Path, "name", struct {
-			Name    string   `json:"name"`
-			Prompts []string `json:"prompts"`
-		}{name, prompts}, dir, "")
+			Name     string   `json:"name"`
+			Prompts  []string `json:"prompts"`
+			Worktree bool     `json:"worktree"`
+		}{name, prompts, worktree}, dir, "")
 		all = notes(answer, x.Name, all)
 		if next := strings.TrimSpace(answer.S("name")); next != "" && !answer.B("error") {
 			name = next

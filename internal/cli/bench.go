@@ -78,7 +78,7 @@ func bench(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	expanded, attempts := []any{}, []attempt{}
+	expanded, attempts, worktree := []any{}, []attempt{}, false
 	for i, item := range items {
 		t, ok := item.(home.Object)
 		if !ok {
@@ -92,6 +92,7 @@ func bench(a *agent.Registry, opts home.Object, words []string) (int, error) {
 			return 0, home.Usage("task %d: \"check\" must be a shell command, like \"go test ./...\"", i+1)
 		}
 		write := t.B("write") || (!t.Has("write") && defaults.B("write"))
+		worktree = worktree || write
 		id := strconv.Itoa(i + 1)
 		if t.Get("id") != nil {
 			id = home.String(t.Get("id"))
@@ -114,7 +115,7 @@ func bench(a *agent.Registry, opts home.Object, words []string) (int, error) {
 		return 0, home.Usage("%s has no tasks", words[0])
 	}
 	id := runs.NewID()
-	name, notes := runName(a, items, !opts.B("--no-hooks"))
+	name, notes := runName(a, items, home.O("worktree", worktree), !opts.B("--no-hooks"))
 	tasks, e := prepare(a, expanded, defaults, cmp.Or(name, id), false)
 	if e != nil {
 		return 0, e

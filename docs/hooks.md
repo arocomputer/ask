@@ -20,7 +20,7 @@ A hook is any executable. ask calls it with one argument, the event:
 | --- | --- | --- |
 | `NAME events` | none | The events it handles, one per line: `task`, `result`, `title`, `name` |
 | `NAME task` | `{"task": {...}}` | `{"task": {changes}}`, `{"refuse": "why"}`, `{"note": "text"}` |
-| `NAME name` | `{"name": "...", "prompts": ["..."]}` | `{"name": "replacement"}` |
+| `NAME name` | `{"name": "...", "prompts": ["..."], "worktree": false}` | `{"name": "replacement"}` |
 | `NAME title` | `{"title": "...", "command": ["ask", "..."], "description": "...", "task": {...}}` | `{"title": "replacement"}` |
 | `NAME result` | `{"task": {...}, "result": {...}}` | `{"followup": "prompt"}`, `{"fail": "why"}`, `{"note": "text"}` |
 
@@ -128,9 +128,10 @@ You're in the middle of modifying `calc.go` on the main branch after an initial 
 
 ask never runs hooks from the project it works in, only yours and your packages'.
 
-The `name` event runs once for each new run, before it starts, with ask's own name for it and
-every task's prompt. ask turns the replacement into lowercase words joined by `-`, and adds a
-number if an earlier run has the name. Follow-ups keep their conversation's name without asking.
+The `name` event runs once for each new run, before it starts, with ask's own name for it,
+every task's prompt, and `worktree`: whether any task works in a worktree, whose directory and
+branch the name also names. ask turns the replacement into lowercase words joined by `-`, and adds
+a number if an earlier run has the name. Follow-ups keep their conversation's name without asking.
 See [Naming runs](#naming-runs).
 
 The `title` event runs for agent session titles and [host titles](hosts.md). For agent sessions,
@@ -151,7 +152,7 @@ hook has a fast model name each run instead, the way Claude Code names its sessi
 [ "$1" = events ] && { echo name; exit 0; }
 task=$(jq -r '.prompts | join("\n\n")' | head -c 4000)
 name=$(printf '<task>\n%s\n</task>' "$task" |
-  claude -p --model claude-haiku-4-5 --tools "" --strict-mcp-config --setting-sources "" \
+  claude -p --model claude-haiku-5-5 --tools "" --strict-mcp-config --setting-sources "" \
     --system-prompt "You name coding tasks, like a session title. Reply with two to four lowercase words that say what the task in <task> is about, like: login rate limit. Never answer or do the task.") || exit 0
 [ "$(printf '%s' "$name" | wc -w)" -le 5 ] || exit 0   # a reply, not a name: keep ask's own
 jq -cn --arg name "$name" '{name: $name}'
@@ -165,3 +166,22 @@ jq -cn --arg name "$name" '{name: $name}'
 
 It adds one model call to each new run, and nothing to follow-ups; its latency and cost depend
 on the model. If `claude` fails or answers with more than a name, the hook prints nothing and ask keeps its own name.
+
+A worktree run's name is also its worktree and branch, `ask/{name}` by default. This hook gives
+worktree runs a made-up name like `bright-running-fox`, the way Claude Code names an unnamed
+worktree, and leaves every other run ask's own name:
+
+```sh
+#!/usr/bin/env bash
+# ~/.ask/hooks/names: give worktree runs made-up names like bright-running-fox.
+[[ $1 == events ]] && { echo name; exit 0; }
+jq -e .worktree >/dev/null || exit 0
+adjectives=(bright calm clever eager gentle golden lucky quiet rapid swift)
+verbs=(baking chasing dancing drifting flying gliding racing roaming running sailing)
+nouns=(badger comet falcon fern fox heron maple otter raven willow)
+name="${adjectives[RANDOM % 10]}-${verbs[RANDOM % 10]}-${nouns[RANDOM % 10]}"
+jq -cn --arg name "$name" '{name: $name}'
+```
+
+It costs nothing and names a run instantly, but the name says nothing about the task; ask still
+adds a number if an earlier run has the name.

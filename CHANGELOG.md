@@ -1,5 +1,13 @@
 # ask releases
 
+## Unreleased
+
+- The `name` hook event gets `worktree`: whether the run works in a worktree, whose directory and
+  branch its name also names. [Hooks](docs/hooks.md#naming-runs) has a hook that gives worktree
+  runs made-up names like `bright-running-fox`, the way Claude Code names an unnamed worktree.
+- The run-naming hook example uses Haiku 5.5, and [Hosts](docs/hosts.md) notes that Pi and
+  OpenCode 2, like Codex, have no shell description for host titles.
+
 ## v0.3.1 · 2026-11-02
 
 - The `worktrees` setting takes a path inside the repository, like `.ask/worktrees/{name}`, so each

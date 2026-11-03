@@ -123,12 +123,19 @@ func prepare(a *agent.Registry, items []any, defaults home.Object, label string,
 
 // runName names a new run before its tasks are prepared, so worktrees and branches carry it:
 // a single follow-up takes over its conversation's name; otherwise name hooks may rename the
-// first prompt's slug, and a number keeps it apart from earlier runs.
-func runName(a *agent.Registry, items []any, hooksOn bool) (string, []hooks.Note) {
+// first prompt's slug, and a number keeps it apart from earlier runs. defaults are the options
+// a batch applies to tasks that don't set their own, or nil.
+func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool) (string, []hooks.Note) {
 	prompts := []string{}
+	worktree := false
 	for _, item := range items {
 		t, _ := item.(home.Object)
 		prompts = append(prompts, home.String(t.Get("prompt")))
+		if t.Has("worktree") {
+			worktree = worktree || t.B("worktree")
+		} else {
+			worktree = worktree || defaults.B("worktree")
+		}
 	}
 	if len(items) == 1 {
 		t, _ := items[0].(home.Object)
@@ -143,7 +150,7 @@ func runName(a *agent.Registry, items []any, hooksOn bool) (string, []hooks.Note
 	if hooksOn {
 		dir, _ := os.Getwd()
 		var chosen string
-		chosen, notes = hooks.New(a.Paths).Name(name, prompts, dir)
+		chosen, notes = hooks.New(a.Paths).Name(name, prompts, worktree, dir)
 		if clean := runs.Clean(chosen); clean != "" && chosen != name {
 			name = clean
 		}
@@ -209,7 +216,7 @@ func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 		t.Set("continue", opts.Get("-c"))
 	}
 	id := runs.NewID()
-	name, notes := runName(a, []any{t}, !opts.B("--no-hooks"))
+	name, notes := runName(a, []any{t}, nil, !opts.B("--no-hooks"))
 	tasks, e := prepare(a, []any{t}, nil, cmp.Or(name, id), true)
 	if e != nil {
 		return 0, e
@@ -287,7 +294,7 @@ func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
 		}
 		id := runs.NewID()
 		var name string
-		name, notes = runName(a, items, !opts.B("--no-hooks"))
+		name, notes = runName(a, items, defaults, !opts.B("--no-hooks"))
 		tasks, e := prepare(a, items, defaults, cmp.Or(name, id), false)
 		if e != nil {
 			return 0, e
