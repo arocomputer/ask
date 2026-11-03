@@ -4,7 +4,7 @@
 
 - Prevent old release reruns from replacing the latest Homebrew formula; serialize formula
   updates and guard the release tag and main before pushing.
-- Ignore local agent state and environment files; use grouped Dependabot updates for Go dependencies and Actions.
+- Ignore local agent state and environment files; use Dependabot for Go dependency and Actions updates.
 - The `name` hook event gets `worktree`: whether the run works in a worktree, whose directory and
   branch its name also names. [Hooks](docs/hooks.md#naming-runs) has a hook that gives worktree
   runs made-up names like `bright-running-fox`, the way Claude Code names an unnamed worktree.
