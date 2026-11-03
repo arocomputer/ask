@@ -24,6 +24,10 @@ tag starts the build and publication jobs:
 2. **release**: archives for macOS and Linux (arm64 and amd64) with checksums and build
    provenance; the GitHub release, with the changelog section as its notes.
 3. **formula**: regenerates `ask.rb` (`scripts/formula.sh`) for the release and pushes it to main.
+   Formula jobs run one at a time and skip tags that are no longer GitHub's latest stable release,
+   checking both before generation and immediately before pushing. If main advances during
+   generation, the push fails; rerun the formula job from the latest release. An unchanged
+   formula needs no commit.
 4. **install**: a real `install.sh` install of the release on both systems.
 
 When the run record format changed, pin a record from the release in `test/fixtures/run-vX.Y.Z/`.

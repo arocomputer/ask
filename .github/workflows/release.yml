@@ -125,6 +125,9 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     environment: release
+    concurrency:
+      group: homebrew-formula
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -135,6 +138,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          test "$TAG" = "$latest" || { echo 'Not the latest stable release; leaving the formula unchanged.'; exit 0; }
           gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p checksums.txt -O "$RUNNER_TEMP/checksums.txt"
           scripts/formula.sh "$TAG" "$RUNNER_TEMP/checksums.txt" > ask.rb
           # Stage first: a brand-new formula is untracked, which git diff never shows.
@@ -143,6 +149,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -qam "release: $TAG"
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          test "$TAG" = "$latest" || { echo 'Not the latest stable release; leaving the formula unchanged.'; exit 0; }
           git push origin HEAD:main
 
   install:
