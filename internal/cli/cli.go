@@ -68,7 +68,6 @@ func oneEdit(a, b string) bool {
 	return len(b) == len(a)+1
 }
 
-// has tests membership in a command's accepted option list.
 func has(list []string, item string) bool {
 	for _, x := range list {
 		if x == item {
@@ -129,7 +128,7 @@ func parse(command string, argv []string) (home.Object, []string, error) {
 			} else {
 				i++
 				if command == "bench" && flag == "-m" && opts.B("-m") {
-					opts.Set(flag, opts.S("-m")+","+argv[i]) // each -m adds a model to compare
+					opts.Set(flag, opts.S("-m")+","+argv[i])
 				} else {
 					opts.Set(flag, argv[i])
 				}

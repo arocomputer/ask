@@ -4,7 +4,6 @@
 set -eu
 cd "$(dirname "$0")"
 
-# Print supported targets and their argument contracts.
 usage() {
     cat <<'EOF'
 usage: ./x [command] [args...]
@@ -58,7 +57,6 @@ case "$command" in
         fi
         ;;
     lint) go vet ./... ;;
-    # Extra arguments go to go test, like ./x test ./test -run 'TestRuns/stop_stops'.
     test)
         if [ "$#" -eq 0 ]; then set -- ./...; fi
         go test "$@"
@@ -78,7 +76,6 @@ case "$command" in
     guard) scripts/guard.sh ;;
     # Needs the network for the vulnerability database; CI and releases run it, not pre-commit.
     audit) go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./... ;;
-    # Build this checkout and run it: ./x dev runs, ./x dev setup --check.
     dev)
         go build -o "${TMPDIR:-/tmp}/ask-dev" ./cmd/ask
         exec "${TMPDIR:-/tmp}/ask-dev" "$@"

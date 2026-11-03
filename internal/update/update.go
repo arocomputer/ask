@@ -45,7 +45,6 @@ func Latest(timeout time.Duration) (string, error) {
 // Release reports whether version is a release tag, like v0.1.0.
 func Release(version string) bool { _, ok := parts(version); return ok }
 
-// parts splits vX.Y.Z into numbers.
 func parts(v string) ([3]int, bool) {
 	var n [3]int
 	fields := strings.Split(strings.TrimPrefix(v, "v"), ".")
@@ -113,7 +112,6 @@ func Hint(method string) string {
 	return "ask update"
 }
 
-// fetch downloads a release file.
 func fetch(url string) ([]byte, error) {
 	client := &http.Client{Timeout: 5 * time.Minute}
 	r, e := client.Get(url)

@@ -44,8 +44,8 @@ guidance and examples; `--help` and `-h` remain supported aliases.
 - Grow by need: a new hook event or contract field only when a real use needs it.
 - Names say what a thing covers: a file is named for its feature or command, never for how it came
   about (no `bugs_test.go`, no `misc.go`).
-- Comments state purpose and contract, on packages and functions; exported identifiers have doc
-  comments. No line-by-line comments. Update the comments and docs a change touches.
+- Document package purpose, public contracts and non-obvious reasons. Omit comments that repeat
+  names or code. Update the comments and docs a change touches.
 - One test per behavior change, as a subtest in its feature's file. Never call a network or a real
   model in a test.
 - A user-visible change gets a `CHANGELOG.md` entry under `## Unreleased` at the top (add the
