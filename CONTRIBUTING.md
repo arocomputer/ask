@@ -23,6 +23,8 @@ forward Go arguments, for example `./x test ./test -run TestRuns`.
 - [test/README.md](test/README.md): the tests, the fake agent, and which file covers what.
 - [docs/contributing/releases.md](docs/contributing/releases.md): cutting a release.
 
+Dependabot proposes grouped Go patch updates weekly. Security updates are separate.
+
 A behavior change comes with one test for it, and a user-visible change with a line in
 `CHANGELOG.md` and an update to `docs/`. Support for a coding agent belongs in its own agent, not
 in ask (see `docs/agents.md`).

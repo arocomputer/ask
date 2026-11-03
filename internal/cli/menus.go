@@ -18,7 +18,6 @@ import (
 // errBack returns to the menu a choice came from.
 var errBack = errors.New("back")
 
-// edited marks a menu note whose part of the draft differs from what is saved.
 func edited(note string, changed bool) string {
 	if changed {
 		return note + " · edited"
@@ -104,7 +103,6 @@ func (d *draft) mainMenu(t *tui.Prompter, m *machine) error {
 	}
 }
 
-// agentsMenu lists the agents, official and yours, and opens the one you pick.
 func (d *draft) agentsMenu(t *tui.Prompter, m *machine) error {
 	options := []tui.Option{}
 	for _, a := range m.Agents {
@@ -219,7 +217,6 @@ func (d *draft) agentMenu(t *tui.Prompter, m *machine, name string) error {
 	}
 }
 
-// defaultsMenu edits the defaults every run starts from.
 func (d *draft) defaultsMenu(t *tui.Prompter) error {
 	at := 0
 	for {
@@ -257,7 +254,6 @@ func (d *draft) defaultsMenu(t *tui.Prompter) error {
 	}
 }
 
-// worktreesMenu edits where --worktree runs work and their branch names.
 func (d *draft) worktreesMenu(t *tui.Prompter) error {
 	at := 0
 	for {
@@ -314,7 +310,6 @@ func (d *draft) appsMenu(t *tui.Prompter, m *machine) error {
 	}
 }
 
-// chooseModel picks the default model from what the agents offer.
 func (d *draft) chooseModel(t *tui.Prompter) error {
 	ids, _ := agent.New(d.p).List(d.models)
 	if len(ids) == 0 {
