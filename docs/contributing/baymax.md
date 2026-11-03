@@ -62,4 +62,8 @@ or that vendor permission enforcement is correct. That requires separate real-CL
 Baymax does not download CLIs, call providers or silently turn offline checks into paid tests.
 Existing fixtures remain simulators, not independently captured upstream recordings.
 
+For opt-in local startup and complete fake-task timings, see
+[Local latency](../../test/README.md#local-latency-opt-in). Baymax checks behavior;
+`ask bench` compares models using task durations, rather than timing a complete ask invocation.
+
 docs  docs/contributing/baymax.md

@@ -20,7 +20,7 @@ import (
 
 var askBin, fakeBin, root string
 
-// TestMain builds ask and the fake once; tests need only Go, git and a POSIX shell.
+// TestMain builds ask and the fake once for tests and benchmarks, using Go, git and a POSIX shell.
 func TestMain(m *testing.M) {
 	_, file, _, _ := runtime.Caller(0)
 	root = filepath.Dir(filepath.Dir(file))
@@ -54,14 +54,14 @@ func (o object) n(k string) float64 { x, _ := o[k].(float64); return x }
 func (o object) b(k string) bool { x, _ := o[k].(bool); return x }
 
 type setup struct {
-	t              *testing.T
+	t              testing.TB
 	tmp, home, log string
 	cwd            string // where ask runs; s.tmp when empty
 	env            map[string]string
 }
 
-// fresh installs the fake in a realpath-normalized temp HOME and ASK_HOME for one behavior.
-func fresh(t *testing.T) *setup {
+// fresh installs the fake in a realpath-normalized temp HOME and ASK_HOME for a test or benchmark.
+func fresh(t testing.TB) *setup {
 	t.Helper()
 	tmp, e := filepath.EvalSymlinks(t.TempDir())
 	if e != nil {
@@ -164,7 +164,7 @@ func (s *setup) start(args []string, input string, extra map[string]string) *run
 	return r
 }
 
-func (r *running) wait(t *testing.T) output {
+func (r *running) wait(t testing.TB) output {
 	t.Helper()
 	select {
 	case out := <-r.done:
@@ -262,7 +262,7 @@ func noMatch(t *testing.T, text, pattern string) {
 	}
 }
 
-func objects(t *testing.T, text string) []object {
+func objects(t testing.TB, text string) []object {
 	t.Helper()
 	var a []object
 	if e := json.Unmarshal([]byte(text), &a); e != nil {
@@ -271,7 +271,7 @@ func objects(t *testing.T, text string) []object {
 	return a
 }
 
-func obj(t *testing.T, text string) object {
+func obj(t testing.TB, text string) object {
 	t.Helper()
 	var o object
 	if e := json.Unmarshal([]byte(text), &o); e != nil {

@@ -16,6 +16,31 @@ Go tests need only Go, git and a POSIX shell.
 ./x baymax copilot pi                     # Copilot and Pi, checked separately
 ```
 
+## Local latency (opt-in)
+
+With Go and dependencies already cached, run offline from the repository root:
+
+```sh
+GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off ./x test ./test -run '^$' \
+  -bench '^BenchmarkLatency$' -benchtime=10x -count=5
+```
+
+Each row reports mean wall time in `ns/op` (divide by 1,000,000 for milliseconds) over ten
+sequential invocations; `-count=5` repeats each measurement five times. `startup` runs `ask help`
+through exit without an agent. `task` runs `ask --model fake:small --read --timeout 10 hello`
+through the real task lifecycle: agent discovery/startup, prompt and report exchange, fake call
+logging, answer/status output and saved run results. Both include process launch, pipe capture
+of stdout/stderr and waiting for exit. Completion and the saved answer are checked afterward.
+
+`TestMain` builds ask and the existing fake once, before timing. Temporary home/agent setup,
+run/log reset between invocations, validation and cleanup are untimed. Each task starts with no
+saved runs, in a disposable directory outside git. No user settings, hooks, live models or
+network are used; update checks are disabled. The task is representative of ask's read-only
+execution path, not model reasoning or coding work. Git/worktrees and interactive terminal
+rendering are not measured. OS caches are not flushed, and filesystem writes are not forced to
+durable storage. Compare repeated runs on the same machine under similar load; these are local
+observations with no latency pass/fail threshold. Normal tests and `./x check` do not run them.
+
 ## One file per feature
 
 Packaged harness checks are owned by [Baymax](../docs/contributing/baymax.md), in
@@ -32,6 +57,7 @@ docs page for that feature.
 | `run_test.go` | One task: options, prompts, answers, `--json`, `--schema`, timeouts, signals | usage.md |
 | `batch_test.go` | `ask batch`: task files, defaults, parallel results, `--resume` | batches.md |
 | `bench_test.go` | `ask bench`: every task on every model, checks, worktrees, the report | bench.md |
+| `latency_test.go` | Opt-in local startup and fake-task end-to-end timings | this page |
 | `runs_test.go` | Saved runs: `runs`, `show`, `wait`, `stop`, `clean`, locks, private state | runs.md |
 | `names_test.go` | Run names: from the prompt, taken over by follow-ups, name hooks | runs.md |
 | `followups_test.go` | `-c`: which session, model and access a follow-up gets | runs.md |
@@ -48,7 +74,7 @@ docs page for that feature.
 | `docs_test.go` | `ask docs`, and that every help footer names a real page | |
 | `update_test.go` | `ask update`, against a local stand-in for GitHub releases | install.md |
 | `compat_test.go` | Released run records and the contract version | compatibility.md |
-| `main_test.go` | `TestMain`, which builds ask and the fake once, and the helpers | |
+| `main_test.go` | `TestMain`, which builds ask and the fake once for tests and benchmarks, and the helpers | |
 
 A new behavior goes in its feature's file as one more `t.Run("what it does", ...)`. A new file is
 for a new feature.
