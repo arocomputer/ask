@@ -3,6 +3,7 @@ package status
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -75,6 +76,18 @@ func ClipLine(text string, width int) string {
 // Frame renders live state without terminal I/O; width reserves the last column to avoid wrapping.
 // Height bounds redraws to a screen, showing a count when a large batch needs more rows.
 func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool) []string {
+	if s.Batch && height > 3 {
+		count := len(s.Rows) + 2
+		for _, row := range s.Rows {
+			count += len(row.Notes)
+		}
+		if count >= height {
+			s.Rows = append([]LiveRow(nil), s.Rows...)
+			sort.SliceStable(s.Rows, func(i, j int) bool {
+				return s.Rows[i].State == "running" && s.Rows[j].State != "running"
+			})
+		}
+	}
 	lines := []string{}
 	if s.Batch {
 		header := ClipLine(s.Header, width-1)
@@ -190,8 +203,14 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 		lines = append(lines, ClipLine(footer, width-1))
 	}
 	if height > 1 && len(lines) >= height {
-		hidden := len(lines) - height + 2
-		lines = append(lines[:height-2], ClipLine(fmt.Sprintf("%d more lines", hidden), width-1))
+		if s.Batch && height > 3 {
+			footer := lines[len(lines)-1]
+			hidden := len(lines) - height + 2
+			lines = append(lines[:height-3], ClipLine(fmt.Sprintf("%d more lines", hidden), width-1), footer)
+		} else {
+			hidden := len(lines) - height + 2
+			lines = append(lines[:height-2], ClipLine(fmt.Sprintf("%d more lines", hidden), width-1))
+		}
 	}
 	return lines
 }
@@ -303,6 +322,7 @@ func (l *Live) Update(e runs.Event, name, note string) {
 			row.Dir = "worktree " + row.Dir
 		}
 		row.State = "running"
+		row.Usage = nil
 		row.Activity = ""
 		row.Started = time.Now()
 		if _, extra, ok := strings.Cut(note, "\n"); ok {

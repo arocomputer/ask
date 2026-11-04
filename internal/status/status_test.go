@@ -74,3 +74,10 @@ func TestBatchUsageOmitsCostWhenTaskReportsNothing(t *testing.T) {
 		t.Fatalf("partial cost presented as total: %s", got)
 	}
 }
+
+func TestDoneIncludesKeptWorktree(t *testing.T) {
+	r := home.O("run", "abc", "ok", true, "name", "Model", "seconds", 1, "worktree", home.O("branch", "ask/fix", "path", "/tmp/ask-fix"))
+	if got := Done(r); !strings.Contains(got, "branch ask/fix · worktree /tmp/ask-fix") {
+		t.Fatal(got)
+	}
+}

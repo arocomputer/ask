@@ -184,11 +184,16 @@ func Done(r home.Object) string {
 			changed = "no changes"
 		}
 	}
-	branch := ""
+	branch, path := "", ""
 	if w, ok := r.Get("worktree").(home.Object); ok {
-		branch = "branch " + w.S("branch")
+		if w.B("branch") {
+			branch = "branch " + w.S("branch")
+		}
+		if w.B("path") {
+			path = "worktree " + home.Tilde(w.S("path"))
+		}
 	}
-	return line(r.S("run"), outcome, r.S("name"), Duration(r.N("seconds")), changed, branch, Usage(r.Get("usage")), note)
+	return line(r.S("run"), outcome, r.S("name"), Duration(r.N("seconds")), changed, branch, path, Usage(r.Get("usage")), note)
 }
 
 // BatchStart prints the batch size and effective parallelism, including resume state.

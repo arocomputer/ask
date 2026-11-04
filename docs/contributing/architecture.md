@@ -81,3 +81,11 @@ Two more are kept by tests and review, not grep:
 | `scripts/` | `guard.sh`, and the release scripts in [releases.md](releases.md) |
 | `assets/` | The logo, wordmark and README screens |
 | `x` | The one entry point for checks: `./x check` is what CI runs |
+
+## Trying a development build
+
+`./x dev` uses the normal `ASK_HOME` unless you set it. Like a released build, it refreshes
+installed official agents to match the binary, so alternating development and installed builds
+rewrites those package copies. To try changes without affecting your installed agents, use a
+separate `ASK_HOME`, run `./x dev install codex` (or another agent) there, and keep that same
+`ASK_HOME` for the test run.

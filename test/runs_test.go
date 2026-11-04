@@ -256,6 +256,24 @@ sleep 10`)
 			t.Fatal("progress snapshot remained after stopping")
 		}
 	})
+	t.Run("runs shows activity for parallel batch tasks", func(t *testing.T) {
+		s := fresh(t)
+		s.env["COLUMNS"] = "200"
+		s.localAgent("progress", `prompt=$(cat)
+case "$prompt" in
+  alpha) echo '{"activity":"searching"}' > "$ASK_REPORT" ;;
+  beta) echo '{"activity":"editing files"}' > "$ASK_REPORT" ;;
+esac
+sleep 10`)
+		run := s.start([]string{"batch", "-m", "progress:small", "-j", "2", "-"}, `[{"id":"a","prompt":"alpha"},{"id":"b","prompt":"beta"}]`, nil)
+		until(t, func() bool {
+			out := s.ask("runs").stdout
+			return strings.Contains(out, "a: searching") && strings.Contains(out, "b: editing files")
+		})
+		id := strings.Split(s.latest(), "-")[1]
+		eq(t, s.ask("stop", id).code, 0)
+		run.wait(t)
+	})
 	t.Run("runs shows elapsed time for an active run", func(t *testing.T) {
 		s := fresh(t)
 		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})

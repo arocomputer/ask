@@ -2,10 +2,12 @@
 
 ## Unreleased
 
-- Show safe coarse Codex activity on stderr while runs work. The optional `ASK_REPORT` activity
-  field updates terminal rows and rate-limited plain status lines without exposing commands,
-  paths, reasoning or output; malformed activity cannot hide valid usage or cost limits.
-
+- Show coarse Codex and Claude Code activity while runs work, including in `ask runs`. The
+  optional `ASK_REPORT` activity field updates terminal rows and rate-limited plain status lines
+  without exposing commands, paths, reasoning or output; malformed activity cannot hide usage
+  or cost limits.
+- Show reported cache reads and omit unknown or partial totals. Show elapsed time for active runs,
+  preserve run handles in narrow terminals, and clarify follow-ups and stopped-run recovery.
 - Keep the recorded worktree path and branch for read, write and hook follow-ups, including
   prefixed worktree templates. Refuse overlapping continuations of the same agent session or
   kept worktree, within a batch and across ask processes sharing `ASK_HOME`.

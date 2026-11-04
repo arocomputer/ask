@@ -489,11 +489,33 @@ func AddUsage(list ...any) any {
 	return sum
 }
 
+// completeUsage sums only metrics reported by both rounds; an unknown round makes the total unknown.
+func completeUsage(a, b any) any {
+	first, ok := a.(home.Object)
+	if !ok {
+		return nil
+	}
+	second, ok := b.(home.Object)
+	if !ok {
+		return nil
+	}
+	sum, _ := AddUsage(first, second).(home.Object)
+	for _, key := range []string{"input", "output", "cached", "cost"} {
+		if !first.Has(key) || !second.Has(key) {
+			delete(sum, key)
+		}
+	}
+	if len(sum) == 0 {
+		return nil
+	}
+	return sum
+}
+
 // combine keeps the last answer while summing time, usage, commits and cumulative file changes.
 func combine(a, b home.Object) home.Object {
 	x := b.Clone()
 	x.Set("seconds", home.Number(home.Fixed(a.N("seconds")+b.N("seconds"), 1)))
-	x.Set("usage", AddUsage(a.Get("usage"), b.Get("usage")))
+	x.Set("usage", completeUsage(a.Get("usage"), b.Get("usage")))
 	x.Set("followups", a.N("followups")+1)
 	if a.Has("changes") || b.Has("changes") {
 		files := map[string]string{}
@@ -569,9 +591,14 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 	}
 	started := func(info task.Started) { worktree = info.Worktree; report(Event{Kind: "start", Started: info}) }
 	var earlier any // usage of finished rounds, so live usage keeps counting through follow-ups
+	following := false
 	progress := func(p agent.Progress) {
 		if p.Usage != nil {
-			if sum, ok := AddUsage(earlier, p.Usage).(home.Object); ok {
+			var usage any = p.Usage
+			if following {
+				usage = completeUsage(earlier, p.Usage)
+			}
+			if sum, ok := usage.(home.Object); ok {
 				report(Event{Kind: "usage", Result: sum})
 			}
 		}
@@ -624,6 +651,7 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 		next.Set("prompt", followup.Text)
 		next.Set("session", result.Get("session"))
 		earlier = result.Get("usage")
+		following = true
 		nextResult := task.Run(a, next, h, started, progress)
 		if process.Stopping() {
 			return nil

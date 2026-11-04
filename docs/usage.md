@@ -17,7 +17,7 @@ ask --model claude:sonnet-5.5 "Where is the retry logic, and what are its limits
 ask --model codex:gpt-6.1-sol#high "Review the last commit for bugs."
 ```
 
-Agents that report activity (including Codex) show coarse labels such as `running commands` or
+Agents that report activity (including Codex and Claude Code) show coarse labels such as `running commands` or
 `editing files` on stderr while working. Terminals refresh the live row; pipes and dumb terminals
 get deduplicated activity lines at most once every five seconds per task. These labels contain no
 commands, paths, reasoning or output. Brief events can be missed; a label describes the most recent
@@ -95,7 +95,7 @@ ask --model claude:sonnet-5.5 --write --worktree --directory ~/code/app "Add rat
 
 ```text
 ask add-rate-limiting-login · started · Sonnet 5.5 · write · worktree ~/.ask/worktrees/add-rate-limiting-login
-ask add-rate-limiting-login · ok · Sonnet 5.5 · 3:05 · 4 files changed · branch ask/add-rate-limiting-login · 120.4k in · 6.2k out
+ask add-rate-limiting-login · ok · Sonnet 5.5 · 3:05 · 4 files changed · branch ask/add-rate-limiting-login · worktree ~/.ask/worktrees/add-rate-limiting-login · 120.4k in · 6.2k out
 ```
 
 The worktree starts from the repository's `HEAD`, at `~/.ask/worktrees/RUN`, on branch `ask/RUN`
@@ -219,9 +219,9 @@ ask --continue login-test-fail --write "Fix it."
 ## Output
 
 - **stdout** has only the answer: text, or JSON under `--json`/`--schema`. It is safe to pipe.
-- **stderr** in a pipe has a status line when the run starts and one when it ends. Each begins
-  with the run's name. The first names the task after hooks, the second the model that ran, with the outcome, time,
-  what changed and usage when the agent reports it.
+- **stderr** in a pipe has status lines when the run starts and ends, plus occasional activity
+  lines when the agent reports them. Each begins with the run's name. The final line shows the
+  model, outcome, time, what changed and reported usage.
 
 ```text
 ask login-test-fail · started · Sonnet 5.5 · read · ~/code/app
@@ -243,7 +243,8 @@ On a terminal, stderr shows a spinner with the model name, read/write access, di
 elapsed time and the tokens and cost so far, as the agent reports them (see
 [Agents](agents.md#running-name)), then a final marked row. Hook notes and follow-ups appear beneath their task.
 Batches show a header and task rows with queued, running, ok or failed state and reasons.
-Rows fit the terminal width; very large batches show a count of hidden lines.
+Rows fit the terminal width; when a batch is too large for the screen, active rows and the footer
+stay visible where space permits, with a count of hidden lines.
 The frame finishes before answers print, so stdout may share the terminal. Ctrl-C stops agents,
 leaves the stopped state visible and restores the cursor. `TERM=dumb` uses plain lines;
 `NO_COLOR` disables colors while retaining live updates. Piped stderr has no ANSI or spinner.

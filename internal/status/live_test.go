@@ -61,7 +61,7 @@ func TestFrameClipping(t *testing.T) {
 		}
 	}
 	s := LiveState{Batch: true, Header: "batch", Rows: make([]LiveRow, 30)}
-	if got := Frame(s, time.Time{}, 0, 80, 5, false, true); len(got) > 4 || !strings.Contains(got[len(got)-1], "more lines") {
+	if got := Frame(s, time.Time{}, 0, 80, 5, false, true); len(got) > 4 || !strings.Contains(strings.Join(got, "\n"), "more lines") {
 		t.Fatalf("height: %#v", got)
 	}
 }
@@ -121,5 +121,17 @@ func TestFrameKeepsRunHandle(t *testing.T) {
 	got := Frame(LiveState{Rows: []LiveRow{row}}, time.Now(), 0, 50, 24, false, false)[0]
 	if !strings.Contains(got, "review-fix") {
 		t.Fatalf("run handle was clipped: %q", got)
+	}
+}
+
+func TestFramePrioritizesActiveRowsInLargeBatches(t *testing.T) {
+	rows := make([]LiveRow, 10)
+	for i := range rows {
+		rows[i] = LiveRow{Ref: "batch/queued", State: "queued"}
+	}
+	rows[9] = LiveRow{Ref: "batch/active", State: "running", Name: "Model", Started: time.Now()}
+	got := strings.Join(Frame(LiveState{Batch: true, Header: "batch", Rows: rows}, time.Now(), 0, 80, 5, false, false), "\n")
+	if !strings.Contains(got, "active") || !strings.Contains(got, "0/10 ok") {
+		t.Fatalf("active task or footer hidden: %s", got)
 	}
 }

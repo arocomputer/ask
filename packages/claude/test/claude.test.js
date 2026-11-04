@@ -114,6 +114,17 @@ test('reports usage while Claude Code is still running', async () => {
   await running;
 });
 
+test('reports coarse activity without exposing tool contents', async () => {
+  const secret = 'private command and path';
+  const running = run('hi', { extra: { FAKE_BLOCK: JSON.stringify({ type: 'tool_use', name: 'Bash', input: { command: secret } }), FAKE_PAUSE: '1500' } });
+  const live = await pollJson(join(tmp(), 'report.json'), running, (report) => report.activity === 'running commands');
+  assert.ok(live, 'no activity reported while running');
+  assert.ok(!JSON.stringify(live).includes(secret));
+  const r = await running;
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, 'claude: hi\n');
+});
+
 test('reports the model that did most of the work', async () => {
   // The fake's haiku call did less, so the name is opus's whatever model was asked for.
   assert.equal((await run('hi', { model: 'haiku-4.5' })).report.name, 'Opus 5.5');

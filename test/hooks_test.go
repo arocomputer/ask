@@ -58,6 +58,24 @@ func TestHooks(t *testing.T) {
 		match(t, r.stderr, `(?m)^ask [\w-]+ · note · hook verify · tests fail$`)
 		match(t, r.stderr, `(?m)^ask [\w-]+ · follow-up · hook verify · try again$`)
 	})
+	t.Run("follow-up usage is unknown if either round reports none", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("partial", `cat >/dev/null
+if [ -z "$ASK_SESSION" ]; then
+  echo '{"session":"session-one","input":100,"cost":0.5}' > "$ASK_REPORT"
+  echo first
+else
+  echo '{"session":"session-one"}' > "$ASK_REPORT"
+  echo second
+fi`)
+		s.hook("verify", []string{"result"}, `case "$input" in *'"answer":"first"'*) echo '{"followup":"again"}';; esac`)
+		r := s.ask("-m", "partial:small", "go")
+		eq(t, r.code, 0)
+		result := obj(t, s.ask("show", runID(t, r.stderr), "--json").stdout)
+		if result["usage"] != nil {
+			t.Fatalf("partial usage presented as total: %v", result["usage"])
+		}
+	})
 	t.Run("follow-ups stop after three, so a hook that is never satisfied cannot loop forever", func(t *testing.T) {
 		s := fresh(t)
 		s.hook("never", []string{"result"}, `echo '{"followup":"again"}'`)

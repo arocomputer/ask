@@ -28,3 +28,15 @@ func TestAddUsageKeepsOnlyReported(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestCompleteUsageOmitsMissingRounds(t *testing.T) {
+	first := home.O("input", 100, "cost", 0.2)
+	second := home.O("input", 50)
+	got := completeUsage(first, second)
+	if home.JSON(got, false) != `{"input":150}` {
+		t.Fatalf("partial cost presented as total: %v", got)
+	}
+	if got := completeUsage(first, nil); got != nil {
+		t.Fatalf("unreported round treated as zero: %v", got)
+	}
+}

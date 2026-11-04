@@ -25,6 +25,7 @@ else {
   const usage = { input_tokens: 10, cache_creation_input_tokens: 5, cache_read_input_tokens: 20 };
   const stream = (event) => console.log(JSON.stringify({ type: 'stream_event', event }));
   stream({ type: 'message_start', message: { id: 'msg_1', usage: { ...usage, output_tokens: 1 } } });
+  if (process.env.FAKE_BLOCK) stream({ type: 'content_block_start', content_block: JSON.parse(process.env.FAKE_BLOCK) });
   if (FAKE_PAUSE) await new Promise((resolve) => setTimeout(resolve, Number(FAKE_PAUSE)));
   stream({ type: 'message_delta', usage: { ...usage, output_tokens: 7 } });
   console.log(

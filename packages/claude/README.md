@@ -48,6 +48,9 @@ Every run starts with its own session id, reported to ask at once, so `ask --con
 
 ## Usage
 
+While running, the agent reports coarse activity from Claude Code stream events. Status never includes tool arguments, paths or message contents.
+
+
 The agent streams Claude Code's events and rewrites ask's report as each model call starts and
 finishes, so token counts show live; the cost arrives with the result. The report names the model
 that did most of the work (`Opus 5.5`).

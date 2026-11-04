@@ -173,6 +173,19 @@ await adapter({
       }
       if (event.type === 'result') result = event;
       const e = event.type === 'stream_event' ? event.event : {};
+      if (e.type === 'content_block_start') {
+        const block = e.content_block || {};
+        let activity;
+        if (block.type === 'thinking') activity = 'thinking';
+        else if (block.type === 'text') activity = 'answering';
+        else if (block.type === 'tool_use') {
+          if (block.name === 'Bash') activity = 'running commands';
+          else if (['Edit', 'Write', 'NotebookEdit'].includes(block.name)) activity = 'editing files';
+          else if (['Read', 'Grep', 'Glob', 'WebSearch', 'WebFetch'].includes(block.name)) activity = 'searching';
+          else activity = 'using tools';
+        }
+        if (activity) report({ activity });
+      }
       if (e.type === 'message_start') call = e.message?.id;
       const u = e.type === 'message_start' ? e.message?.usage : e.type === 'message_delta' ? e.usage : undefined;
       if (!u || !call) return;
