@@ -82,6 +82,14 @@ export async function harness(name, ask) {
     if (installed.code !== 0) throw new Error(`install ${name}: ${installed.stderr}`);
     const launcher = join(s.env.ASK_HOME, 'packages', 'ask', 'packages', name, 'agents', name);
     if (!existsSync(launcher)) throw new Error(`install did not write ${launcher}`);
+    const manifest = `${launcher}.environment.json`;
+    if (existsSync(manifest)) {
+      const defaults = readJson(manifest);
+      // The CLI simulator needs its fixture controls, never the developer's environment.
+      writeFileSync(join(s.env.ASK_HOME, 'environment.json'), JSON.stringify({ agents: {
+        [name]: { inherit: [...new Set([...defaults.inherit, ...Object.keys(s.env), ...Object.keys(profile.failure || {})])] },
+      } }));
+    }
     return s;
   } catch (error) { s.cleanup(); throw error; }
 }

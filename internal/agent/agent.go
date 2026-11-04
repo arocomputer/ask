@@ -87,7 +87,14 @@ func (a *Registry) models(name string) listing {
 	}
 	a.mu.Unlock()
 	if !ok {
-		r := process.Run(find.Path(a.Paths, "agents", name), []string{"models"}, process.Options{Env: a.Paths.Env(nil), Timeout: 10 * time.Second})
+		executable := find.Path(a.Paths, "agents", name)
+		env, err := a.Paths.AgentEnv(name, executable, nil)
+		if err != nil {
+			own.error = err.Error()
+			close(own.ready)
+			return *own
+		}
+		r := process.Run(executable, []string{"models"}, process.Options{Env: env, Timeout: 10 * time.Second})
 		if r.Code != 0 {
 
 			own.error = process.Reason(r.Stderr)
@@ -255,6 +262,11 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Prog
 	if limit > 0 {
 		vars["ASK_MAX_COST"] = strconv.FormatFloat(limit, 'f', -1, 64)
 	}
+	executable := find.Path(a.Paths, "agents", m.Agent)
+	env, err := a.Paths.AgentEnv(m.Agent, executable, vars)
+	if err != nil {
+		return home.O("ok", false, "note", err.Error())
+	}
 	done, stop := make(chan struct{}), make(chan struct{})
 	watched := make(chan struct{})
 	overLimit := false
@@ -288,7 +300,7 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Prog
 			}
 		}
 	}()
-	r := process.Run(find.Path(a.Paths, "agents", m.Agent), nil, process.Options{Input: prompt, Dir: t.S("dir"), Env: a.Paths.Env(vars), Timeout: process.Timeout(timeout), Stop: stop})
+	r := process.Run(executable, nil, process.Options{Input: prompt, Dir: t.S("dir"), Env: env, Timeout: process.Timeout(timeout), Stop: stop})
 	close(done)
 	<-watched
 

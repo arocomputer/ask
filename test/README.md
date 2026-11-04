@@ -62,6 +62,7 @@ docs page for that feature.
 | `names_test.go` | Run names: from the prompt, taken over by follow-ups, name hooks | runs.md |
 | `followups_test.go` | `-c`: which session, model and access a follow-up gets | runs.md |
 | `git_test.go` | What write runs report from git, and `--worktree` | usage.md |
+| `environment_test.go` | Agent inheritance, adapter declarations, integration refusals and hook preservation | environment.md |
 | `agents_test.go` | The agent contract: stdin, environment, schema files, reports | agents.md |
 | `models_test.go` | `models.json`, model roles and discovery, models on and off, cost limits | models.md |
 | `hooks_test.go` | Task and result hooks: order, refusals, follow-ups, failing open | hooks.md |

@@ -1,5 +1,7 @@
 # Agents
 
+[Agent environments](environment.md) describes per-agent inheritance and integration policy.
+
 An agent is a small executable that runs one coding agent's CLI for ask: Claude Code, Codex,
 Opencode, or anything else. ask itself knows nothing about any of them. Everything specific to one,
 from its flags to how it reports usage, lives in its agent, which is how ask supports any of them.
@@ -62,6 +64,7 @@ ask runs the agent with no arguments, in the directory the agent should work in 
 | `ASK_SCHEMA` | Set only with `--schema`: a file holding the JSON Schema, for CLIs that enforce one. |
 | `ASK_SESSION` | Set only for a follow-up: the session to continue (see [Sessions](#sessions)). |
 | `ASK_REPORT` | A file path for the optional report. |
+| `ASK_ENVIRONMENT` | Effective integration booleans for adapters with an environment sidecar; enforce them or refuse. See [Agent environments](environment.md). |
 | `ASK_MAX_COST` | Set only when the task has a cost limit: dollars, like `2` or `0.5`. See [Cost limits](#cost-limits). |
 
 | Output | |

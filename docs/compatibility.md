@@ -12,6 +12,7 @@ they may change.
 | Result fields (`run`, `id`, `model`, `write`, `name`, `ok`, `answer`/`error`, optional `raw_answer` on JSON/schema validation failure, `seconds`, `usage`, `session`, `dir`, `changes`, `commits`, `worktree`, `followups`) | [Batches](batches.md) |
 | Run records: `tasks.json` (optional task `title`) and `results.json` in `~/.ask/runs/STAMP-ID[-NAME]/` | [Runs](runs.md) |
 | `settings.json` keys and their meaning | [Settings](settings.md) |
+| `environment.json` and agent environment sidecars | [Agent environments](environment.md) |
 | `models.json`: per agent, a list of ids or ids mapped to `true`, `false` or `{"enabled", "max_cost"}` | [Models](models.md#modelsjson) |
 | Agent environment `ASK_TITLE`: the task's user-facing session title | [Agents](agents.md#the-contract) |
 | `ask setup` flags, `--check` exit status and `--check --json` fields | [Setup](setup.md) |

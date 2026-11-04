@@ -48,7 +48,7 @@ Each folder in `internal/` is one Go package with a `// Package` comment saying 
 | `status` | Status lines, live rows and the `ask runs` table |
 | `setup` | What `ask setup` offers: the official agents, the ask skill per app, the title hook |
 | `schema` | The `--schema` check |
-| `home` | `~/.ask` paths, the contract environment, `settings.json` and `models.json`, atomic JSON records |
+| `home` | `~/.ask` paths, the contract environment, `settings.json`, `models.json` and generic `environment.json` policy, atomic JSON records |
 | `tui` | Inline Bubble Tea prompts and the review diff; owns prompt input and terminal cleanup |
 | `update` | Finding the latest release and replacing a directly installed ask |
 

@@ -1,7 +1,7 @@
 # pi
 
 The ask adapter for [Pi](https://pi.dev). Runs one JSON-mode turn with Node.js
-built-ins only. The shell launcher requires Node.js 18+; the researched Pi 1.0.4
+built-ins only. The shell launcher requires Node.js 18+; the initially researched Pi 1.0.4
 CLI itself requires Node.js 22.19+. Authenticate in Pi before using the adapter.
 
 ## Install and models
@@ -31,11 +31,14 @@ Thinking suffixes in the model ID are rejected; use ask's `#effort` instead.
 
 Read runs explicitly allow only `read,grep,find,ls`. Shell, edits, writes and
 other tools are unavailable. This policy is reapplied on continuation.
-`--no-extensions` prevents global, project, package and built-in extensions from
-running or replacing tools. Skills, prompt templates and themes are also disabled
-in both modes. Read runs set `PI_OFFLINE=1`: Pi otherwise resolves and may install
-configured packages even with extensions disabled. Offline does not block model
-API requests; it skips startup network work and missing-package installation.
+`--no-mcp` also prevents native server connections and MCP tools (the tool list
+alone keeps MCP tools in Pi 1.5.0). Extensions, skills, prompt templates and themes
+are disabled by default. Both modes set `PI_OFFLINE=1` to avoid startup package
+downloads. Installed help must confirm required controls before a task starts.
+Configured extension/package sources cause a refusal before they can be disabled:
+they may contain policy hooks. See [Agent environments](../../docs/environment.md)
+for inheritance defaults, skill/MCP/plugin opt-in, policy-hook preservation and
+unsupported combinations. MCP and plugins cannot be enabled for read runs.
 
 Write runs enable `read,grep,find,ls,bash,edit,write`; they have unrestricted shell
 access as the current user. There is no OS sandbox in either mode. Read-only is
@@ -44,7 +47,7 @@ may migrate its global configuration,
 and may cache/download search binaries. Read runs refuse a legacy `.pi/commands`
 directory that Pi would rename to `.pi/prompts` at startup. Context files such as `AGENTS.md` remain
 available. New read prompts also ask the model to ground its answer in files;
-the actual restriction comes from the tool list and disabled extensions.
+the actual restriction comes from the tool list and disabled extensions/MCP.
 
 ## Sessions, titles and usage
 
@@ -70,6 +73,12 @@ no adapter step cap, image input, interactive extension UI or model alias mappin
 
 ## Environment and tests
 
+Ask applies the defaults in `agents/pi.environment.json` and user overrides from
+`$ASK_HOME/environment.json` before launching this adapter. Auth/config directories
+and supported provider variables remain available; arbitrary parent variables do not.
+`ASK_ENVIRONMENT` carries the effective integration booleans. Direct launcher use
+outside Ask also checks integration controls, but does not filter inherited variables.
+
 `ASK_PI_BIN` selects the CLI executable; otherwise it is found on PATH,
 `~/.local/bin`, `/opt/homebrew/bin`, or `/usr/local/bin`. `ASK_NODE` selects the
 launcher's Node runtime; the launcher also searches the existing official
@@ -85,7 +94,12 @@ Tests drive `test/bin/pi`, with no network or real model calls.
 
 ## Research
 
-Implemented after reading upstream at commit
+Environment controls were also checked against locally installed Pi 1.5.0
+`--help` and resource/auth loading source. The help probe uses a disposable config
+directory during research; tests use only the fake CLI. No auth commands or model
+requests are needed.
+
+Originally implemented after reading upstream at commit
 `ddaa0a0341a84b073a087a3d89b9b9e7fbdaf6ba` (Pi package version 1.0.4):
 
 - [CLI flags and name normalization](https://github.com/earendil-works/pi/blob/ddaa0a0341a84b073a087a3d89b9b9e7fbdaf6ba/packages/coding-agent/src/cli/args.ts).

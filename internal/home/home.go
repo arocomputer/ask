@@ -26,10 +26,10 @@ func New() Paths {
 	return Paths{root, filepath.Join(root, "runs"), filepath.Join(root, "worktrees"), filepath.Join(root, "agents"), filepath.Join(root, "packages"), bin}
 }
 
-// Env clears inherited per-task variables and supplies contract version 1.
+// Env clears inherited contract variables and supplies contract version 1.
 func (p Paths) Env(vars map[string]string) []string {
 	drop := map[string]bool{}
-	for _, k := range []string{"ASK_MODEL", "ASK_EFFORT", "ASK_ACCESS", "ASK_SCHEMA", "ASK_SESSION", "ASK_REPORT", "ASK_MAX_COST", "ASK_TITLE", "ASK_RUN", "ASK_EVENT", "ASK_CONTRACT", "ASK_BIN", "ASK_HOME"} {
+	for _, k := range []string{"ASK_MODEL", "ASK_EFFORT", "ASK_ACCESS", "ASK_SCHEMA", "ASK_SESSION", "ASK_REPORT", "ASK_MAX_COST", "ASK_TITLE", "ASK_RUN", "ASK_EVENT", "ASK_CONTRACT", "ASK_BIN", "ASK_HOME", "ASK_ENVIRONMENT"} {
 		drop[k] = true
 	}
 	env := []string{}

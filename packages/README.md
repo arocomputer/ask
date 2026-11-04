@@ -50,6 +50,7 @@ a source build. OpenCode remains one package and uses the installed executable, 
 ```text
 packages/NAME/
 ├── agents/NAME      a small sh launcher that finds Node.js 18+ and runs lib/NAME.mjs
+├── agents/NAME.environment.json  optional environment defaults and supported integration keys
 ├── lib/NAME.mjs     the agent: runs the CLI, maps access and models, writes the report
 ├── test/            node --test, against a fake CLI in test/bin
 └── README.md        what a user needs: install, models, read and write

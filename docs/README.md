@@ -15,6 +15,7 @@ the names or ids printed by your runs.
 | [Batches](batches.md) | Many tasks in parallel, recorded runs, resuming |
 | [Bench](bench.md) | Comparing models on the same tasks, scored by your own checks |
 | [Models](models.md) | Model ids, effort, turning models on and off, and models.json |
+| [Environment](environment.md) | Per-agent inherited variables, integration opt-in and actual limits |
 | [Agents](agents.md) | Reaching a coding agent: the contract, read-only, and examples |
 | [Hosts](hosts.md) | Background command titles and a Claude Code hook |
 | [Hooks](hooks.md) | Changing tasks and checking results: verify, guard, add context |

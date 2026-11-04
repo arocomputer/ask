@@ -1,5 +1,6 @@
-/* Pi's ask adapter: one JSON-mode turn, built-in tools only, with saved sessions and usage. */
+/* Pi's ask adapter: one JSON-mode turn, controlled integrations, saved sessions and usage. */
 import { spawn } from 'node:child_process';
+import { environmentArgs } from './environment.mjs';
 import { accessSync, constants, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -52,7 +53,7 @@ async function main() {
   if (effort && !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error(`unsupported Pi thinking level: ${effort}`);
   const split = model.indexOf('/');
   const args = ['--mode', 'json', '--provider', model.slice(0, split), '--model', model.slice(split + 1),
-    '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes',
+    ...environmentArgs(cli, access),
     '--tools', access === 'write' ? 'read,grep,find,ls,bash,edit,write' : 'read,grep,find,ls'];
   if (effort) args.push('--thinking', effort);
   if (session) args.push('--session', session);
@@ -63,8 +64,8 @@ async function main() {
   let failure;
   let terminal = false;
   let stderr = '';
-  // Pi resolves configured packages even with extensions disabled; offline skips missing installs.
-  const child = spawn(cli, args, { env: { ...process.env, ...(access === 'write' ? {} : { PI_OFFLINE: '1' }) }, stdio: ['pipe', 'pipe', 'pipe'] });
+  // Avoid startup downloads in both modes. This does not block model API requests.
+  const child = spawn(cli, args, { env: { ...process.env, PI_OFFLINE: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
   const finished = new Promise((resolve) => {
     child.on('error', (error) => { failure = error.message; });
     child.on('close', (code) => resolve(code));

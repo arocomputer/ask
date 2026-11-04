@@ -16,6 +16,10 @@
   `ask models --roles` and edit them in `ask settings` or `ask settings set roles JSON`.
   Runs, batches and benches record resolved models; follow-ups and reruns keep their recorded
   models after role edits, with existing enabled-state and cost-limit rules.
+- Add editable `environment.json` for per-agent inherited variables and declared integration
+  controls. Pi now disables native MCP explicitly, checks CLI support, preserves auth paths
+  and refuses to suppress possible extension policy hooks. Other adapters reject integration
+  policies they cannot enforce; see `ask docs environment` for supported defaults and limits.
 
 - Show coarse Codex and Claude Code activity while runs work, including in `ask runs`. The
   optional `ASK_REPORT` activity field updates terminal rows and rate-limited plain status lines
