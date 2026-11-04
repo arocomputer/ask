@@ -16,7 +16,7 @@ import (
 func TestRuns(t *testing.T) {
 	t.Run("show prints a run again: its answer, or with --json its whole result", func(t *testing.T) {
 		s := fresh(t)
-		first := s.ask("-m", "fake:small", "hello")
+		first := s.ask("--wait", "-m", "fake:small", "hello")
 		id := runID(t, first.stderr)
 		shown := s.ask("show", id)
 		eq(t, shown.stdout, "fake: hello\n")
@@ -24,7 +24,7 @@ func TestRuns(t *testing.T) {
 		full := obj(t, s.ask("show", id, "--json").stdout)
 		eq(t, full.s("run"), id)
 		eq(t, full.s("session"), fmt.Sprintf("s-%.0f", s.calls()[0].n("pid")))
-		batch := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"a"},{"prompt":"b"}]`, nil)
+		batch := s.run([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"prompt":"a"},{"prompt":"b"}]`, nil)
 		batchID := runID(t, batch.stderr)
 		shownBatch := s.ask("show", batchID)
 		eq(t, shownBatch.stderr, "ask "+batchID+" · 2/2 ok\n")
@@ -62,7 +62,7 @@ func TestRuns(t *testing.T) {
 	})
 	t.Run("stop stops a run that is going, and its agents", func(t *testing.T) {
 		s := fresh(t)
-		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		run := s.start([]string{"--wait", "-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
 		until(t, func() bool { return len(s.calls()) == 1 })
 		parts := strings.Split(s.latest(), "-")
 		id := parts[len(parts)-1]
@@ -73,7 +73,7 @@ func TestRuns(t *testing.T) {
 	})
 	t.Run("wait suggests rerunning a stopped single task", func(t *testing.T) {
 		s := fresh(t)
-		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		run := s.start([]string{"--wait", "-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
 		until(t, func() bool { return len(s.calls()) == 1 })
 		parts := strings.Split(s.latest(), "-")
 		id := parts[len(parts)-1]
@@ -87,11 +87,11 @@ func TestRuns(t *testing.T) {
 	})
 	t.Run("a run another ask is running cannot be resumed at the same time", func(t *testing.T) {
 		s := fresh(t)
-		run := s.start([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"hang"}]`, map[string]string{"FAKE_HANG": "hang"})
+		run := s.start([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"prompt":"hang"}]`, map[string]string{"FAKE_HANG": "hang"})
 		until(t, func() bool { return len(s.calls()) == 1 })
 		parts := strings.Split(s.latest(), "-")
 		id := parts[len(parts)-1]
-		second := s.ask("batch", "--resume", id)
+		second := s.ask("batch", "--wait", "--resume", id)
 		eq(t, second.code, 2)
 		match(t, second.stderr, `run `+id+` is running`)
 		if e := run.cmd.Process.Signal(syscall.SIGTERM); e != nil {
@@ -101,24 +101,24 @@ func TestRuns(t *testing.T) {
 	})
 	t.Run("a damaged results.json is reported, never taken as no results", func(t *testing.T) {
 		s := fresh(t)
-		first := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"a"}]`, nil)
+		first := s.run([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"prompt":"a"}]`, nil)
 		id := runID(t, first.stderr)
 		s.write(filepath.Join(s.home, "runs", s.latest(), "results.json"), `[{"ok": tr`)
-		r := s.ask("batch", "--resume", id)
+		r := s.ask("batch", "--wait", "--resume", id)
 		eq(t, r.code, 2)
 		match(t, r.stderr, `results\.json is damaged`)
 		eq(t, len(s.calls()), 1)
 	})
 	t.Run("--resume reruns a batch as recorded, refusing options that would change it", func(t *testing.T) {
 		s := fresh(t)
-		first := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"a"}]`, nil)
-		r := s.ask("batch", "--resume", runID(t, first.stderr), "-r")
+		first := s.run([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"prompt":"a"}]`, nil)
+		r := s.ask("batch", "--wait", "--resume", runID(t, first.stderr), "-r")
 		eq(t, r.code, 2)
-		match(t, r.stderr, `takes only -j and --no-hooks, not -r`)
+		match(t, r.stderr, `takes only -j, --no-hooks and --wait, not -r`)
 	})
 	t.Run("run records and folders are private to you", func(t *testing.T) {
 		s := fresh(t)
-		r := s.ask("-m", "fake:small", "go")
+		r := s.ask("--wait", "-m", "fake:small", "go")
 		eq(t, r.code, 0)
 		dir := filepath.Join(s.home, "runs", s.latest())
 		for _, p := range []string{filepath.Join(s.home, "runs"), dir, filepath.Join(dir, "tasks.json"), filepath.Join(dir, "results.json")} {
@@ -134,7 +134,7 @@ func TestRuns(t *testing.T) {
 	t.Run("a stopped task resumes without a failure result, result hook or printed results", func(t *testing.T) {
 		s := fresh(t)
 		s.hook("observe", []string{"result"}, `echo '{}'`)
-		run := s.start([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"hang"}]`, map[string]string{"FAKE_HANG": "hang"})
+		run := s.start([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"prompt":"hang"}]`, map[string]string{"FAKE_HANG": "hang"})
 		until(t, func() bool { return len(s.calls()) == 1 })
 		id := strings.TrimPrefix(s.latest()[strings.LastIndex(s.latest(), "-"):], "-")
 		eq(t, s.ask("stop", id).code, 0)
@@ -152,7 +152,7 @@ func TestRuns(t *testing.T) {
 	})
 	t.Run("show exits 1 when any saved task failed", func(t *testing.T) {
 		s := fresh(t)
-		r := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"pass"},{"prompt":"fail"}]`, map[string]string{"FAKE_FAIL": "fail"})
+		r := s.run([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"prompt":"pass"},{"prompt":"fail"}]`, map[string]string{"FAKE_FAIL": "fail"})
 		eq(t, r.code, 1)
 		eq(t, s.ask("show", runID(t, r.stderr)).code, 1)
 	})
@@ -165,7 +165,7 @@ func TestRuns(t *testing.T) {
 	})
 	t.Run("stop never signals a process named by a record nobody holds", func(t *testing.T) {
 		s := fresh(t)
-		first := s.ask("-m", "fake:small", "go")
+		first := s.ask("--wait", "-m", "fake:small", "go")
 		eq(t, first.code, 0)
 		cmd := exec.Command("sleep", "30")
 		if e := cmd.Start(); e != nil {
@@ -182,7 +182,7 @@ func TestRuns(t *testing.T) {
 	})
 	t.Run("a run's lock is the one the kernel holds, not what the lock file says", func(t *testing.T) {
 		s := fresh(t)
-		first := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"fail"}]`, map[string]string{"FAKE_FAIL": "fail"})
+		first := s.run([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"prompt":"fail"}]`, map[string]string{"FAKE_FAIL": "fail"})
 		eq(t, first.code, 1)
 		path := filepath.Join(s.home, "runs", s.latest(), "lock")
 		f, e := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
@@ -196,14 +196,14 @@ func TestRuns(t *testing.T) {
 		if e := syscall.FcntlFlock(f.Fd(), syscall.F_SETLK, &syscall.Flock_t{Type: syscall.F_WRLCK}); e != nil {
 			t.Fatal(e)
 		}
-		r := s.ask("batch", "--resume", runID(t, first.stderr))
+		r := s.ask("batch", "--wait", "--resume", runID(t, first.stderr))
 		eq(t, r.code, 2)
 		match(t, r.stderr, `is running \(pid `+strconv.Itoa(os.Getpid())+`\)`)
 	})
 	t.Run("wait", func(t *testing.T) {
 		t.Run("waits for a running run, then prints its answer", func(t *testing.T) {
 			s := fresh(t)
-			slow := s.start([]string{"-m", "fake:small", "slow one"}, "", map[string]string{"FAKE_SLOW": "slow"})
+			slow := s.start([]string{"--wait", "-m", "fake:small", "slow one"}, "", map[string]string{"FAKE_SLOW": "slow"})
 			until(t, func() bool { return exists(filepath.Join(s.home, "runs")) && len(s.dirs()) == 1 })
 			r := s.ask("wait")
 			eq(t, r.code, 0)
@@ -225,8 +225,8 @@ func TestRuns(t *testing.T) {
 		})
 		t.Run("without names returns the first of several active runs to finish", func(t *testing.T) {
 			s := fresh(t)
-			slow := s.start([]string{"-m", "fake:small", "slow reply"}, "", map[string]string{"FAKE_SLOW": "slow"})
-			hang := s.start([]string{"-m", "fake:small", "hang around"}, "", map[string]string{"FAKE_HANG": "hang"})
+			slow := s.start([]string{"--wait", "-m", "fake:small", "slow reply"}, "", map[string]string{"FAKE_SLOW": "slow"})
+			hang := s.start([]string{"--wait", "-m", "fake:small", "hang around"}, "", map[string]string{"FAKE_HANG": "hang"})
 			until(t, func() bool { return len(s.calls()) == 2 })
 			r := s.ask("wait")
 			eq(t, r.code, 0)
@@ -239,7 +239,7 @@ func TestRuns(t *testing.T) {
 		})
 		t.Run("returns an already completed run by name or ID exactly like show", func(t *testing.T) {
 			s := fresh(t)
-			first := s.ask("-m", "fake:small", "saved answer")
+			first := s.ask("--wait", "-m", "fake:small", "saved answer")
 			eq(t, first.code, 0)
 			for _, ref := range []string{"saved-answer", runID(t, first.stderr)} {
 				eq(t, s.ask("wait", ref), s.ask("show", ref))
@@ -248,7 +248,7 @@ func TestRuns(t *testing.T) {
 		})
 		t.Run("preserves a saved JSON answer without a result wrapper", func(t *testing.T) {
 			s := fresh(t)
-			first := s.run([]string{"-m", "fake:small", "--json", "structured answer"}, "", map[string]string{"FAKE_ANSWER": `{"answer":[1,true,"ok"]}`})
+			first := s.run([]string{"--wait", "-m", "fake:small", "--json", "structured answer"}, "", map[string]string{"FAKE_ANSWER": `{"answer":[1,true,"ok"]}`})
 			eq(t, first.code, 0)
 			ref := runID(t, first.stderr)
 			waited := s.ask("wait", ref)
@@ -272,7 +272,7 @@ printf 'answer: %s\n' "$prompt"`)
 		t.Run("an explicit set ignores unrelated completions and returns stable identity", func(t *testing.T) {
 			s := gated(t)
 			launch := func(prompt string) string {
-				out := s.ask("start", "-m", "gate:small", prompt)
+				out := s.ask("run", "-m", "gate:small", prompt)
 				eq(t, out.code, 0)
 				id := strings.TrimSpace(out.stdout)
 				t.Cleanup(func() { s.ask("stop", id) })
@@ -324,7 +324,7 @@ printf 'answer: %s\n' "$prompt"`)
 		t.Run("no argument wait scopes active work to the repository or current directory", func(t *testing.T) {
 			s := gated(t)
 			repo, _ := s.repo()
-			other := s.ask("start", "-m", "gate:small", "outside")
+			other := s.ask("run", "-m", "gate:small", "outside")
 			eq(t, other.code, 0)
 			id := strings.TrimSpace(other.stdout)
 			t.Cleanup(func() { s.ask("stop", id) })
@@ -334,7 +334,7 @@ printf 'answer: %s\n' "$prompt"`)
 			s.cwd = repo
 			eq(t, s.ask("wait", "--id").stdout, "")
 			eq(t, s.ask("wait").stderr, "ask: no runs are running\n")
-			inside := s.ask("start", "-m", "gate:small", "inside")
+			inside := s.ask("run", "-m", "gate:small", "inside")
 			eq(t, inside.code, 0)
 			innerID := strings.TrimSpace(inside.stdout)
 			t.Cleanup(func() { s.ask("stop", innerID) })
@@ -351,7 +351,7 @@ printf 'answer: %s\n' "$prompt"`)
 		})
 		t.Run("machine identity separates the run ID and position from numeric task names", func(t *testing.T) {
 			s := fresh(t)
-			s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"id":"custom","prompt":"a"},{"id":"1","prompt":"b"}]`, nil)
+			s.run([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"id":"custom","prompt":"a"},{"id":"1","prompt":"b"}]`, nil)
 			id := strings.SplitN(s.latest(), "-", 3)[1]
 			out := s.ask("wait", "--id", id+"/custom")
 			eq(t, out.code, 0)
@@ -363,9 +363,9 @@ printf 'answer: %s\n' "$prompt"`)
 		})
 		t.Run("an explicit run ignores simultaneous runs that finish before or after it", func(t *testing.T) {
 			s := gated(t)
-			other := s.start([]string{"-m", "gate:small", "other"}, "", nil)
-			target := s.start([]string{"-m", "gate:small", "target"}, "", nil)
-			pending := s.start([]string{"-m", "gate:small", "pending"}, "", nil)
+			other := s.start([]string{"--wait", "-m", "gate:small", "other"}, "", nil)
+			target := s.start([]string{"--wait", "-m", "gate:small", "target"}, "", nil)
+			pending := s.start([]string{"--wait", "-m", "gate:small", "pending"}, "", nil)
 			until(t, func() bool {
 				return exists(filepath.Join(s.tmp, "other-ready")) && exists(filepath.Join(s.tmp, "target-ready")) && exists(filepath.Join(s.tmp, "pending-ready"))
 			})
@@ -387,7 +387,7 @@ printf 'answer: %s\n' "$prompt"`)
 		})
 		t.Run("a task returns while its batch keeps running and the whole run waits for all tasks", func(t *testing.T) {
 			s := gated(t)
-			batch := s.start([]string{"batch", "-m", "gate:small", "-j", "2", "-"}, `[{"id":"chosen","prompt":"selected"},{"id":"other","prompt":"pending"}]`, nil)
+			batch := s.start([]string{"batch", "--wait", "-m", "gate:small", "-j", "2", "-"}, `[{"id":"chosen","prompt":"selected"},{"id":"other","prompt":"pending"}]`, nil)
 			until(t, func() bool {
 				return exists(filepath.Join(s.tmp, "selected-ready")) && exists(filepath.Join(s.tmp, "pending-ready"))
 			})
@@ -435,7 +435,7 @@ if [ "$prompt" = failed ]; then echo failed >&2; exit 1; fi
 touch "$HOME/pending-ready"
 while [ ! -e "$HOME/release" ]; do sleep 0.05; done
 echo done`)
-			batch := s.start([]string{"batch", "-m", "gate:small", "-j", "2", "-"}, `[{"id":"bad","prompt":"failed"},{"id":"slow","prompt":"pending"}]`, nil)
+			batch := s.start([]string{"batch", "--wait", "-m", "gate:small", "-j", "2", "-"}, `[{"id":"bad","prompt":"failed"},{"id":"slow","prompt":"pending"}]`, nil)
 			until(t, func() bool { return exists(filepath.Join(s.tmp, "pending-ready")) })
 			waited := s.ask("wait", "failed/bad")
 			eq(t, waited.code, 1)
@@ -456,10 +456,10 @@ if [ ! -e "$HOME/first" ]; then touch "$HOME/first"; echo failed >&2; exit 1; fi
 touch "$HOME/retry-started"
 while [ ! -e "$HOME/release" ]; do sleep 0.05; done
 echo success`)
-			first := s.ask("-m", "retry:small", "retry")
+			first := s.ask("--wait", "-m", "retry:small", "retry")
 			eq(t, first.code, 1)
 			id := runID(t, first.stderr)
-			rerun := s.start([]string{"continue", id}, "", nil)
+			rerun := s.start([]string{"continue", "--wait", id}, "", nil)
 			until(t, func() bool { return exists(filepath.Join(s.tmp, "retry-started")) })
 			waiter := s.start([]string{"wait", "--json", id}, "", nil)
 			plain := s.start([]string{"wait", id}, "", nil)
@@ -482,9 +482,9 @@ echo success`)
 if [ ! -e "$HOME/first" ]; then touch "$HOME/first"; echo old-failure >&2; exit 1; fi
 touch "$HOME/retry-started"
 sleep 10`)
-			first := s.ask("-m", "retry:small", "retry")
+			first := s.ask("--wait", "-m", "retry:small", "retry")
 			id := runID(t, first.stderr)
-			rerun := s.start([]string{"continue", id}, "", nil)
+			rerun := s.start([]string{"continue", "--wait", id}, "", nil)
 			until(t, func() bool { return exists(filepath.Join(s.tmp, "retry-started")) })
 			waiter := s.start([]string{"wait", "--json", id}, "", nil)
 			plain := s.start([]string{"wait", id}, "", nil)
@@ -506,8 +506,8 @@ sleep 10`)
 		})
 		t.Run("saved failures return the same output and exit status as show", func(t *testing.T) {
 			s := fresh(t)
-			single := s.run([]string{"-m", "fake:small", "fail"}, "", map[string]string{"FAKE_FAIL": "fail"})
-			batch := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"pass"},{"prompt":"fail"}]`, map[string]string{"FAKE_FAIL": "fail"})
+			single := s.run([]string{"--wait", "-m", "fake:small", "fail"}, "", map[string]string{"FAKE_FAIL": "fail"})
+			batch := s.run([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"prompt":"pass"},{"prompt":"fail"}]`, map[string]string{"FAKE_FAIL": "fail"})
 			for _, ref := range []string{runID(t, single.stderr), runID(t, batch.stderr), runID(t, batch.stderr) + "/2"} {
 				waited := s.ask("wait", ref)
 				eq(t, waited.code, 1)
@@ -519,7 +519,7 @@ sleep 10`)
 		})
 		t.Run("reports a run stopped during or before waiting without printing an answer", func(t *testing.T) {
 			s := fresh(t)
-			run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+			run := s.start([]string{"--wait", "-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
 			until(t, func() bool { return len(s.calls()) == 1 })
 			waiter := s.start([]string{"wait", "hang"}, "", nil)
 			eq(t, s.ask("stop", "hang").code, 0)
@@ -532,7 +532,7 @@ sleep 10`)
 		})
 		t.Run("a stopped batch reports unfinished tasks while completed tasks remain available", func(t *testing.T) {
 			s := fresh(t)
-			batch := s.start([]string{"batch", "-m", "fake:small", "-j", "1", "-"}, `[{"prompt":"finished"},{"prompt":"hang"}]`, map[string]string{"FAKE_HANG": "hang"})
+			batch := s.start([]string{"batch", "--wait", "-m", "fake:small", "-j", "1", "-"}, `[{"prompt":"finished"},{"prompt":"hang"}]`, map[string]string{"FAKE_HANG": "hang"})
 			until(t, func() bool { return len(s.calls()) == 2 })
 			eq(t, s.ask("stop", "finished").code, 0)
 			eq(t, batch.wait(t).code, 130)
@@ -546,7 +546,7 @@ sleep 10`)
 		})
 		t.Run("reports missing runs and tasks without waiting for unrelated runs", func(t *testing.T) {
 			s := fresh(t)
-			run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+			run := s.start([]string{"--wait", "-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
 			until(t, func() bool { return len(s.calls()) == 1 })
 			for _, ref := range []string{"missing", "hang/missing"} {
 				waited := s.ask("wait", ref)
@@ -567,7 +567,7 @@ sleep 10`)
 	t.Run("clean removes landed worktrees and old runs, and nothing else", func(t *testing.T) {
 		s := fresh(t)
 		dir, git := s.repo()
-		s.run([]string{"-m", "fake:small", "-w", "--worktree", "-C", dir, "change readme"}, "", map[string]string{"FAKE_WRITE": "b.txt=new"})
+		s.run([]string{"--wait", "-m", "fake:small", "-w", "--worktree", "-C", dir, "change readme"}, "", map[string]string{"FAKE_WRITE": "b.txt=new"})
 		path := filepath.Join(s.home, "worktrees", "change-readme")
 		gitAt := s.gitAt(path)
 		gitAt("add", ".")
@@ -596,7 +596,7 @@ sleep 10`)
 		s.localAgent("progress", `cat >/dev/null
 printf '{"activity":"running commands"}' > "$ASK_REPORT"
 sleep 10`)
-		run := s.start([]string{"-m", "progress:small", "check"}, "", nil)
+		run := s.start([]string{"--wait", "-m", "progress:small", "check"}, "", nil)
 		until(t, func() bool { return strings.Contains(s.ask("runs").stdout, "running commands") })
 		id := strings.Split(s.latest(), "-")[1]
 		path := filepath.Join(s.home, "runs", s.latest(), "progress-0.json")
@@ -619,7 +619,7 @@ case "$prompt" in
   beta) echo '{"activity":"editing files"}' > "$ASK_REPORT" ;;
 esac
 sleep 10`)
-		run := s.start([]string{"batch", "-m", "progress:small", "-j", "2", "-"}, `[{"id":"a","prompt":"alpha"},{"id":"b","prompt":"beta"}]`, nil)
+		run := s.start([]string{"batch", "--wait", "-m", "progress:small", "-j", "2", "-"}, `[{"id":"a","prompt":"alpha"},{"id":"b","prompt":"beta"}]`, nil)
 		until(t, func() bool {
 			out := s.ask("runs").stdout
 			return strings.Contains(out, "a: searching") && strings.Contains(out, "b: editing files")
@@ -630,7 +630,7 @@ sleep 10`)
 	})
 	t.Run("runs shows elapsed time for an active run", func(t *testing.T) {
 		s := fresh(t)
-		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		run := s.start([]string{"--wait", "-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
 		until(t, func() bool { return len(s.calls()) == 1 })
 		id := strings.Split(s.latest(), "-")[1]
 		match(t, s.ask("runs").stdout, `running +fake:small +0:[0-9]{2}`)
@@ -639,8 +639,8 @@ sleep 10`)
 	})
 	t.Run("runs lists recorded runs, newest first, with their outcome and model", func(t *testing.T) {
 		s := fresh(t)
-		s.ask("-m", "fake:small", "first question")
-		s.run([]string{"batch", "-m", "fake:small"}, `[{"prompt":"fine"},{"prompt":"break"}]`, map[string]string{"FAKE_FAIL": "break"})
+		s.ask("--wait", "-m", "fake:small", "first question")
+		s.run([]string{"batch", "--wait", "-m", "fake:small"}, `[{"prompt":"fine"},{"prompt":"break"}]`, map[string]string{"FAKE_FAIL": "break"})
 		rows := strings.Split(strings.TrimSpace(s.ask("runs").stdout), "\n")
 		eq(t, len(rows), 3)
 		match(t, rows[0], `^RUN +ID +STARTED +STATUS +MODEL +TIME +TASK$`)
@@ -659,8 +659,8 @@ sleep 10`)
 		dir, git := s.repo()
 		other := filepath.Join(s.tmp, "other")
 		s.mkdir(other)
-		s.ask("-m", "fake:small", "-C", dir, "in repo")
-		s.ask("-m", "fake:small", "-C", other, "elsewhere")
+		s.ask("--wait", "-m", "fake:small", "-C", dir, "in repo")
+		s.ask("--wait", "-m", "fake:small", "-C", other, "elsewhere")
 		linked := filepath.Join(s.tmp, "linked")
 		git("worktree", "add", "-q", "--detach", linked)
 		here := s.runIn(linked, "runs")

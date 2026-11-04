@@ -17,7 +17,7 @@ func BenchmarkLatency(b *testing.B) {
 		args []string
 	}{
 		{"startup", []string{"help"}},
-		{"task", []string{"--model", "fake:small", "--read", "--timeout", "10", "hello"}},
+		{"task", []string{"--wait", "--model", "fake:small", "--read", "--timeout", "10", "hello"}},
 	} {
 		b.Run(c.name, func(b *testing.B) {
 			b.StopTimer()

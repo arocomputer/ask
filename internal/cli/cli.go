@@ -17,10 +17,9 @@ import (
 )
 
 var options = map[string][]string{
-	"run":      {"-m", "-r", "-w", "--worktree", "-c", "--stdin", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
-	"start":    {"-m", "-r", "-w", "--worktree", "-c", "--stdin", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
-	"continue": {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "-j", "--max-cost", "--title", "--no-hooks"},
-	"batch":    {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "-j", "--resume", "--no-hooks"},
+	"run":      {"--wait", "-m", "-r", "-w", "--worktree", "-c", "--stdin", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
+	"continue": {"--wait", "-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "-j", "--max-cost", "--title", "--no-hooks"},
+	"batch":    {"--wait", "-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "-j", "--resume", "--no-hooks"},
 	"bench":    {"-m", "-r", "-w", "-C", "-t", "--max-cost", "--title", "-j", "-n", "--json", "--keep", "--yes", "--no-hooks"},
 	"title":    {"--command", "--description", "--hook"},
 	"setup":    {"--check", "--json", "--yes"}, "settings": {"--json", "--dry-run"}, "docs": {"--raw", "--search", "--url"}, "update": {"--check"},
@@ -159,6 +158,9 @@ func runCommand(p home.Paths, path string, args []string) (int, error) {
 // main selects built-in or user commands before parsing command-specific options.
 func main(argv []string, version string) (int, error) {
 	p := home.New()
+	if len(argv) > 0 && argv[0] == "start" {
+		return 0, home.Usage("ask start was removed; use ask PROMPT or ask --wait PROMPT")
+	}
 	if len(argv) == 1 && (argv[0] == "--version" || argv[0] == "-V") {
 		fmt.Fprintln(os.Stdout, version)
 		return 0, nil
@@ -229,9 +231,6 @@ func main(argv []string, version string) (int, error) {
 			fmt.Fprintln(os.Stdout, title)
 		}
 		return 0, nil
-	case "start":
-		opts.Set("detach", true)
-		return runOne(a, opts, words)
 	case "continue":
 		return continueRun(a, opts, words)
 	case "batch":

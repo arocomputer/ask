@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,12 +17,17 @@ import (
 	"github.com/arocomputer/ask/internal/runs"
 )
 
-// The private launch protocol accepts prepared tasks, never a run ID or an existing run.
-// Inherited pipes keep prompts out of argv and the environment. They close before agents start.
+// The private launch protocol admits either fresh prepared tasks or smart recovery of a
+// saved run, never prepared tasks with a caller-chosen execution identity. Inherited pipes
+// keep prompts out of argv and the environment. They close before agents start.
 type launchRequest struct {
-	Name  string
-	Tasks []home.TaskRecord
-	Hooks bool
+	Name          string
+	Tasks         []home.TaskRecord
+	WorktreeLabel string // preparation's placeholder, replaced with the worker's fresh ID
+	Recover       string // a pinned run directory, mutually exclusive with new tasks
+	Selected      *int   // zero-based position, independent of numeric task IDs
+	Jobs          int
+	Hooks         bool
 }
 
 type launchReply struct {
@@ -30,8 +36,8 @@ type launchReply struct {
 }
 
 // startWorker detaches from the terminal and the launcher's process group. Unlike agents,
-// the worker has no Linux parent-death signal: returning from start must leave it alive.
-func startWorker(p home.Paths, name string, tasks []home.Object, hooks bool) (int, error) {
+// the worker has no Linux parent-death signal: returning from admission must leave it alive.
+func startWorker(p home.Paths, launch launchRequest) (int, error) {
 	requestR, requestW, err := os.Pipe()
 	if err != nil {
 		return 0, err
@@ -69,7 +75,7 @@ func startWorker(p home.Paths, name string, tasks []home.Object, hooks bool) (in
 	if err := replyR.SetReadDeadline(deadline); err != nil {
 		return 0, err
 	}
-	if err := json.NewEncoder(requestW).Encode(launchRequest{name, home.TaskRecords(tasks), hooks}); err != nil {
+	if err := json.NewEncoder(requestW).Encode(launch); err != nil {
 		return 0, fmt.Errorf("cannot send work to detached worker: %w", err)
 	}
 	requestW.Close()
@@ -89,8 +95,19 @@ func startWorker(p home.Paths, name string, tasks []home.Object, hooks bool) (in
 	return 0, err
 }
 
-// runWorker is reachable only through the private pipe protocol. It always creates fresh work;
-// neither a public flag nor inherited ASK_RUN can choose an execution's identity.
+// recoverWorker pins the saved directory, not a readable name that a follow-up could take
+// over during launch. This also preserves explicit run paths outside the normal runs directory.
+// Continue reopens and plans under its own lock before replying.
+func recoverWorker(p home.Paths, r *runs.Run, jobs int, hooks bool, selected ...int) (int, error) {
+	launch := launchRequest{Recover: r.Dir, Jobs: jobs, Hooks: hooks}
+	if len(selected) != 0 {
+		launch.Selected = &selected[0]
+	}
+	return startWorker(p, launch)
+}
+
+// runWorker is reachable only through the private pipe protocol. Fresh work always gets a
+// worker-generated identity; existing runs can only enter the locked smart recovery path.
 func runWorker() int {
 	// Validate raw descriptors before os.NewFile or signal setup can allocate runtime pipes
 	// at these numbers. A direct CLI invocation must fail, never read a runtime-owned pipe.
@@ -117,56 +134,85 @@ func runWorker() int {
 		return fail(err)
 	}
 	request.Close()
-	if len(launch.Tasks) != 1 {
-		return fail(fmt.Errorf("worker requires one prepared task"))
-	}
-	tasks := make([]home.Object, len(launch.Tasks))
-	for i, t := range launch.Tasks {
-		tasks[i], _ = home.ParsePayload(home.JSON(t, false))
+	if launch.Jobs < 1 || (len(launch.Tasks) == 0) == (launch.Recover == "") || launch.Recover == "" && launch.Selected != nil {
+		return fail(fmt.Errorf("worker requires prepared tasks or a recovery reference, and positive jobs"))
 	}
 	p := home.New()
-	id := runs.NewID()
-	if launch.Name == "" && tasks[0].B("worktree") && !tasks[0].B("continues") {
-		// Preparation could not know the worker's ID when the prompt supplied no name.
-		tasks[0].Set("worktree", id)
+	fresh := launch.Recover == ""
+	var r *runs.Run
+	var selected []int
+	var err error
+	if fresh {
+		tasks := make([]home.Object, len(launch.Tasks))
+		id := runs.NewID()
+		for i, t := range launch.Tasks {
+			tasks[i], _ = home.ParsePayload(home.JSON(t, false))
+			if launch.Name == "" && tasks[i].B("worktree") && !tasks[i].B("continues") {
+				// Preparation could not know the worker's ID when the prompt supplied no name.
+				tasks[i].Set("worktree", id+strings.TrimPrefix(tasks[i].S("worktree"), launch.WorktreeLabel))
+			}
+		}
+		r, err = runs.Create(p, id, launch.Name, tasks)
+	} else {
+		r, _, err = runs.Open(p, launch.Recover)
+		if err == nil && launch.Selected != nil {
+			if *launch.Selected < 0 || *launch.Selected >= len(r.Tasks) {
+				return fail(fmt.Errorf("invalid recovery position"))
+			}
+			selected = []int{*launch.Selected}
+		}
 	}
-	r, err := runs.Create(p, id, launch.Name, tasks)
 	if err != nil {
 		return fail(err)
 	}
-	log, err := os.OpenFile(filepath.Join(r.Dir, "worker.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	flags := os.O_CREATE | os.O_APPEND | os.O_WRONLY
+	if fresh {
+		flags |= os.O_EXCL
+	}
+	log, err := os.OpenFile(filepath.Join(r.Dir, "worker.log"), flags, 0600)
 	if err != nil {
-		_ = runs.Delete(r)
+		if fresh {
+			_ = runs.Delete(r)
+		}
 		return fail(err)
 	}
 	defer log.Close()
 	// Only constant lifecycle messages enter this log. Never copy agent output, hook notes,
 	// prompts, environment, or arbitrary errors into it; results retain the normal contract.
-	process.OnStop(func() { _, _ = fmt.Fprintln(log, "stopped") })
 	defer process.OnStop(nil)
 	admitted := false
-	results, err := runs.Execute(agent.New(p), r, 1, launch.Hooks, func(runs.Event) {}, func() error {
+	execute := runs.Execute
+	if !fresh {
+		execute = runs.Continue
+	}
+	results, err := execute(agent.New(p), r, launch.Jobs, launch.Hooks, func(runs.Event) {}, func() error {
 		if _, err := fmt.Fprintln(log, "started"); err != nil {
 			return err
 		}
+		// Unadmitted recovery contenders must not write "stopped" into the owner's log.
+		process.OnStop(func() { _, _ = fmt.Fprintln(log, "stopped") })
 		if err := json.NewEncoder(reply).Encode(launchReply{ID: r.ID}); err != nil {
 			return err
 		}
 		admitted = true
 		return reply.Close()
-	})
+	}, selected...)
 	process.AwaitShutdown()
 	if err != nil {
 		if !admitted {
-			_ = runs.Delete(r)
+			if fresh {
+				_ = runs.Delete(r)
+			}
 			return fail(err)
 		}
 		_, _ = fmt.Fprintln(log, "recording failed; results may be incomplete")
 		return 1
 	}
-	if !results[0].B("ok") {
-		_, _ = fmt.Fprintln(log, "failed; see ask show")
-		return 1
+	for i, result := range results {
+		if (len(selected) == 0 || selected[0] == i) && !result.B("ok") {
+			_, _ = fmt.Fprintln(log, "failed; see ask show")
+			return 1
+		}
 	}
 	_, _ = fmt.Fprintln(log, "finished")
 	return 0

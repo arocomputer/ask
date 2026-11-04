@@ -33,7 +33,7 @@ func titlePath(dir, path string) string {
 func invocationTitle(a *agent.Registry, argv []string, description, dir string, in shellInput, files map[string]string) (string, home.Object) {
 	args := argv[1:]
 	command := "run"
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] == "start" {
 		return "", nil
 	}
 	if _, ok := options[args[0]]; ok {
@@ -42,7 +42,7 @@ func invocationTitle(a *agent.Registry, argv []string, description, dir string, 
 	} else if find.Path(a.Paths, "commands", args[0]) != "" {
 		return "", nil
 	}
-	if command != "run" && command != "start" && command != "continue" && command != "batch" {
+	if command != "run" && command != "continue" && command != "batch" {
 		return "", nil
 	}
 	opts, words, err := parse(command, args)
@@ -86,7 +86,7 @@ func invocationTitle(a *agent.Registry, argv []string, description, dir string, 
 				return "", nil
 			}
 			for key := range opts {
-				if !has([]string{"--resume", "-j", "--no-hooks"}, key) {
+				if !has([]string{"--resume", "-j", "--no-hooks", "--wait"}, key) {
 					return "", nil
 				}
 			}

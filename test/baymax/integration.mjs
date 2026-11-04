@@ -66,7 +66,7 @@ export async function harness(name, ask) {
     const runs = join(s.env.ASK_HOME, 'runs');
     s.run = async (args, extra = {}) => {
       const before = new Set(existsSync(runs) ? readdirSync(runs) : []);
-      const bounded = ['-m', '-c'].includes(args[0]) ? ['-t', '10', ...args] : args;
+      const bounded = ['--wait', '-m', '-c'].includes(args[0]) ? ['-t', '10', ...args] : args;
       const out = await execute(ask, bounded, { cwd: s.work, env: { ...s.env, ...extra } });
       const created = (existsSync(runs) ? readdirSync(runs) : []).filter((dir) => !before.has(dir));
       return { ...out, runDir: created.length === 1 ? join(runs, created[0]) : undefined };

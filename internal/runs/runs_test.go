@@ -109,6 +109,27 @@ func TestCreate(t *testing.T) {
 }
 
 func TestExecuteAdmission(t *testing.T) {
+	t.Run("completion after opening a run is never acknowledged as new work", func(t *testing.T) {
+		root := t.TempDir()
+		p := home.Paths{Home: root, Runs: filepath.Join(root, "runs")}
+		r, err := Create(p, "abc123", "", []home.Object{home.O("id", "1", "prompt", "already finished")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := home.WriteJSON(filepath.Join(r.Dir, "results.json"), home.ResultRecords([]home.Object{home.O("ok", true, "answer", "saved")})); err != nil {
+			t.Fatal(err)
+		}
+		results, err := Continue(agent.New(p), r, 1, false, func(Event) {
+			t.Error("completed work was planned for recovery")
+		}, func() error {
+			t.Error("acknowledged a run completed by another owner")
+			return nil
+		})
+		if results != nil || err == nil {
+			t.Fatalf("results %v, error %v", results, err)
+		}
+	})
+
 	for _, behavior := range []string{"readiness failure", "pending state failure"} {
 		t.Run(behavior, func(t *testing.T) {
 			root := t.TempDir()

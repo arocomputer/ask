@@ -43,7 +43,7 @@ func TestPackages(t *testing.T) {
 		installed := s.ask("install", repo)
 		match(t, installed.stderr, `installed local/team/tools: agents: fake · commands: hello`)
 		eq(t, s.ask("hello").stdout, "hello v1\n")
-		eq(t, s.ask("-m", "fake:small", "hi").stdout, "fake: hi\n")
+		eq(t, s.ask("--wait", "-m", "fake:small", "hi").stdout, "fake: hi\n")
 		match(t, s.ask("packages").stdout, `(?m)^local/team/tools  agents: fake · commands: hello$`)
 		s.scriptAt(repo, "commands", "hello", "echo 'hello v2'")
 		git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "v2")

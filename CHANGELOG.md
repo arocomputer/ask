@@ -5,6 +5,11 @@
 - Add `ask runs --json` metadata and `ask wait --json` results with stable run IDs and batch
   positions. Report running and stopped selections in `ask show --json` with exit status 1;
   completed show results retain their format. Foreground start status includes the stable ID.
+- Run tasks, follow-ups, recovery and batches detached by default, returning only a stable ID
+  after locked admission. Use `--wait` for synchronous answers; `-w` remains write access and
+  `-m` remains model selection. Remove `ask start`. Completed runs require an explicit
+  follow-up prompt. Benchmarks remain synchronous.
+
 - Allow per-agent environment variable names to be added or removed without replacing defaults.
 - Extend environment allowlists and explicit integration policy to Claude, Codex and OpenCode.
   Claude probes supported MCP/skill/tool controls without resetting auth, instructions or hooks.

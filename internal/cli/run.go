@@ -16,7 +16,6 @@ import (
 	"github.com/arocomputer/ask/internal/process"
 	"github.com/arocomputer/ask/internal/runs"
 	"github.com/arocomputer/ask/internal/status"
-	"github.com/arocomputer/ask/internal/tui"
 )
 
 // taskOptions reads the task fields shared by single and batch commands.
@@ -207,7 +206,7 @@ func answerText(t, r home.Object) string {
 	return home.String(answer)
 }
 
-// runOne records and executes one prompt, printing only a successful answer.
+// runOne reads a prompt and admits detached work, or returns its answer with --wait.
 func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	prompt := strings.Join(words, " ")
 	// An inherited pipe looks just like intentional context. Read it alongside an argument
@@ -251,8 +250,8 @@ func runPrompt(a *agent.Registry, opts home.Object, prompt string) (int, error) 
 	if e != nil {
 		return 0, e
 	}
-	if opts.B("detach") {
-		return startWorker(a.Paths, name, tasks, !opts.B("--no-hooks"))
+	if !opts.B("--wait") {
+		return startWorker(a.Paths, launchRequest{Name: name, Tasks: home.TaskRecords(tasks), WorktreeLabel: id, Jobs: 1, Hooks: !opts.B("--no-hooks")})
 	}
 	r, e := runs.Create(a.Paths, id, name, tasks)
 	if e != nil {
@@ -337,19 +336,11 @@ func continueRun(a *agent.Registry, opts home.Object, words []string) (int, erro
 		}
 	}
 	if todo == 0 {
-		if !stdinTerminal() {
-			return 0, home.Usage("%s is complete; give a prompt to continue the conversation (or pipe it with ask continue %s -)", ref, ref)
-		}
-		p := &tui.Prompter{In: os.Stdin, Out: os.Stderr, Color: status.CanStyle(os.Stderr), Unicode: status.UTF8(), OnStop: process.OnStop}
-		ref, prompt, err = completedFollowup(p, r, at, ref)
-		if err != nil {
-			return 0, err
-		}
-		return continueRun(a, opts, []string{ref, prompt})
+		return 0, home.Usage("%s is complete; give a prompt to continue the conversation (or pipe it with ask continue %s -)", ref, ref)
 	}
 	for key := range opts {
-		if !has([]string{"-j", "--no-hooks"}, key) {
-			return 0, home.Usage("recovering a saved run keeps its original options; only --jobs and --no-hooks apply; give a prompt to change task options")
+		if !has([]string{"-j", "--no-hooks", "--wait"}, key) {
+			return 0, home.Usage("recovering a saved run keeps its original options; only --jobs, --no-hooks and --wait apply; give a prompt to change task options")
 		}
 	}
 	jobs, err := jobCount(a, opts)
@@ -359,6 +350,9 @@ func continueRun(a *agent.Registry, opts home.Object, words []string) (int, erro
 	var selected []int
 	if at >= 0 && len(r.Tasks) > 1 {
 		selected = []int{at}
+	}
+	if !opts.B("--wait") {
+		return recoverWorker(a.Paths, r, jobs, !opts.B("--no-hooks"), selected...)
 	}
 	results, err := execute(a, r, jobs, !opts.B("--no-hooks"), nil, len(r.Tasks) > 1, true, selected...)
 	if err != nil {
@@ -384,34 +378,7 @@ func continueRun(a *agent.Registry, opts home.Object, words []string) (int, erro
 	return 0, nil
 }
 
-// completedFollowup collects a new prompt; complete batches first choose one conversation.
-func completedFollowup(p *tui.Prompter, r *runs.Run, at int, ref string) (string, string, error) {
-	if at < 0 {
-		choices := make([]tui.Option, len(r.Tasks))
-		for i, task := range r.Tasks {
-			choices[i] = tui.Option{Label: task.S("id") + " · " + task.S("prompt")}
-		}
-		var err error
-		at, err = p.Select("Follow up on task", choices, 0)
-		if err != nil {
-			return "", "", err
-		}
-		ref = runs.Ref(r, at)
-	}
-	if at >= 0 && at < len(r.Results) && r.Results[at] != nil && r.Results[at].B("ok") {
-		fmt.Fprintln(os.Stderr, answerText(r.Tasks[at], r.Results[at]))
-	}
-	prompt, err := p.Input("Follow-up", "")
-	if err != nil {
-		return "", "", err
-	}
-	if home.Trim(prompt) == "" {
-		return "", "", home.Usage("no follow-up prompt entered")
-	}
-	return ref, prompt, nil
-}
-
-// batch records or resumes tasks and prints all results in task order.
+// batch admits detached tasks by default; --wait prints all results in task order.
 func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	jobs, e := jobCount(a, opts)
 	if e != nil {
@@ -422,13 +389,13 @@ func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	if opts.B("--resume") {
 		extra := []string{}
 		for key := range opts {
-			if !has([]string{"--resume", "-j", "--no-hooks"}, key) {
+			if !has([]string{"--resume", "-j", "--no-hooks", "--wait"}, key) {
 				extra = append(extra, key)
 			}
 		}
 		extra = append(extra, words...)
 		if len(extra) > 0 {
-			return 0, home.Usage("--resume reruns a batch as it was recorded; it takes only -j and --no-hooks, not %s", strings.Join(extra, " "))
+			return 0, home.Usage("--resume reruns a batch as it was recorded; it takes only -j, --no-hooks and --wait, not %s", strings.Join(extra, " "))
 		}
 		r, _, e = runs.Open(a.Paths, opts.S("--resume"))
 		if e != nil {
@@ -441,6 +408,9 @@ func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
 		path := "-"
 		if len(words) > 0 && words[0] != "" {
 			path = words[0]
+		}
+		if path == "-" && stdinTerminal() {
+			return 0, home.Usage("ask batch needs a task file or piped input")
 		}
 		text, e := home.ReadInput(path, "tasks")
 		if e != nil {
@@ -461,10 +431,16 @@ func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
 		if e != nil {
 			return 0, e
 		}
+		if !opts.B("--wait") {
+			return startWorker(a.Paths, launchRequest{Name: name, Tasks: home.TaskRecords(tasks), WorktreeLabel: id, Jobs: jobs, Hooks: !opts.B("--no-hooks")})
+		}
 		r, e = runs.Create(a.Paths, id, name, tasks)
 		if e != nil {
 			return 0, e
 		}
+	}
+	if !opts.B("--wait") {
+		return recoverWorker(a.Paths, r, jobs, !opts.B("--no-hooks"))
 	}
 	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes, true, opts.B("--resume"))
 	if e != nil {

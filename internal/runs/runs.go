@@ -700,7 +700,8 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 
 // Execute runs unfinished tasks up to jobs at once and atomically saves each completed result.
 // A nil result slice with an error means no task started; callers may discard a newly created run.
-// ready acknowledges admission after the run lock is acquired, before any task starts.
+// ready acknowledges admission with pending work and all run/session/worktree locks held,
+// before any task starts. Admission fails if no selected task needs execution.
 func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event), ready func() error, selected ...int) ([]home.Object, error) {
 	return execute(a, r, jobs, enabled, false, report, ready, selected...)
 }
@@ -730,6 +731,7 @@ func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report fu
 	ordered := !enabled || len(find.Find(a.Paths, "hooks")) == 0
 	todo := []int{}
 	tasks := append([]home.Object(nil), r.Tasks...)
+	var blocked string
 	for i, x := range r.Results {
 		if !x.B("ok") && (len(selected) == 0 || selected[0] == i) {
 			if smart {
@@ -737,11 +739,20 @@ func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report fu
 				tasks[i], why, _ = recoverTask(r, i, true)
 				report(Event{Kind: "recovery", Index: i, Note: hooks.Note{Text: why}})
 				if tasks[i] == nil {
+					blocked = why
 					continue
 				}
 			}
 			todo = append(todo, i)
 		}
+	}
+	// Detached admission must promise actual work. Recheck under the lock: another owner
+	// may have completed the run since the launcher read it, or every failure may be blocked.
+	if ready != nil && len(todo) == 0 {
+		if blocked != "" {
+			return nil, home.Usage("%s: %s", r.ID, blocked)
+		}
+		return nil, home.Usage("%s is complete; give a prompt to continue the conversation", r.ID)
 	}
 	planned := *r
 	planned.Tasks = tasks
