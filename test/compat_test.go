@@ -42,7 +42,7 @@ func TestCompat(t *testing.T) {
 		s := fresh(t)
 		s.hook("seen", []string{"task"}, `printf '{"note":"contract %s"}\n' "$ASK_CONTRACT"`)
 		r := s.ask("-m", "fake:small", "go")
-		eq(t, s.calls()[0].s("contract"), "1")
-		match(t, r.stderr, `hook seen · contract 1`)
+		eq(t, s.calls()[0].s("contract"), "2")
+		match(t, r.stderr, `hook seen · contract 2`)
 	})
 }

@@ -225,6 +225,7 @@ note. A directly invoked adapter without `ASK_ENVIRONMENT_REQUESTED` treats ever
 key in `ASK_ENVIRONMENT` as explicit. Declaring a key does not promise every
 combination is possible. Integration semantics belong in adapters; core only validates and passes
 the policy. Generic environment filtering also works for custom agents with no
-sidecar. This is an additive contract; `ASK_CONTRACT` stays at 1.
+sidecar. Environment policy is additive; see [Compatibility](compatibility.md) for the current
+contract version.
 
 docs  docs/environment.md

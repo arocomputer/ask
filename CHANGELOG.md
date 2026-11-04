@@ -15,7 +15,7 @@
   unread, avoiding hangs and leaving a shell loop's remaining input intact.
 - Preserve the original agent stdout as optional `raw_answer` on JSON/schema validation
   failures in saved results, JSON output and result hooks, without printing it in status lines.
-  Failed results still omit `answer` and exit 1; the contract remains version 1.
+  Failed results still omit `answer` and exit 1.
 - Teach useful, focused delegation in the generated Ask skill without requiring Ask for every
   handoff; cover explicit context, independent parallel work and structured failure recovery.
 - Add optional user-defined model roles in `settings.json`: direct names such as `fast`, `deep`

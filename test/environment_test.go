@@ -22,7 +22,7 @@ func TestEnvironment(t *testing.T) {
 		s.json(filepath.Join(s.home, "environment.json"), object{"agents": object{"echo": object{"inherit": []string{"PATH", "HOME", "KEPT", "ASK_ACCESS", "ASK_ENVIRONMENT"}}}})
 		r := s.run([]string{"-m", "echo:small", "hi"}, "", map[string]string{"KEPT": "kept", "DROPPED": "private-sentinel", "ASK_ACCESS": "write", "ASK_SESSION": "outer", "ASK_ENVIRONMENT": `{"mcp":true}`, "ASK_ENVIRONMENT_REQUESTED": `{"mcp":true}`})
 		eq(t, r.code, 0)
-		eq(t, r.stdout, "kept||read|||1|\n")
+		eq(t, r.stdout, "kept||read|||2|\n")
 		noMatch(t, r.stderr, "private-sentinel")
 	})
 	t.Run("manifest defaults apply to models and tasks and configuration replaces inheritance", func(t *testing.T) {
@@ -54,7 +54,7 @@ printf '%s|%s|%s|%s\n' "$KEPT" "$DROPPED" "$ASK_ENVIRONMENT" "$ASK_ENVIRONMENT_R
 		s.env["KEPT"] = "private-sentinel"
 		r := s.ask("-m", "echo:small", "hi")
 		eq(t, r.code, 0)
-		eq(t, r.stdout, "||small|1\n")
+		eq(t, r.stdout, "||small|2\n")
 	})
 	t.Run("unsupported integration restrictions fail before running the agent", func(t *testing.T) {
 		s := fresh(t)
