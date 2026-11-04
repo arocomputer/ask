@@ -31,6 +31,37 @@ func TestRunsTable(t *testing.T) {
 	}
 }
 
+func TestRunRecord(t *testing.T) {
+	r := &runs.Run{ID: "abc123", Tasks: []home.Object{{"id": "1"}, {"id": "custom"}}, Results: []home.Object{{"ok": true}, {"ok": false, "seconds": 99}}}
+	for _, tt := range []struct {
+		name    string
+		owner   int
+		pending map[int]bool
+		known   bool
+		state   string
+		tasks   string
+	}{
+		{"saved failure", 0, nil, false, "failed", "success,failed"},
+		{"retry running", 123, map[int]bool{1: true}, true, "running", "success,running"},
+		{"retry stopped", 0, map[int]bool{1: true}, true, "stopped", "success,stopped"},
+		{"owner preparing pending", 123, nil, false, "running", "running,running"},
+		{"owner outside PID namespace", -1, nil, false, "running", "running,running"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Record(r, tt.owner, tt.pending, tt.known)
+			if got.State != tt.state || got.Tasks[0].State+","+got.Tasks[1].State != tt.tasks {
+				t.Fatalf("%+v", got)
+			}
+			if got.Tasks[1].Position != 2 || got.Tasks[1].TaskID != "custom" {
+				t.Fatalf("lost task identity: %+v", got.Tasks[1])
+			}
+			if got.Tasks[1].State != "failed" && got.Tasks[1].Seconds != nil {
+				t.Fatal("included stale attempt metadata")
+			}
+		})
+	}
+}
+
 // TestBatchEndPartialCost leaves out a cost that only some tasks reported.
 func TestBatchEndPartialCost(t *testing.T) {
 	r := &runs.Run{ID: "abc123", Tasks: []home.Object{{}, {}}, Results: []home.Object{

@@ -1,4 +1,4 @@
-// Package status formats the status lines and recent-run table shared by CLI commands.
+// Package status formats human status displays and machine run records for CLI commands.
 package status
 
 import (
@@ -132,7 +132,7 @@ func EventLine(r *runs.Run, e runs.Event) string {
 		if t.B("continues") {
 			continues = "follow-up " + t.S("continues")
 		}
-		text := line(ref, "started", e.Started.Name, access, where, continues)
+		text := line(ref, "started", e.Started.Name, access, where, continues, "id "+r.ID)
 		for _, note := range e.Started.Notes {
 			first, _, _ := strings.Cut(note.Text, "\n")
 			first = SafeText(first)
@@ -208,7 +208,7 @@ func BatchStart(r *runs.Run, jobs, todo int) string {
 	if jobs > todo {
 		jobs = todo
 	}
-	return line(r.Label(), "started", fmt.Sprintf("batch of %d", len(r.Tasks)), resume, fmt.Sprintf("%d at a time", jobs))
+	return line(r.Label(), "started", fmt.Sprintf("batch of %d", len(r.Tasks)), resume, fmt.Sprintf("%d at a time", jobs), "id "+r.ID)
 }
 
 // BatchEnd prints outcome counts, elapsed time and summed usage.

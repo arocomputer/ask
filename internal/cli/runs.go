@@ -17,7 +17,11 @@ import (
 
 // wait pins all references before polling. Explicit sets include saved completions; without
 // references it snapshots active runs in this repository (or current directory outside git).
+// JSON emits null for an empty scope, or one runResult; failed/stopped selections exit 1.
 func wait(p home.Paths, opts home.Object, words []string) (int, error) {
+	if opts.B("--id") && opts.B("--json") {
+		return 0, home.Usage("choose one of --id or --json")
+	}
 	type selection struct {
 		r   *runs.Run
 		i   int
@@ -53,6 +57,9 @@ func wait(p home.Paths, opts home.Object, words []string) (int, error) {
 			}
 		}
 		if len(selected) == 0 {
+			if opts.B("--json") {
+				fmt.Fprintln(os.Stdout, "null")
+			}
 			fmt.Fprintln(os.Stderr, "ask: no runs are running")
 			return 0, nil
 		}
@@ -79,6 +86,9 @@ func wait(p home.Paths, opts home.Object, words []string) (int, error) {
 				}
 			}
 			if unfinished < 0 && (owner == 0 || s.i >= 0 && known && !pending[s.i]) {
+				if opts.B("--json") {
+					return printRunResult(r, status.Record(r, owner, pending, known), s.i)
+				}
 				if opts.B("--id") {
 					fmt.Fprintln(os.Stdout, waitID(r, s.i))
 					if s.i < 0 {
@@ -99,6 +109,9 @@ func wait(p home.Paths, opts home.Object, words []string) (int, error) {
 				return showRun(r, home.Object{}, s.ref, s.i)
 			}
 			if owner == 0 {
+				if opts.B("--json") {
+					return printRunResult(r, status.Record(r, owner, pending, known), s.i)
+				}
 				if len(selected) > 1 && !opts.B("--id") {
 					fmt.Fprintln(os.Stderr, "ask: completed "+waitID(r, s.i))
 				}
@@ -128,6 +141,56 @@ func waitID(r *runs.Run, i int) string {
 		return fmt.Sprintf("%s\t%d", r.ID, i+1)
 	}
 	return r.ID
+}
+
+// runSnapshot samples pending before reloading results, then checks ownership again.
+// This prevents a retry's saved failure from masquerading as its current completion.
+func runSnapshot(p home.Paths, r *runs.Run) (*runs.Run, status.RunRecord, error) {
+	for {
+		owner := runs.Owner(r)
+		pending, known := runs.Pending(r, owner)
+		fresh, _, err := runs.Open(p, r.Dir)
+		if err != nil {
+			return nil, status.RunRecord{}, err
+		}
+		if runs.Owner(fresh) == owner {
+			return fresh, status.Record(fresh, owner, pending, known), nil
+		}
+	}
+}
+
+// runResult wraps wait output without changing show's existing full-result contract.
+// A batch's results retain their positions, with null for unfinished or stale attempts.
+type runResult struct {
+	RunID    string               `json:"run_id"`
+	Name     string               `json:"name,omitempty"`
+	State    string               `json:"state"`
+	Position int                  `json:"position,omitempty"`
+	TaskID   string               `json:"task_id,omitempty"`
+	Result   *home.ResultRecord   `json:"result,omitempty"`
+	Results  []*home.ResultRecord `json:"results,omitempty"`
+}
+
+func printRunResult(r *runs.Run, record status.RunRecord, i int) (int, error) {
+	out := runResult{RunID: r.ID, Name: r.Name, State: record.State}
+	results := make([]home.Object, len(r.Tasks))
+	for at, task := range record.Tasks {
+		if task.State == "success" || task.State == "failed" {
+			results[at] = r.Results[at]
+		}
+	}
+	saved := home.ResultRecords(results)
+	if i >= 0 {
+		task := record.Tasks[i]
+		out.State, out.Position, out.TaskID, out.Result = task.State, task.Position, task.TaskID, saved[i]
+	} else {
+		out.Results = saved
+	}
+	fmt.Fprintln(os.Stdout, home.JSON(out, true))
+	if out.State != "success" {
+		return 1, nil
+	}
+	return 0, nil
 }
 
 // kept is a worktree a run left behind, with whether it can go and why.
@@ -253,6 +316,7 @@ func clean(p home.Paths, opts home.Object) (int, error) {
 }
 
 // show prints a saved answer or complete result without running its agent again.
+// JSON reports unfinished selections immediately with structured state and exit status 1.
 func show(p home.Paths, opts home.Object, words []string) (int, error) {
 	if len(words) != 1 {
 		return 0, home.Usage("ask show takes one run, like ask show login-checked")
@@ -260,6 +324,20 @@ func show(p home.Paths, opts home.Object, words []string) (int, error) {
 	r, i, e := runs.Open(p, words[0])
 	if e != nil {
 		return 0, e
+	}
+	if opts.B("--json") {
+		fresh, record, err := runSnapshot(p, r)
+		if err != nil {
+			return 0, err
+		}
+		r = fresh
+		state := record.State
+		if i >= 0 {
+			state = record.Tasks[i].State
+		}
+		if state == "running" || state == "stopped" {
+			return printRunResult(r, record, i)
+		}
 	}
 	return showRun(r, opts, words[0], i)
 }
@@ -326,8 +404,8 @@ func stop(p home.Paths, words []string) (int, error) {
 	return 1, nil
 }
 
-// listRuns prints the newest readable records as a status table: in a git repository only
-// runs that worked in one of its checkouts, unless --all.
+// listRuns prints the newest readable records as a status table or machine metadata: in a
+// git repository only runs that worked in one of its checkouts, unless --all.
 func listRuns(p home.Paths, opts home.Object) (int, error) {
 	limit := 20
 	if opts.B("-n") {
@@ -343,6 +421,18 @@ func listRuns(p home.Paths, opts home.Object) (int, error) {
 		keep = func(r *runs.Run) bool { return runs.In(r, checkouts) }
 	}
 	list := runs.Recent(p, limit, keep)
+	if opts.B("--json") {
+		records := make([]status.RunRecord, 0, len(list))
+		for _, r := range list {
+			_, record, err := runSnapshot(p, r)
+			if err != nil {
+				return 0, err
+			}
+			records = append(records, record)
+		}
+		fmt.Fprintln(os.Stdout, home.JSON(records, true))
+		return 0, nil
+	}
 	if len(list) == 0 && keep != nil {
 		fmt.Fprintln(os.Stderr, "ask: no runs in this repository yet; ask runs --all lists every run")
 	} else if len(list) == 0 {

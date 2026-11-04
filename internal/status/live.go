@@ -18,6 +18,7 @@ import (
 // LiveRow holds one task's latest state; Started is reset for each follow-up round.
 type LiveRow struct {
 	Ref, Name, Access, Dir, State, Reason, Final string
+	RunID                                        string
 	Activity                                     string
 	Started                                      time.Time
 	Notes                                        []string
@@ -161,7 +162,11 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 			text = fmt.Sprintf("%s %-*s  %-*s  %s", mark, idWidth, ClipLine(taskID(r.Ref), idWidth), nameWidth, r.Name, text)
 		} else {
 			// Keep the run handle visible even when the result text is long.
-			ref := ClipLine(r.Ref, max(0, width-3))
+			ref := r.Ref
+			if r.RunID != "" && r.RunID != r.Ref {
+				ref += " · id " + r.RunID
+			}
+			ref = ClipLine(ref, max(0, width-3))
 			refWidth := 0
 			for _, ch := range ref {
 				refWidth += cells(ch)
@@ -233,7 +238,7 @@ func NewLive(r *runs.Run, header string, batch bool) *Live {
 	}
 	l := &Live{state: LiveState{Header: header, Batch: batch, Started: time.Now()}, color: CanStyle(os.Stderr), utf8: localeUTF8(), done: make(chan struct{})}
 	for i, t := range r.Tasks {
-		row := LiveRow{Ref: runs.Ref(r, i), Name: t.S("model"), State: "queued"}
+		row := LiveRow{Ref: runs.Ref(r, i), RunID: r.ID, Name: t.S("model"), State: "queued"}
 		if result := r.Results[i]; result.B("ok") {
 			row.Name = result.S("name")
 			row.State = "ok"

@@ -159,6 +159,7 @@ func TestRun(t *testing.T) {
 		s := fresh(t)
 		r := s.ask("-m", "fake:small", "hi")
 		eq(t, r.stdout, "fake: hi\n")
+		match(t, r.stderr, `started.* · id `+strings.SplitN(s.latest(), "-", 3)[1]+`\n`)
 		id := runID(t, r.stderr)
 		match(t, r.stderr, fmt.Sprintf(`^ask %s · started · Small One · read · .+\nask %s · ok · Fake 1\.0 · [\d.]+s · 10 in · 5 out · 2 cache read · \$0\.01\n$`, id, id))
 	})

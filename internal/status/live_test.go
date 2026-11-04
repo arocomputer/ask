@@ -16,6 +16,13 @@ import (
 
 // TestFrame pins running rows with usage so far, queued and final rows, and a footer with total usage.
 func TestFrame(t *testing.T) {
+	t.Run("a named foreground run includes its stable ID", func(t *testing.T) {
+		s := LiveState{Rows: []LiveRow{{Ref: "named-run", RunID: "abc123", State: "running"}}}
+		got := strings.Join(Frame(s, time.Now(), 0, 100, 24, false, false), "\n")
+		if !strings.Contains(got, "named-run · id abc123") {
+			t.Fatal(got)
+		}
+	})
 	now := time.Unix(100, 0)
 	s := LiveState{Header: "ask abc123 · batch of 3", Batch: true, Started: now.Add(-2 * time.Second), Rows: []LiveRow{
 		{Ref: "abc123/a", Name: "Small One", Access: "read", Dir: "/tmp", State: "running", Started: now.Add(-2 * time.Second), Usage: home.O("input", 1200.0, "output", 30.0, "cost", 0.05)},
