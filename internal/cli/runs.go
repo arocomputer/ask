@@ -47,11 +47,7 @@ func wait(p home.Paths, words []string) (int, error) {
 		}
 		if owner == 0 {
 			ref := runs.Ref(r, unfinished)
-			resume := "ask -c " + ref
-			if len(r.Tasks) > 1 {
-				resume = "ask batch --resume " + r.Label()
-			}
-			fmt.Fprintf(os.Stderr, "ask %s · stopped · resume: %s\n", ref, resume)
+			fmt.Fprintf(os.Stderr, "ask %s · stopped · rerun: ask continue %s\n", ref, r.Label())
 			return 1, nil
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -80,7 +76,7 @@ func waitAny(p home.Paths) (int, error) {
 					continue
 				}
 				ref := runs.Ref(r, i)
-				fmt.Fprintf(os.Stderr, "ask %s · stopped · rerun: ask batch --resume %s\n", ref, r.Label())
+				fmt.Fprintf(os.Stderr, "ask %s · stopped · rerun: ask continue %s\n", ref, r.Label())
 				return 1, nil
 			}
 			return show(p, home.Object{}, []string{r.ID})
