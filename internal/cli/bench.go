@@ -131,7 +131,7 @@ func bench(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes)
+	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes, true)
 	if e != nil {
 		return 0, e
 	}

@@ -17,11 +17,12 @@ import (
 )
 
 var options = map[string][]string{
-	"run":   {"-m", "-r", "-w", "--worktree", "-c", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
-	"batch": {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "-j", "--resume", "--no-hooks"},
-	"bench": {"-m", "-r", "-w", "-C", "-t", "--max-cost", "--title", "-j", "-n", "--json", "--keep", "--yes", "--no-hooks"},
-	"title": {"--command", "--description", "--hook"},
-	"setup": {"--check", "--json", "--yes"}, "settings": {"--json", "--dry-run"}, "docs": {"--raw", "--search", "--url"}, "update": {"--check"},
+	"run":      {"-m", "-r", "-w", "--worktree", "-c", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
+	"continue": {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "-j", "--max-cost", "--title", "--no-hooks"},
+	"batch":    {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "-j", "--resume", "--no-hooks"},
+	"bench":    {"-m", "-r", "-w", "-C", "-t", "--max-cost", "--title", "-j", "-n", "--json", "--keep", "--yes", "--no-hooks"},
+	"title":    {"--command", "--description", "--hook"},
+	"setup":    {"--check", "--json", "--yes"}, "settings": {"--json", "--dry-run"}, "docs": {"--raw", "--search", "--url"}, "update": {"--check"},
 	"show": {"--json"}, "runs": {"-n", "--all"}, "wait": {}, "clean": {"--days", "--dry-run", "--yes"}, "stop": {}, "models": {"--names", "--all", "--enable", "--disable", "--max-cost"}, "help": {}, "install": {}, "packages": {}, "remove": {},
 }
 
@@ -110,6 +111,8 @@ func parse(command string, argv []string) (home.Object, []string, error) {
 		}
 		if arg == "-h" || arg == "--help" {
 			opts.Set("help", true)
+		} else if arg == "-V" || arg == "--version" {
+			opts.Set("version", true)
 		} else if strings.HasPrefix(arg, "-") && arg != "-" {
 			flag := arg
 			if alias, ok := long[arg]; ok {
@@ -160,26 +163,44 @@ func main(argv []string, version string) (int, error) {
 		return 0, nil
 	}
 	packages.Refresh(p)
-	command := "run"
-	if len(argv) > 0 {
-		if _, ok := options[argv[0]]; ok && argv[0] != "run" {
-			command = argv[0]
+	if len(argv) == 0 {
+		if stdinTerminal() {
+			printHelp(overview(agent.New(p)))
+			return 0, nil
 		}
-		if command == "run" && !strings.HasPrefix(argv[0], "-") {
-			if path := find.Path(p, "commands", argv[0]); path != "" {
-				return runCommand(p, path, argv[1:])
-			}
+		prompt, err := home.ReadInput("-", "prompt")
+		if err != nil {
+			return 0, err
+		}
+		if home.Trim(prompt) == "" {
+			printHelp(overview(agent.New(p)))
+			return 0, nil
+		}
+		return runPrompt(agent.New(p), home.Object{}, prompt)
+	}
+	command := "run"
+	explicit := false
+	if _, ok := options[argv[0]]; ok {
+		command, explicit = argv[0], true
+	}
+	if !explicit && !strings.HasPrefix(argv[0], "-") {
+		if path := find.Path(p, "commands", argv[0]); path != "" {
+			return runCommand(p, path, argv[1:])
 		}
 	}
 	args := argv
-	if command != "run" {
+	if explicit {
 		args = argv[1:]
 	}
 	opts, words, e := parse(command, args)
 	if e != nil {
 		return 0, e
 	}
-	if len(argv) == 0 || command == "run" && len(argv) == 1 && opts.B("help") || command == "help" && len(words) == 0 {
+	if opts.B("version") {
+		fmt.Fprintln(os.Stdout, version)
+		return 0, nil
+	}
+	if command == "run" && !explicit && len(argv) == 1 && opts.B("help") || command == "help" && len(words) == 0 {
 		printHelp(overview(agent.New(p)))
 		return 0, nil
 	}
@@ -207,6 +228,8 @@ func main(argv []string, version string) (int, error) {
 			fmt.Fprintln(os.Stdout, title)
 		}
 		return 0, nil
+	case "continue":
+		return continueRun(a, opts, words)
 	case "batch":
 		return batch(a, opts, words)
 	case "bench":
@@ -224,8 +247,11 @@ func main(argv []string, version string) (int, error) {
 	case "docs":
 		return docsCommand(opts, words)
 	case "update":
+		if len(words) == 1 && words[0] == "packages" && !opts.B("--check") {
+			return install(p, nil)
+		}
 		if len(words) != 0 {
-			return 0, home.Usage("ask update takes no arguments")
+			return 0, home.Usage("use ask update for ask itself, or ask update packages for packages")
 		}
 		return updateCommand(p, version, opts.B("--check"))
 	case "show":

@@ -181,3 +181,52 @@ while [ -e "$HOME/hold" ]; do sleep 0.05; done`)
 		match(t, r.stderr, `hung cannot be continued: it has not finished`)
 	})
 }
+
+func TestContinueCommand(t *testing.T) {
+	t.Run("a prompt continues the saved session and can enable writing", func(t *testing.T) {
+		s := fresh(t)
+		first := s.ask("-m", "fake:small", "investigate")
+		id := runID(t, first.stderr)
+		got := s.ask("continue", id, "--write", "fix it")
+		eq(t, got.code, 0)
+		eq(t, got.stdout, "fake: fix it\n")
+		eq(t, s.calls()[1].s("session"), s.runFile("results.json")[0].s("session"))
+		eq(t, s.calls()[1].s("access"), "write")
+	})
+	t.Run("piped input is a follow-up prompt", func(t *testing.T) {
+		s := fresh(t)
+		first := s.ask("-m", "fake:small", "investigate")
+		got := s.run([]string{"continue", runID(t, first.stderr)}, "fix it", nil)
+		eq(t, got.code, 0)
+		eq(t, got.stdout, "fake: fix it\n")
+	})
+	t.Run("a stopped run is rerun from the beginning", func(t *testing.T) {
+		s := fresh(t)
+		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		until(t, func() bool { return len(s.calls()) == 1 })
+		id := strings.Split(s.latest(), "-")[1]
+		eq(t, s.ask("stop", id).code, 0)
+		run.wait(t)
+		got := s.ask("continue", id)
+		eq(t, got.code, 0)
+		eq(t, got.stdout, "fake: hang\n")
+		match(t, got.stderr, `rerunning 1 task from the beginning`)
+	})
+	t.Run("a batch reruns only failed tasks", func(t *testing.T) {
+		s := fresh(t)
+		first := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"ok"},{"prompt":"bad"}]`, map[string]string{"FAKE_FAIL": "bad"})
+		eq(t, first.code, 1)
+		got := s.ask("continue", runID(t, first.stderr))
+		eq(t, got.code, 0)
+		eq(t, len(s.calls()), 3)
+		match(t, got.stderr, `rerunning 1 task from the beginning`)
+	})
+	t.Run("a completed run needs a prompt", func(t *testing.T) {
+		s := fresh(t)
+		first := s.ask("-m", "fake:small", "done")
+		got := s.ask("continue", runID(t, first.stderr))
+		eq(t, got.code, 2)
+		match(t, got.stderr, `is complete; give a prompt`)
+		eq(t, len(s.calls()), 1)
+	})
+}

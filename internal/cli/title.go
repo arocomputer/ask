@@ -36,13 +36,13 @@ func invocationTitle(a *agent.Registry, argv []string, description, dir string, 
 	if len(args) == 0 {
 		return "", nil
 	}
-	if _, ok := options[args[0]]; ok && args[0] != "run" {
+	if _, ok := options[args[0]]; ok {
 		command = args[0]
 		args = args[1:]
 	} else if find.Path(a.Paths, "commands", args[0]) != "" {
 		return "", nil
 	}
-	if command != "run" && command != "batch" {
+	if command != "run" && command != "continue" && command != "batch" {
 		return "", nil
 	}
 	opts, words, err := parse(command, args)
@@ -58,6 +58,21 @@ func invocationTitle(a *agent.Registry, argv []string, description, dir string, 
 	}
 	if opts.Has("--title") && strings.TrimSpace(opts.S("--title")) == "" {
 		return "", nil
+	}
+	if command == "continue" {
+		if len(words) == 0 {
+			return "", nil
+		}
+		ref := words[0]
+		words = words[1:]
+		if len(words) == 0 && in.HasStdin && strings.TrimSpace(in.Stdin) != "" {
+			words = []string{in.Stdin}
+		}
+		if len(words) == 0 {
+			return "Continue " + ref, opts
+		}
+		opts.Set("-c", ref)
+		command = "run"
 	}
 	invocationDir := dir
 	if opts.Has("-C") {

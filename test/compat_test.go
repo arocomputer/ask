@@ -30,7 +30,7 @@ func TestCompat(t *testing.T) {
 		}
 		shown := s.ask("show", "port-parser-rust")
 		eq(t, shown.code, 1)
-		match(t, shown.stderr, `(?m)^ask port-parser-rust · failed · Fake 1\.0 · 6:12 · 412\.0k in · 9\.1k out · 300\.0k cache read · \$25\.31 · stopped at the \$25 cost limit; ask -c port-parser-rust continues it$`)
+		match(t, shown.stderr, `(?m)^ask port-parser-rust · failed · Fake 1\.0 · 6:12 · 412\.0k in · 9\.1k out · 300\.0k cache read · \$25\.31 · stopped at the \$25 cost limit; follow up with ask continue port-parser-rust PROMPT$`)
 		eq(t, s.ask("show", "k3f9a2").stderr, shown.stderr)
 		match(t, s.ask("runs", "--all").stdout, `(?m)^port-parser-rust +k3f9a2 .* failed +Fake 1\.0 +6:12 +Port the parser to Rust\.$`)
 		followup := s.ask("-c", "port-parser-rust", "Go on.")

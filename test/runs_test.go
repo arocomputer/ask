@@ -117,7 +117,7 @@ func TestRuns(t *testing.T) {
 		if len(s.hookCalls()) != 0 {
 			t.Fatalf("result hook called: %v", s.hookCalls())
 		}
-		match(t, s.ask("runs").stdout, `stopped.*resume: ask batch --resume `+id)
+		match(t, s.ask("runs").stdout, `stopped.*rerun: ask continue `+id)
 	})
 	t.Run("show exits 1 when any saved task failed", func(t *testing.T) {
 		s := fresh(t)
@@ -298,7 +298,7 @@ sleep 10`)
 		dir := filepath.Join(s.home, "runs", "20260101T000000-zzzzzz")
 		s.json(filepath.Join(dir, "tasks.json"), []object{{"id": "1", "model": "fake:small", "prompt": "p"}, {"id": "2", "model": "fake:small", "prompt": "p"}})
 		s.json(filepath.Join(dir, "results.json"), []any{object{"id": "1", "ok": true}, nil})
-		match(t, s.ask("runs").stdout, `(?m)^zzzzzz .* stopped .* resume: ask batch --resume zzzzzz$`)
+		match(t, s.ask("runs").stdout, `(?m)^zzzzzz .* stopped .* rerun: ask continue zzzzzz$`)
 	})
 	t.Run("ask runs in a repository lists its runs, from any of its checkouts; --all lists every run", func(t *testing.T) {
 		s := fresh(t)

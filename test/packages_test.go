@@ -9,6 +9,13 @@ import (
 
 // TestPackages pins ask install, update and remove: official agents, git packages, and the sources ask refuses.
 func TestPackages(t *testing.T) {
+	t.Run("update packages explicitly updates packages, not ask", func(t *testing.T) {
+		s := fresh(t)
+		got := s.ask("update", "packages")
+		eq(t, got.code, 0)
+		match(t, got.stderr, `no packages installed`)
+		eq(t, s.ask("update", "packages", "--check").code, 2)
+	})
 	t.Run("the expanded harness packages install offline and expose their docs", func(t *testing.T) {
 		s := fresh(t)
 		for _, name := range []string{"copilot", "gemini", "pi", "e"} {

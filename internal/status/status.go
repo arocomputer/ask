@@ -163,7 +163,7 @@ func Done(r home.Object) string {
 	outcome := "failed"
 	note := r.S("error")
 	if strings.HasPrefix(note, "stopped at the $") && r.B("session") {
-		note += "; ask -c " + r.S("run") + " continues it"
+		note += "; follow up with ask continue " + r.S("run") + " PROMPT"
 	}
 	if r.B("ok") {
 		outcome = "ok"
@@ -350,7 +350,7 @@ func Table(list []*runs.Run, now time.Time, color bool) string {
 			}
 		}
 		if state == "stopped" {
-			about = "resume: ask batch --resume " + r.Label()
+			about = "rerun: ask continue " + r.Label()
 		}
 		id := "" // a named run's ID reaches it after a follow-up takes over the name
 		if r.Name != "" {

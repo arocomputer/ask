@@ -219,6 +219,11 @@ func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 			return 0, e
 		}
 	}
+	return runPrompt(a, opts, prompt)
+}
+
+// runPrompt records and executes a prompt already read from arguments or stdin.
+func runPrompt(a *agent.Registry, opts home.Object, prompt string) (int, error) {
 	t, e := taskOptions(opts)
 	if e != nil {
 		return 0, e
@@ -264,6 +269,77 @@ func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 		return 1, nil
 	}
 	fmt.Fprintln(os.Stdout, answerText(tasks[0], results[0]))
+	return 0, nil
+}
+
+// continueRun follows a saved conversation when given a prompt, or reruns failed and
+// interrupted tasks as recorded when no prompt is given.
+func continueRun(a *agent.Registry, opts home.Object, words []string) (int, error) {
+	if len(words) == 0 || home.Trim(words[0]) == "" {
+		return 0, home.Usage("ask continue needs a run; see ask runs")
+	}
+	ref := words[0]
+	prompt := strings.Join(words[1:], " ")
+	if prompt == "" && !stdinTerminal() {
+		var err error
+		prompt, err = home.ReadInput("-", "prompt")
+		if err != nil {
+			return 0, err
+		}
+	}
+	if home.Trim(prompt) != "" {
+		if opts.Has("-j") {
+			return 0, home.Usage("--jobs is for rerunning a batch without a prompt")
+		}
+		opts.Set("-c", ref)
+		return runPrompt(a, opts, prompt)
+	}
+	for key := range opts {
+		if !has([]string{"-j", "--no-hooks"}, key) {
+			return 0, home.Usage("rerunning a saved run keeps its original options; only --jobs and --no-hooks apply")
+		}
+	}
+	r, at, err := runs.Open(a.Paths, ref)
+	if err != nil {
+		return 0, err
+	}
+	if at >= 0 && len(r.Tasks) > 1 {
+		return 0, home.Usage("rerun the whole batch with ask continue %s, or give a prompt to continue this task", r.Label())
+	}
+	if runs.Owner(r) != 0 {
+		return 0, home.Usage("%s is still running; use ask wait %s", ref, ref)
+	}
+	todo := 0
+	for _, result := range r.Results {
+		if !result.B("ok") {
+			todo++
+		}
+	}
+	if todo == 0 {
+		return 0, home.Usage("%s is complete; give a prompt to continue the conversation", ref)
+	}
+	jobs, err := jobCount(a, opts)
+	if err != nil {
+		return 0, err
+	}
+	fmt.Fprintf(os.Stderr, "ask %s · rerunning %s from the beginning\n", r.Label(), status.Plural(todo, "task"))
+	results, err := execute(a, r, jobs, !opts.B("--no-hooks"), nil, len(r.Tasks) > 1)
+	if err != nil {
+		return 0, err
+	}
+	if len(results) == 1 {
+		if !results[0].B("ok") {
+			return 1, nil
+		}
+		fmt.Fprintln(os.Stdout, answerText(r.Tasks[0], results[0]))
+		return 0, nil
+	}
+	fmt.Fprintln(os.Stdout, home.JSON(home.ResultRecords(results), true))
+	for _, result := range results {
+		if !result.B("ok") {
+			return 1, nil
+		}
+	}
 	return 0, nil
 }
 
@@ -322,7 +398,7 @@ func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
 			return 0, e
 		}
 	}
-	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes)
+	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes, true)
 	if e != nil {
 		if results == nil && !opts.B("--resume") && runs.Owner(r) == 0 {
 			if err := runs.Delete(r); err != nil {
@@ -360,7 +436,7 @@ func jobCount(a *agent.Registry, opts home.Object) (int, error) {
 
 // execute runs a created run's unfinished tasks with the live rows and status lines a batch
 // shows on stderr, and returns every task's result in task order.
-func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hooks.Note) ([]home.Object, error) {
+func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hooks.Note, batch bool) ([]home.Object, error) {
 	todo := 0
 	for _, x := range r.Results {
 		if !x.B("ok") {
@@ -369,8 +445,8 @@ func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hoo
 	}
 	begin := time.Now()
 	header := status.BatchStart(r, jobs, todo)
-	live := status.NewLive(r, header, true)
-	if live == nil {
+	live := status.NewLive(r, header, batch)
+	if batch && live == nil {
 		fmt.Fprintln(os.Stderr, status.StyledLine(header, os.Stderr))
 	}
 	process.OnStop(func() { live.Finish("ask "+r.Label()+" · stopped", true) })
@@ -381,12 +457,17 @@ func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hoo
 	}
 	results, e := runs.Execute(a, r, jobs, hooksOn, report)
 	process.AwaitShutdown()
-	summary := status.BatchEnd(r, float64(time.Since(begin).Milliseconds())/1000)
+	summary := ""
+	if batch {
+		summary = status.BatchEnd(r, float64(time.Since(begin).Milliseconds())/1000)
+	} else if e == nil && len(results) == 1 {
+		summary = status.Done(results[0])
+	}
 	live.Finish(summary, false)
 	if e != nil {
 		return results, e
 	}
-	if live == nil {
+	if batch && live == nil {
 		fmt.Fprintln(os.Stderr, status.StyledLine(summary, os.Stderr))
 	}
 	return results, nil

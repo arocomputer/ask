@@ -69,26 +69,31 @@ func overview(a *agent.Registry) string {
 	lines := []string{`ask · hand tasks to coding agents
 
 Usage
-  ask --model MODEL [options] PROMPT       Run a task
-  ask --continue RUN [options] PROMPT      Follow up in the same conversation
+  ask [options] PROMPT                 Start a task
+  ask continue RUN [options] [PROMPT] Continue a run
 
-Commands
-  setup      Set ask up the first time
-  settings   Change agents, defaults, worktrees and apps
-  batch      Run many tasks in parallel
-  bench      Compare models on the same tasks
-  show       Print a saved answer
-  wait       Wait for the next run to finish, then print it
+Tasks
+  run        Start a task explicitly
+  continue   Follow up or rerun unfinished work
+  batch      Run tasks in parallel
+  bench      Compare models
+
+Runs
   runs       List recent runs
-  stop       Stop a running run
-  clean      Remove finished worktrees and old runs
+  show       Show an answer
+  wait       Wait for a run
+  stop       Stop a run
+  clean      Remove old runs and landed worktrees
+
+Setup
+  setup      Set up ask
+  settings   Change defaults and agents
   models     List available models
-  title      Name a command for a host
-  docs       Read the docs
-  update     Update ask to the latest release
+  docs       Read documentation
   install    Install or update packages
   packages   List installed packages
-  remove     Remove a package`}
+  remove     Remove packages
+  update     Update ask`}
 	commands := find.Sorted(a.Paths, "commands")
 	if len(commands) > 0 {
 		own := []string{"Your commands"}
@@ -99,7 +104,7 @@ Commands
 				if len(text) > 4096 {
 					text = text[:4096]
 				}
-				if m := commandDescription.FindStringSubmatch(text); m != nil {
+				if m := commandDescription.FindStringSubmatch(text); len(m) > 1 {
 					desc = home.Trim(m[1])
 				}
 			}
@@ -110,18 +115,12 @@ Commands
 		}
 		lines = append(lines, strings.Join(own, "\n"))
 	}
-	lines = append(lines, `Options
-  --model MODEL        agent:id[#effort]
-  --write              Allow edits and commands (default: read only)
-  --worktree           Work in a new git worktree (with --write)
-  --directory DIR      Directory to work in
-  --timeout SECONDS    Seconds per task (default: 900, or your settings)
-  --max-cost USD       Cost limit per task (default: model or settings)
-  --json, --schema F   Require JSON, or JSON matching a schema
-  --no-hooks           Skip your hooks
+	lines = append(lines, `Common options
+  -m, --model MODEL   Choose a model
+  -w, --write         Allow edits and commands
+      --worktree      Work in a separate worktree
 
-Models
-`+modelLines(a), "Short forms: -m, -w, -c, -C, -t · ask help run · ask help COMMAND\ndocs  ask docs")
+ask help COMMAND · ask models · ask docs`)
 	return strings.Join(lines, "\n\n")
 }
 
@@ -134,7 +133,7 @@ func topicHelp(topic string) string {
 
 Usage
   ask --model MODEL [options] PROMPT
-  ask --continue RUN [options] PROMPT
+  ask continue RUN [options] PROMPT
 
 Options
   --model MODEL        agent:id[#effort], from ask models (or your default)
@@ -167,7 +166,35 @@ Runs
 Examples
   ask --model claude:haiku-4.5 "Where is login checked?"
   ask --model codex:gpt-6.1-sol --title "Review login" "Inspect the login flow."
-  ask --continue login-checked --write "Fix it and run the test."` + "\n\nShort forms: -m, -w, -c, -C, -t\ndocs  ask docs usage"
+  ask continue login-checked --write "Fix it and run the test."` + "\n\nShort forms: -m, -w, -c, -C, -t\ndocs  ask docs usage"
+	case "continue":
+		return `ask continue · follow up or rerun unfinished work
+
+Usage
+  ask continue RUN [options] PROMPT
+  ask continue RUN [--jobs N] [--no-hooks]
+
+A prompt continues the agent's conversation. With no prompt, ask reruns
+interrupted or failed tasks from the beginning using their saved settings.
+Use RUN/TASK to follow up on one task in a batch. A completed run needs a prompt.
+
+Options
+  -w, --write          Allow edits and commands
+  -r, --read           Use read-only access
+  -m, --model MODEL    Choose a model from the same agent
+  -j, --jobs N         Parallel tasks when rerunning a batch
+      --no-hooks       Skip hooks
+
+Follow-ups keep their directory and inherit model and access; --model, --read
+and --write can change the latter. A rerun uses its saved settings. Piped
+stdin can provide a prompt.
+
+Examples
+  ask continue login-bug "What did you find?"
+  ask continue login-bug --write "Fix it."
+  ask continue login-bug
+
+The older --continue RUN and -c RUN forms remain supported.` + "\n\ndocs  ask docs runs"
 	case "bench":
 		return `ask bench · compare models on the same tasks
 
@@ -284,17 +311,22 @@ Examples
   ask runs
   ask runs --all -n 50` + "\n\ndocs  ask docs runs"
 	case "wait":
-		return `ask wait · wait for the next run to finish, then print it
+		return `ask wait · wait for a run to finish
 
 Usage
-	  ask wait
+  ask wait [RUN]
+
+With RUN, wait for that run or task, or show it if already finished.
+Without RUN, wait for the first run that was active when waiting began.
 
 Output
-	  The first running run's answer on stdout, its status line on stderr, like ask show
-	  exit        0 answer received, or no runs running · 1 failed or stopped
+  stdout   The answer, like ask show
+  stderr   The status line
+  exit     0 on success or no active runs · 1 if failed or stopped
 
 Examples
-	  ask wait` + "\n\ndocs  ask docs runs"
+  ask wait login-bug
+  ask wait` + "\n\ndocs  ask docs runs"
 	case "clean":
 		return `ask clean · remove worktrees whose work has landed, and old runs
 
@@ -440,6 +472,7 @@ Examples
 Usage
   ask update            Replace this ask with the latest release, checked against its checksums
   ask update --check    Only say whether a newer release is out (exit 1 when one is)
+  ask update packages   Update installed packages without updating ask
 
 ask installed by Homebrew or go install is updated there; ask update says how. In a terminal,
 ask mentions a newer release at most once a day; ASK_NO_UPDATE_CHECK=1 turns that off.` + "\n\ndocs  ask docs install"

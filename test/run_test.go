@@ -308,3 +308,25 @@ func TestRun(t *testing.T) {
 		})
 	})
 }
+
+func TestRunCommandAndStdin(t *testing.T) {
+	t.Run("explicit run does not become part of the prompt", func(t *testing.T) {
+		s := fresh(t)
+		got := s.ask("run", "-m", "fake:small", "inspect")
+		eq(t, got.code, 0)
+		eq(t, s.calls()[0].s("stdin"), "inspect")
+	})
+	t.Run("a command word can be a literal prompt after double dash", func(t *testing.T) {
+		s := fresh(t)
+		got := s.ask("-m", "fake:small", "--", "continue", "please")
+		eq(t, got.code, 0)
+		eq(t, s.calls()[0].s("stdin"), "continue please")
+	})
+	t.Run("a bare invocation accepts piped input", func(t *testing.T) {
+		s := fresh(t)
+		s.json(filepath.Join(s.home, "settings.json"), object{"model": "fake:small"})
+		got := s.run(nil, "-literal prompt\n", nil)
+		eq(t, got.code, 0)
+		eq(t, s.calls()[0].s("stdin"), "-literal prompt\n")
+	})
+}

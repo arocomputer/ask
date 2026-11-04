@@ -33,6 +33,8 @@ second line'`, "", "Small One · First line\n"},
 	first := s.ask("-m", "fake:small#high", "-w", "remember")
 	id := runID(t, first.stderr)
 	eq(t, s.ask("title", "--command", "ask -c "+id+" 'go again'").stdout, "Small One (high) · Go again · write\n")
+	eq(t, s.ask("title", "--command", "ask continue "+id+" 'go again'").stdout, "Small One (high) · Go again · write\n")
+	eq(t, s.ask("title", "--command", "ask continue "+id).stdout, "Continue "+id+"\n")
 	eq(t, s.ask("title", "--command", "ask -c "+id+" -m fake:big -r 'look'").stdout, "Big · Look\n")
 	t.Run("ask title --hook answers a PreToolUse event for ask commands and stays silent otherwise", func(t *testing.T) {
 		s := fresh(t)
@@ -80,7 +82,7 @@ second line'`, "", "Small One · First line\n"},
 	})
 	t.Run("an explicit run word is parsed the way ask parses it", func(t *testing.T) {
 		s := fresh(t)
-		eq(t, s.ask("title", "--command", `ask run -m fake:small fix`).stdout, "Small One · Run fix\n")
+		eq(t, s.ask("title", "--command", `ask run -m fake:small fix`).stdout, "Small One · Fix\n")
 	})
 	t.Run("--title overrides the prompt-derived host title", func(t *testing.T) {
 		s := fresh(t)
