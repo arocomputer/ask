@@ -64,8 +64,11 @@ summarize-public-api-src  p81c0d  24m ago  2/3 ok   3 tasks            Summarize
 find-bugs-internal-runs   x7d2e1  Sep 30   stopped  5 tasks            resume: ask batch --resume find-bugs-internal-runs
 ```
 
-`running` means ask holds the run's operating system lock; `stopped` means it was interrupted
-before every task finished. Interrupted tasks keep empty result slots, so they can be resumed.
+`running` means ask holds the run's operating system lock; its time is elapsed time since the run
+started. When an agent reports an activity, the task column shows its latest coarse activity; for
+a batch it lists the tasks that reported one. Some agents report no activity. `stopped` means the run
+was interrupted before every task finished. Interrupted tasks keep empty result slots, so they can
+be resumed. Live activity is kept in private temporary run files and ignored when the owner exits.
 
 ## Showing a run again
 

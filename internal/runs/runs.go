@@ -679,8 +679,22 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 				if ordered {
 					<-starts[position]
 				}
+				path := progressPath(r, i)
+				_ = os.Remove(path)
+				activity := ""
 				result := withHooks(a, h, r.Tasks[i], Ref(r, i), func(e Event) {
 					e.Index = i
+					if e.Kind == "start" {
+						activity = ""
+						_ = os.Remove(path)
+					} else if e.Kind == "activity" && activity != e.Activity {
+						activity = e.Activity
+						if activity == "" {
+							_ = os.Remove(path)
+						} else {
+							_ = home.WriteJSON(path, progressRecord{PID: os.Getpid(), Activity: activity})
+						}
+					}
 					if !process.Stopping() {
 						report(e)
 					}
@@ -688,6 +702,7 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 						release()
 					}
 				})
+				_ = os.Remove(path)
 				release()
 
 				if process.Stopping() || result == nil {

@@ -147,12 +147,19 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 		if s.Batch {
 			text = fmt.Sprintf("%s %-*s  %-*s  %s", mark, idWidth, ClipLine(taskID(r.Ref), idWidth), nameWidth, r.Name, text)
 		} else {
-			left := fmt.Sprintf("%s %s   %s", mark, r.Name, text)
-			gap := width - 1 - length(left) - length(r.Ref)
-			if gap < 2 {
-				gap = 2
+			// Keep the run handle visible even when the result text is long.
+			ref := ClipLine(r.Ref, max(0, width-3))
+			refWidth := 0
+			for _, ch := range ref {
+				refWidth += cells(ch)
 			}
-			text = left + strings.Repeat(" ", gap) + r.Ref
+			left := ClipLine(fmt.Sprintf("%s %s   %s", mark, r.Name, text), max(0, width-3-refWidth))
+			leftWidth := 0
+			for _, ch := range left {
+				leftWidth += cells(ch)
+			}
+			gap := max(1, width-1-leftWidth-refWidth)
+			text = left + strings.Repeat(" ", gap) + ref
 		}
 		text = ClipLine(text, width-1)
 		if color && style != "" && strings.HasPrefix(text, mark) {

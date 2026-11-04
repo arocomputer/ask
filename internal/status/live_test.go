@@ -115,3 +115,11 @@ func TestLiveActivity(t *testing.T) {
 		t.Fatalf("activity survived completion: %q", frame)
 	}
 }
+
+func TestFrameKeepsRunHandle(t *testing.T) {
+	row := LiveRow{Ref: "review-fix", Name: "Model", State: "ok", Final: "ask review-fix · ok · Model · 10s · 100k in · 50k cache read · branch some-very-long-branch"}
+	got := Frame(LiveState{Rows: []LiveRow{row}}, time.Now(), 0, 50, 24, false, false)[0]
+	if !strings.Contains(got, "review-fix") {
+		t.Fatalf("run handle was clipped: %q", got)
+	}
+}

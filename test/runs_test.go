@@ -237,6 +237,25 @@ func TestRuns(t *testing.T) {
 			t.Fatal("the merged change is gone from the checkout")
 		}
 	})
+	t.Run("runs shows live activity without exposing agent text", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("progress", `cat >/dev/null
+printf '{"activity":"running commands"}' > "$ASK_REPORT"
+sleep 10`)
+		run := s.start([]string{"-m", "progress:small", "check"}, "", nil)
+		until(t, func() bool { return strings.Contains(s.ask("runs").stdout, "running commands") })
+		id := strings.Split(s.latest(), "-")[1]
+		path := filepath.Join(s.home, "runs", s.latest(), "progress-0.json")
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm()&0077 != 0 {
+			t.Fatalf("progress snapshot is not private: %v %v", info, err)
+		}
+		eq(t, s.ask("stop", id).code, 0)
+		run.wait(t)
+		if exists(path) {
+			t.Fatal("progress snapshot remained after stopping")
+		}
+	})
 	t.Run("runs shows elapsed time for an active run", func(t *testing.T) {
 		s := fresh(t)
 		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
