@@ -27,7 +27,7 @@ they may change.
 - **Additions are allowed.** New result fields, report fields, environment variables,
   events and options can appear in any release. Ignore what you don't know.
 - **A breaking change bumps the contract version.** Every agent, hook and command gets
-  `ASK_CONTRACT`, now `1`. A change that could break one changes that number and is called out in
+  `ASK_CONTRACT`, now `2`. A change that could break one changes that number and is called out in
   the changelog with what to do.
 - **Run records stay readable.** Records written by a release are pinned in ask's tests
   (`test/fixtures/`) and never rewritten; newer versions must keep showing and continuing them.
