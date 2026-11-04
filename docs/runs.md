@@ -1,7 +1,10 @@
 # Runs
 
 Every time ask starts agents, that is a run. ask names it after the first meaningful words of its
-prompt, and status lines start with the name:
+prompt. Launching with `ask "task"`, `ask continue RUN "prompt"` or `ask batch FILE`
+detaches by default and prints only the stable run ID on stdout after admission.
+Add `--wait` to execute synchronously and return the answer/result instead.
+Status lines use the name:
 
 ```text
 ask login-test-fail · started · Sonnet 5.5 · read · ~/code/app
@@ -22,11 +25,14 @@ A task in a batch is `RUN/TASK`, using the task's id (or its position, from 1):
 read, said and did. `--continue RUN` and `-c RUN` remain supported script aliases.
 
 ```sh
-ask --model claude:sonnet-5.5 "Why does the login test fail?"
+ask --wait -m claude:sonnet-5.5 "Why does the login test fail?"
 # ask login-test-fail · ok · Sonnet 5.5 · 48.0s · ...
-ask continue login-test-fail --write "Fix it, then run the test."
-ask continue login-test-fail "Now add a test for the expired-token case."
+ask continue login-test-fail --wait -w "Fix it, then run the test."
+ask continue login-test-fail --wait "Now add a test for the expired-token case."
 ```
+
+A prompted follow-up returns its new stable ID by default. `--wait` blocks and prints the
+answer instead. Wait for the preceding turn to finish before following up.
 
 A follow-up is a new run that takes over the conversation's name, so the name always reaches the
 latest turn. An earlier turn is still reachable by its id. A follow-up to a batch task starts its
@@ -56,14 +62,16 @@ and a run that is no longer active. Interrupted runs can be followed up when ask
 - **Failed or stopped:** ask finishes the original task in the saved conversation when its
   session and directory are usable. It checks an interrupted worktree's recorded repository,
   path and branch. If the session or safe location is missing, ask restarts the original task
-  from the beginning. It announces the choice on stderr; stdout carries answers.
-- **Completed:** in a terminal, ask lets you enter a follow-up (and choose a task for a completed
-  batch). Outside a terminal, ask explains that a prompt is needed and exits without waiting
-  for input.
+  from the beginning. Use `--wait` for recovery diagnostics on stderr and synchronous results,
+  or `ask wait RUN` to collect the detached result.
+- **Completed:** ask explains that an explicit follow-up prompt is needed and exits without
+  waiting for input. Use `RUN/TASK` with a prompt to follow up on one completed batch task.
 
 Batches recover only unfinished or failed tasks; successful results stay untouched. Use
 `RUN/TASK` to recover just one task. Recovery keeps recorded options, including access, JSON/schema,
-model, timeout and cost limit. Only `--jobs` and `--no-hooks` apply without a prompt.
+model, timeout and cost limit. Without a prompt, only `--jobs`, `--no-hooks` and `--wait` apply.
+Recovery detaches by default and returns the existing stable run ID; `--wait` blocks and returns
+the answer/result. Prompted follow-ups instead create a new run ID.
 
 Auth, refusal, billing/quota and cost-limit failures are not automatically retried. ask explains
 the blocker and leaves that task untouched while recovering other eligible batch tasks. Resolve
@@ -73,7 +81,8 @@ from failure text because the agent contract has no standard failure codes; opaq
 not be recognized.
 
 ```sh
-ask continue login-test-fail # after it stops or fails
+ask continue login-test-fail # detach recovery after it stops or fails
+ask wait login-test-fail     # collect the recovered result
 ask continue summarize-public-api-src
 ask continue login-test-fail --max-cost 5 "I resolved the blocker; finish the task."
 printf '%s' 'Now add tests.' | ask continue login-test-fail -
@@ -98,6 +107,7 @@ refused even with `--jobs 1`. Stopping or exiting releases the reservations auto
 ask runs          # the last 20 in this repository
 ask runs -n 50
 ask runs --all    # every run, wherever it worked
+ask runs --json   # machine-readable run state; same scope and limit
 ```
 
 In a git repository, `ask runs` lists the runs that worked in it: in its main checkout or any of
@@ -111,6 +121,12 @@ summarize-public-api-src  p81c0d  24m ago  2/3 ok   3 tasks            Summarize
 find-bugs-internal-runs   x7d2e1  Sep 30   stopped  5 tasks            continue: ask continue find-bugs-internal-runs
 ```
 
+`--json` returns an array of run records with `run_id`, optional `name`, `created`, `state` and
+`tasks`. Machine states are `running`, `success`, `failed` and `stopped`. Each task includes
+`task_id`, `state`, `model`, `dir` and `write`; batch tasks also include a one-based `position`.
+Usage, elapsed time and worktree metadata appear when available. The listing omits prompts,
+answers, sessions and error text; collect results with `ask wait ID --json`.
+
 `running` means ask holds the run's operating system lock; its time is elapsed time since the run
 started. When an agent reports an activity, the task column shows its latest coarse activity; for
 a batch it lists the tasks that reported one. Some agents report no activity. `stopped` means the run
@@ -121,7 +137,10 @@ never falls back to an older session in the original task record. Live activity 
 the owner exits. An agent must report its session before interruption for recovery to use it;
 sudden termination before the next metadata poll (every 500ms) may require a restart.
 
-## Showing a run again
+## Inspecting a run
+
+`ask show RUN` returns immediately with current status and any available answer/result. It
+never waits and never starts an agent. Use `ask wait RUN` when you need a completed result.
 
 ```sh
 ask show login-test-fail           # the latest turn's answer on stdout, its status line on stderr
@@ -131,53 +150,54 @@ ask show summarize-public-api-src  # a batch: all its results, as a JSON array
 ask show summarize-public-api-src/api  # one task of a batch
 ```
 
-Showing a whole batch prints its outcome count on stderr and exits 1 if any task failed; saved wall time is not recorded.
+Completed single tasks print their answer, or nothing on failure; `--json` prints recorded
+result data including failure details. Whole batches print result arrays. Completed failed or
+stopped work returns exit 1. Current state goes to stderr; use `ask runs --json` for machine
+state and `ask wait RUN --json` for completed result data. Saved batch wall time is not recorded.
 
-## Starting detached tasks
+## Detached execution
 
-`ask start [run options] PROMPT` starts one task and prints its stable six-character ID on
-stdout, only after a detached worker has acquired the existing run and continuation locks and
-saved pending state. It accepts the options from `ask help run`, including `-c RUN` for a
-follow-up, JSON/schema answers, directory, access, worktree, cost and timeout limits. Prompts
-can come from stdin. There is no daemon and no shell background job to manage.
+Launch tasks directly; there is no separate public `ask start` command or compatibility alias.
+`ask "task"`, `ask run "task"`, prompted `ask continue` and `ask batch FILE` return a stable
+six-character run ID on stdout only after admission. Prompts and batch input are read before
+handoff, so input streams must reach EOF first. Model selection, access, JSON/schema, directory,
+worktree, cost and timeout options still apply. `--json` on a task controls its answer format;
+it does not replace the launch ID with an answer.
 
 ```sh
-a=$(ask start --model claude:sonnet-5.5 "Why does the login test fail?")
-b=$(ask start --model codex:gpt-6.1-sol "Review the session code for races.")
-done=$(ask wait --id "$a" "$b")
-ask show "$done"
-# Collect the other ID separately when ready; completed answers stay saved.
-ask wait "$a"
-ask wait "$b"
+a=$(ask -m claude:sonnet-5.5 "Why does the login test fail?") || exit $?
+b=$(ask -m codex:gpt-6.1-sol "Review the session code for races.") || exit $?
+ask show "$a"             # inspect now; never waits
+ask wait "$a"             # block for this run's answer; check the exit status
+ask wait "$b" --json      # result data, including failure details
+# Or run synchronously and consume the answer directly:
+git diff | ask --wait --stdin "Review this diff for bugs."
 ```
 
-Exit 0 from `start` means admitted, not completed successfully. Validation and launch errors
-return nonzero without an ID. The worker creates its own ID; no flag or inherited per-task
-identity can select an existing run for execution. New names and IDs are claimed atomically;
-if concurrent launches chose the same readable name, one may fail with a retry diagnostic.
-Use returned IDs for orchestration, since conversation names move to their latest turn.
+Exit 0 from a launch means admitted, not completed successfully. Validation and launch errors
+return nonzero without an ID. Use returned IDs for orchestration: names move to the latest
+conversation turn. If the launcher dies before receiving its ID, the outcome can be uncertain;
+inspect `ask runs --json` before retrying to avoid duplicate work.
 
-The worker has its own session, no controlling terminal, and standard streams connected to
-`/dev/null`. It survives launcher exit and terminal hangup, including on Linux without a
-parent-death signal. Agents still use the usual process groups, timeout and cancellation.
-Host or sandbox process cleanup can end detached workers; detachment cannot override it.
-`ask stop ID` cancels the worker and its agents. Interrupting `ask wait` only stops waiting.
+Detached workers survive launcher exit and terminal hangup, subject to host and sandbox process
+limits. `ask stop ID` cancels the worker and its agents. Interrupting `ask wait` only stops
+waiting; with synchronous `--wait` execution, Ctrl-C stops the agents. Detachment does not
+provide automatic retries, crash recovery or a guarantee of model success.
 
-A private `worker.log` in the run folder records fixed lifecycle messages. It never copies
-prompts, answers, environment, raw agent output, hook notes or arbitrary error text. Task and
-result records still contain the usual prompts, answers and agent error reports; they are
-private, not secret-redacted. Use `ask wait ID` or `ask show ID` to see agent failures. If
-recording fails or the worker dies, `wait` reports stopped/incomplete work and points to the
-lifecycle log. An abrupt kill may prevent a final log message. There is no automatic retry,
-restart, or guarantee that descendants are cleaned up after the worker is killed outright
-(on macOS in particular). Use normal cancellation whenever possible.
-
-If the launcher is killed before receiving its acknowledgement, the launch outcome can be
-uncertain. Inspect `ask runs` before retrying: ask does not pretend that handoff and delivery
-of the ID to another process are an atomic transaction. Readiness means the worker is admitted;
-it does not promise that the agent has started, or that the machine cannot fail afterward.
+Private run records retain prompts, answers and agent errors. The private `worker.log` records
+fixed lifecycle messages without captured task output. If a worker dies or cannot save a
+result, `ask wait ID` reports stopped/incomplete work. An abrupt kill may leave descendants
+running or prevent a final log message; use `ask stop ID` for normal cancellation.
 
 ## Waiting for runs
+
+`ask wait RUN` blocks until that run finishes and returns its answer, or a result array for
+a multi-task batch. Already finished work returns immediately. `ask wait RUN --json` returns result data,
+including failure details; it does not require the agent's answer to be JSON. The object has
+`run_id`, optional `name` and `state`, plus `result` for one task or `results` for a whole batch.
+A selected batch task also includes `task_id` and one-based `position`. Missing results are
+omitted or represented by `null` array entries for stopped/incomplete work. Exit 0 means
+success, 1 means failed or stopped, and 2 means a usage error.
 
 `ask wait A B` returns the first finished run or task from exactly those references, including
 already finished work. It resolves all references before waiting and pins their directories,
@@ -198,10 +218,13 @@ Without references, `ask wait` snapshots active runs in the current repository, 
 worktrees. Outside git it watches active runs under the current directory. It does not include
 later launches or previously completed work. If none is active, it prints
 `ask: no runs are running` and exits 0 with empty stdout, also with `--id`.
-Use explicit IDs when collecting a known set, especially when tasks may finish quickly.
+With `--json`, no active runs produces `null` on stdout instead. `--id` and `--json` are
+mutually exclusive. Use explicit IDs when collecting a known set, especially when tasks may
+finish quickly.
 
 ```sh
 ask wait "$a"            # answer of this exact run, even if already finished
+ask wait "$a" --json     # machine-readable result, including failures
 ask wait --id "$a" "$b"  # stable identity of the first selected completion
 ask wait                 # first active run in this repository to finish
 ```
@@ -216,7 +239,7 @@ ask stop login-test-fail
 ```
 
 Use `ask continue RUN` without a prompt to finish a stopped or failed run, or only unfinished
-or failed batch tasks. ask announces whether it uses the saved conversation or restarts.
+or failed batch tasks. Use `--wait` to see whether recovery uses the saved conversation or restarts.
 
 ## Cleaning up
 

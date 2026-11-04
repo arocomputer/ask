@@ -120,7 +120,8 @@ CLI's session id. An agent that supports them:
 ask runs a follow-up in the same directory as the run it continues, which most CLIs need to find
 the session. An agent that reports no session cannot support conversation follow-ups; ask says so.
 Without a prompt, `ask continue RUN` uses a usable saved session to finish the original task,
-or announces a restart from the beginning when none is available. ask polls live reports every
+or restarts from the beginning when none is available (`--wait` shows recovery diagnostics).
+ask polls live reports every
 500ms and atomically saves session metadata and the actual location in private run records,
 so reporting a session early can make interrupted runs recoverable before a final result.
 Metadata not reported or saved before interruption cannot be recovered.
@@ -242,11 +243,11 @@ console.log(out.result);
 Run inside ask's own repository:
 
 ```text
-$ ask --model claude:haiku-4.5 "Which file decides how ask formats its status lines? One sentence."
+$ ask --wait --model claude:haiku-4.5 "Which file decides how ask formats its status lines? One sentence."
 ask file-decides-ask-formats · ok · Haiku 4.5 · 8.5s · 94.7k in · 439 out · $0.08
 The file `internal/status/status.go` formats ask's status lines, including event lines, completion
 status, and batch summaries.
-$ ask continue file-decides-ask-formats "Which function in it formats the usage part, like '31.0k in · 812 out'?"
+$ ask continue file-decides-ask-formats --wait "Which function in it formats the usage part, like '31.0k in · 812 out'?"
 ask file-decides-ask-formats · ok · Haiku 4.5 · 6.0s · 34.9k in · 362 out · $0.08
 The `Usage` function formats token usage and optional cost in the pattern "input in · output out".
 ```

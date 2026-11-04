@@ -17,8 +17,8 @@
 curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh
 ```
 
-  <img src="assets/screens/dark/run.svg#gh-dark-mode-only" alt="ask answering why a test fails, then fixing it in the same conversation" width="760">
-  <img src="assets/screens/light/run.svg#gh-light-mode-only" alt="ask answering why a test fails, then fixing it in the same conversation" width="760">
+  <img src="assets/screens/dark/run.svg#gh-dark-mode-only" alt="A synchronous ask --wait investigation and write follow-up" width="760">
+  <img src="assets/screens/light/run.svg#gh-light-mode-only" alt="A synchronous ask --wait investigation and write follow-up" width="760">
 </div>
 
 <br>
@@ -31,15 +31,20 @@ in Opencode. Install Node.js 18 or newer for the official ask agents. Then, in a
 ```sh
 ask setup                                        # connect the coding agents you have
 ask models                                       # choose an available agent:model id
-ask --model claude:sonnet-5.5 "Why does the login test fail?"
-ask continue login-test-fail --write "Fix it, then run the test."
+id=$(ask -m claude:sonnet-5.5 "Why does the login test fail?")
+ask wait "$id"                                   # block and print the answer
+ask continue "$id" --wait -w "Fix it, then run the test."
 ```
 
 The examples use Claude Code; choose a model from `ask models` for your installation. Use the
-run name or id printed by the first run for `ask continue` (names can have a numeric suffix or be set by a hook).
+stable ID returned on stdout for `ask wait`, `ask show` and `ask continue`.
+`-m` / `--model` selects a model or configured role; `-w` / `--write` allows edits and commands.
+Runs are read-only by default.
 
 With a default model configured in `ask settings`, use `ask "prompt"`, `ask run "prompt"`, or
-pipe a prompt directly: `git diff | ask`. stdout carries only the answer; status goes to stderr.
+pipe a prompt directly: `git diff | ask`. These launch detached work and print only its stable
+run ID after admission. Exit 0 means accepted, not completed successfully. Add `--wait` to run
+synchronously and return only the answer: `git diff | ask --wait`. Status and errors go to stderr.
 
 `ask setup` finds supported coding CLIs and installs the agents you pick immediately.
 It shows changes to defaults and app integrations before saving them. Each agent keeps its own
@@ -68,17 +73,22 @@ for each harness's tools, access controls and continuation support.
 
 ## Many at once
 
-`ask batch` runs tasks in parallel, on one model or several, each in its own worktree if you
-like, and prints every answer as one JSON array. `ask start "task"` starts a detached task and
-returns its stable ID. Use `ask wait A B` for the first completion from an explicit set,
-`ask wait --id A B` for just its identity, or `ask wait ID` for a specific answer. `ask show ID`
-prints a saved answer; `ask stop ID` cancels a run. `ask continue RUN` without a prompt finishes
-stopped or failed work in a usable saved conversation, otherwise announces a restart. Successful
-batch tasks stay untouched; auth, refusal and cost blockers need an explicit prompt after resolution.
-Completed runs accept a follow-up in a terminal; scripts supply a prompt.
+`ask batch FILE` launches parallel tasks and returns one stable batch ID. Use
+`ask wait ID` to collect results, or `ask batch --wait FILE` to return the result array synchronously.
+`ask show ID` inspects current state immediately; `ask wait ID` blocks for completion.
+For scripts, `ask runs --json` lists machine-readable state and `ask wait ID --json` returns
+result data, including failures. Check the exit status: wait returns 1 for failed or stopped work.
 
-<p align="center"><img src="assets/screens/dark/batch.svg#gh-dark-mode-only" alt="ask batch running a review on three models at once" width="760">
-  <img src="assets/screens/light/batch.svg#gh-light-mode-only" alt="ask batch running a review on three models at once" width="760"></p>
+`ask continue RUN "prompt"` launches a follow-up and returns its new stable ID; add `--wait`
+for the answer. Without a prompt, it finishes stopped or failed work in a usable saved
+conversation, otherwise restarts. Successful batch tasks stay untouched; auth,
+refusal and cost blockers need an explicit prompt after resolution. Running work gets wait
+guidance; completed runs require an explicit follow-up prompt.
+`ask stop ID` cancels work; interrupting `ask wait` only stops waiting. See [Runs](docs/runs.md)
+for lifecycle details and waiting for the first of several runs.
+
+<p align="center"><img src="assets/screens/dark/batch.svg#gh-dark-mode-only" alt="A synchronous ask batch --wait review on three models" width="760">
+  <img src="assets/screens/light/batch.svg#gh-light-mode-only" alt="A synchronous ask batch --wait review on three models" width="760"></p>
 
 ## See it before it saves
 

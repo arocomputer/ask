@@ -124,7 +124,7 @@ jq -c --arg context "$context" '{task: {prompt: ($context + "\n\n" + .task.promp
 ```
 
 ```text
-$ ask --model claude:haiku-4.5 "What am I in the middle of? One sentence."
+$ ask --wait --model claude:haiku-4.5 "What am I in the middle of? One sentence."
 You're in the middle of modifying `calc.go` on the main branch after an initial commit.
 ```
 

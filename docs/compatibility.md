@@ -7,7 +7,7 @@ they may change.
 
 | Contract | Where it is described |
 | --- | --- |
-| The command line: commands, options, exit codes (0 ok, 1 a run failed, 2 a usage error), stdout carrying answers (or explicit identity output from `start` / `wait --id`) | `ask help`, [Usage](usage.md) |
+| The command line: detached launches return stable IDs; `--wait` and `ask wait` return answers/results. Exit 0 means admitted at launch or success at collection; 1 failed/stopped, 2 usage error | `ask help`, [Usage](usage.md) |
 | Plain status lines start with `ask RUN · outcome ·`, where RUN is the run's name, or its id when it has none; terminals may redraw live state | [Runs](runs.md) |
 | Result fields (`run`, `id`, `model`, `write`, `name`, `ok`, `answer`/`error`, optional `raw_answer` on JSON/schema validation failure, `seconds`, `usage`, `session`, `dir`, `changes`, `commits`, `worktree`, `followups`) | [Batches](batches.md) |
 | Run records: `tasks.json` (optional task `title`) and `results.json` in `~/.ask/runs/STAMP-ID[-NAME]/` | [Runs](runs.md) |
@@ -38,15 +38,20 @@ records and malformed Unicode handling are not byte-level contracts.
 
 The public names remain `run` for a recorded invocation, `task` for one unit in a batch,
 `model` for an `agent:id`, and `follow-up` for a continuation. Existing command, option,
-result and record field names remain stable. Status lines now put `started`, `ok` or
+result and record field names remain stable except for the detached-first CLI transition
+described below. Status lines now put `started`, `ok` or
 `failed` directly after the run id, followed by the model display name; hook lines use
 `note` or `follow-up`; optional coarse progress uses `activity · CATEGORY`. The `-c` and
 `--continue` options remain supported script aliases for conversation follow-ups; batch `--resume`
 remains an alias for recovering unfinished or failed tasks. Use `ask continue RUN "prompt"` for
 follow-ups and `ask continue RUN` for state-based recovery: usable sessions continue the original
-task, otherwise ask announces a restart. Blockers require an explicit prompt after resolution. The JSON `continue` field remains.
-`start`, `run` and `continue` are built-in command names; an existing prompt or custom command beginning with one is shadowed. Use `ask -- run ...` or
-`ask -- continue ...` (or `ask -- start ...`) for a literal prompt.
+task, otherwise ask restarts. Blockers require an explicit prompt after resolution. The JSON `continue` field remains.
+Tasks, prompted continuations and batches now detach by default and print a stable run ID
+instead of an answer. Update answer-consuming scripts to use `--wait`, or capture the ID and
+collect it with `ask wait ID`. `-w` still means write; `-m` selects a model or configured role.
+The separate `ask start` command is removed, with no hidden compatibility alias.
+`run` and `continue` are built-in command names; an existing prompt or custom command beginning
+with one is shadowed. Use `ask -- run ...` or `ask -- continue ...` for a literal prompt.
 Times are compact clocks above a minute and costs show cents at
 or above $0.01. `ask help` is the overview, also available with `ask --help` or `ask -h`.
 `ask help COMMAND` and `ask COMMAND --help` are equivalent for built-in commands; `-h` works

@@ -87,55 +87,66 @@ description: Delegate focused questions, reviews or implementation tasks to codi
 ---
 ` + mark + `
 
-Run ` + "`ask help`" + ` for usage, ` + "`ask help COMMAND`" + ` for a command's options,
-` + "`ask models`" + ` for the models available here, ` + "`ask models --roles`" + ` for user-defined roles, and
-` + "`ask docs PAGE`" + ` (or ` + "`ask docs --search TERM`" + `) for the full docs.
+Use Ask for an independent investigation, review or bounded implementation that moves the work
+forward. Handle small, tightly coupled steps directly when a handoff costs more than it helps.
+Give the goal, relevant files or context, constraints and the evidence you want back. For reviews,
+request concrete findings with file and line references; for fixes, specify scope and validation.
+Review returned evidence and changes before integrating them.
 
-Use Ask when an independent investigation, review or bounded implementation can move the work
-forward. Handle small, tightly coupled steps directly when a handoff would cost more than it helps.
-Give each task the goal, relevant files or context, constraints and the evidence you want back.
-For a review, ask for concrete findings with file and line references; for a fix, name the scope
-and validation to run. Review the returned evidence and changes before integrating them.
+Choose models from ` + "`ask models`" + ` or configured roles from ` + "`ask models --roles`" + `; do not guess IDs.
+` + "`-m`" + ` / ` + "`--model`" + ` selects a model or role; omit it only with a configured default or inherited
+follow-up model. Roles are explicit user aliases; Ask does not route tasks automatically.
+Follow-ups keep the recorded model even if its role changes later.
+` + "`-w`" + ` / ` + "`--write`" + ` allows edits and commands. Read-only is the default; tests and builds need write.
 
-- ` + "`ask \"prompt\"`" + ` or ` + "`ask run \"prompt\"`" + `: a read-only answer, using the configured default model; use ` + "`--model MODEL`" + ` to choose one.
-- ` + "`git diff | ask --stdin \"Review this diff for bugs; give file, line and impact.\"`" + `: append the diff to the instruction. An argument prompt includes stdin only with ` + "`--stdin`" + `; ` + "`git diff | ask`" + ` uses stdin alone as the prompt.
-- ` + "`ask run --model MODEL --write \"task\"`" + `: let it edit files and run commands; add ` + "`--worktree`" + ` to work on its own branch.
-- ` + "`ask continue RUN \"follow-up\"`" + `: follow up in that run's conversation, inheriting its model and read/write access unless overridden.
-- ` + "`ask continue RUN`" + ` without a prompt: finish stopped/failed work in a usable saved session, otherwise restart and announce it; leave successful batch tasks alone. Running work gets wait guidance; completed work asks for a follow-up in a terminal. Auth/refusal/cost blockers require an explicit prompt after resolution.
-- ` + "`ask batch FILE`" + `: many tasks in parallel, one JSON result array.
+Tasks detach by default. stdout is only the stable run ID after admission, never the answer.
+Exit 0 means accepted, not completed successfully. Capture IDs and check launch failures:
 
-Delegate independent questions in a batch; give parallel write tasks separate worktrees and avoid
-overlapping ownership. Running tests or builds needs write access. A worktree starts from HEAD,
-so pass relevant uncommitted context explicitly. Choose models from ` + "`ask models`" + ` rather than guessing ids.
+    id=$(ask -m MODEL "Investigate the login failure; report the cause and evidence.") || exit $?
+    ask show "$id"             # inspect immediately; never waits
+    ask wait "$id"             # block for the answer; check the exit status
+    ask wait "$id" --json      # result data, including failures
 
-A role is an explicit user-defined alias for an exact model and effort, usable as MODEL in runs,
-batches and benches. Respect the user's role choices; ask does not route tasks automatically.
-Follow-ups inherit the recorded model even if the role changes later.
+Use ` + "`--wait`" + ` for synchronous execution when consuming an answer directly:
 
-RUN is the name or id in a status line; use RUN/TASK for a batch task. Script aliases remain supported:
-` + "`--continue RUN`" + ` / ` + "`-c RUN`" + ` for follow-ups, ` + "`ask batch --resume RUN`" + ` for batch recovery.
+    git diff | ask --wait -m MODEL --stdin "Review this diff; give file, line and impact."
+    ask --wait -m MODEL -w --worktree "Fix the parser bug and run its focused tests."
 
-For parallel handoff, use ` + "`ask start [run options] \"task\"`" + `. It prints only a stable run ID
-once a detached worker holds the run lock and has recorded pending work. Keep those IDs:
+An argument prompt includes piped context only with ` + "`--stdin`" + `. ` + "`ask -`" + ` or bare piped stdin
+uses the stream as the whole prompt. Input must reach EOF before launch.
 
-    a=$(ask start --model MODEL "first task")
-    b=$(ask start --model MODEL "second task")
-    finished=$(ask wait --id "$a" "$b")
-    ask show "$finished"
+- ` + "`ask continue RUN \"follow-up\"`" + ` launches a new turn and returns its new stable ID. Add ` + "`--wait`" + `
+  for the answer. It keeps its directory and inherits model/access; use ` + "`-w`" + ` to implement
+  a read-only investigation. Model changes must stay within the same agent. Names move to the
+  latest turn; stable IDs keep pointing to the original turn. Wait before following up.
+- ` + "`ask continue RUN`" + ` without a prompt finishes stopped/failed work in a usable saved session,
+  otherwise restarts. It returns the existing run ID; add ` + "`--wait`" + ` for results and
+  recovery diagnostics. Successful batch tasks stay untouched. Running work gets wait guidance;
+  completed work requires an explicit follow-up prompt.
+  Auth/refusal/cost blockers need resolution and an explicit prompt; do not blindly retry them.
+- ` + "`ask batch FILE`" + ` launches independent tasks in parallel and returns one stable batch ID.
+  ` + "`ask wait ID`" + ` collects results. ` + "`ask batch --wait FILE`" + ` returns the result array synchronously.
+  Give parallel write tasks separate worktrees and avoid overlapping ownership. Worktrees start
+  from HEAD, so supply relevant uncommitted context explicitly. See ` + "`ask help batch`" + ` for fields.
 
-` + "`ask wait A B`" + ` returns the first finished selection, including saved completions;
-` + "`--id`" + ` prints identity only, without mixing the answer. Remove the returned ID from your
-set before waiting for the rest; waiting does not consume results. Check wait's exit status:
-1 means failed or stopped, 2 means a usage error. ` + "`ask wait ID`" + ` prints that run's answer.
-` + "`ask stop ID`" + ` cancels its worker and agents; interrupting wait only stops waiting.
-No-argument wait snapshots active work in the current repo (current directory outside git),
-so use explicit IDs for handoff. Names move to their latest follow-up; IDs stay fixed.
-Normal runs print only answers on stdout; start and wait --id explicitly print identity.
-Status and errors go to stderr. Private worker logs contain lifecycle messages only.
+` + "`RUN`" + ` accepts a name or stable ID; ` + "`RUN/TASK`" + ` selects one batch task. Existing ` + "`--continue RUN`" + `
+/ ` + "`-c RUN`" + ` aliases accept prompted follow-ups; ` + "`ask batch --resume RUN`" + ` recovers unfinished work.
+` + "`ask runs --json`" + ` lists machine-readable state. ` + "`ask wait RUN --json`" + ` returns result data;
+task ` + "`--json`" + ` / ` + "`--schema FILE`" + ` instead constrain the agent's answer, while launch still prints ID.
+Failed single tasks emit no plain answer; JSON result data retains failure details. A validation
+failure may include ` + "`raw_answer`" + `; inspect with ` + "`ask show RUN --json`" + ` for a focused repair.
+Status and errors go to stderr. Result collection exits 1 for failed/stopped work, 2 for usage
+errors; inspect the exit status even when JSON is emitted. Pipelines usually report only their
+last command's status.
 
-If JSON/schema validation fails, ` + "`ask show RUN --json`" + ` includes ` + "`raw_answer`" + ` for inspection or repair;
-the run still fails. Keep that content out of status logs; prefer ordinary text unless a structured
-consumer needs JSON or a schema.
+` + "`ask wait A B`" + ` returns the first selected completion, including already finished work;
+` + "`--id`" + ` returns only its identity. Results are not consumed: remove a finished ID before waiting
+for the rest. No-argument wait snapshots active work here, so use explicit IDs for handoff.
+` + "`ask stop ID`" + ` cancels work. Interrupting ` + "`ask wait`" + ` only stops waiting; Ctrl-C during synchronous
+` + "`--wait`" + ` execution stops agents. Detached work survives launcher exit within host/sandbox limits;
+there is no automatic retry or crash recovery.
+
+Use ` + "`ask help COMMAND`" + ` for options and ` + "`ask docs PAGE`" + ` or ` + "`ask docs --search TERM`" + ` for details.
 `
 
 // SkillState is "missing", "current", "outdated" (written by an older ask) or "yours".

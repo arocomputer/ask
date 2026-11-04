@@ -73,17 +73,17 @@ def render(lines, width, title, path):
         _render(lines, width, title, os.path.join(os.path.dirname(path), theme, os.path.basename(path)), theme)
 
 render([
-    [P, B('ask --model claude:sonnet-5.5 "Why does the login test fail?"')],
+    [P, B('ask --wait -m claude:sonnet-5.5 "Why does the login test fail?"')],
     ["ask login-test-fail · ", G("ok"), D(" · Sonnet 5.5 · 48.0s · 31.0k in · 812 out · $0.09")],
     ["The expiry check compares seconds with milliseconds, auth/token.go:42."],
     [""],
-    [P, B('ask continue login-test-fail --write "Fix it, then run the test."')],
+    [P, B('ask continue login-test-fail --wait -w "Fix it, then run the test."')],
     ["ask login-test-fail · ", G("ok"), D(" · Sonnet 5.5 · 1:12 · 1 file changed · 44.2k in · 1.3k out · $0.14")],
     ["Fixed: the expiry is now in milliseconds. go test ./auth passes."],
 ], 92, "ask", f"{dest}/run.svg")
 
 render([
-    [P, B("ask batch -w --worktree review.json")],
+    [P, B("ask batch --wait -w --worktree review.json")],
     [B("ask review-session-code · batch of 3 · 3 at a time")],
     ["✔ ", "claude    ", "Sonnet 5.5          ", D("2:31 · 2 files changed · 61.2k in · 2.1k out · $0.24")],
     ["✔ ", "codex     ", "GPT-6.1 Sol         ", D("3:05 · 3 files changed · 88.4k in · 3.0k out")],

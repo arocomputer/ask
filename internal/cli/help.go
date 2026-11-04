@@ -73,16 +73,15 @@ Usage
   ask continue RUN [options] [PROMPT]  Continue a run
 
 Tasks
-  run        Start a task explicitly
-  start      Start a detached task and return its ID
+  run        Start a detached task explicitly
   continue   Follow up or finish unfinished work
   batch      Run tasks in parallel
   bench      Compare models
 
 Runs
   runs       List recent runs
-  show       Show an answer
-  wait       Wait for the first of selected runs
+  show       Inspect a run immediately
+  wait       Wait for completion and return the result
   stop       Stop a run
   clean      Remove old runs and landed worktrees
 
@@ -117,10 +116,12 @@ Setup
 		lines = append(lines, strings.Join(own, "\n"))
 	}
 	lines = append(lines, `Common options
-  -m, --model MODEL   Model or role (ask models --roles)
+  -m, --model MODEL   Model or role (ask models --roles); else default
   -w, --write         Allow edits and commands
+      --wait          Run synchronously and return the answer/result
       --worktree      Work in a separate worktree
 
+Default: detach and print the stable run ID; collect with ask wait RUN.
 ask help COMMAND · ask models · ask docs`)
 	return strings.Join(lines, "\n\n")
 }
@@ -130,15 +131,16 @@ ask help COMMAND · ask models · ask docs`)
 func topicHelp(topic string) string {
 	switch topic {
 	case "run":
-		return `ask · run one task, or follow up on one
+		return `ask · start a task
 
 Usage
-  ask --model MODEL [options] PROMPT
-  ask continue RUN [options] PROMPT
+  ask [options] PROMPT
+  ask run [options] PROMPT
 
 Options
-  -m, --model MODEL      Agent:model[#effort] or role; else your default
+  -m, --model MODEL      Agent:model[#effort] or role; else your configured default
   -w, --write            Allow edits and commands
+      --wait             Run synchronously and return the answer
   -r, --read             Require read-only access (the default)
       --worktree         Work in a new worktree (with --write)
   -C, --directory DIR    Working directory (default: current)
@@ -146,92 +148,64 @@ Options
       --title TEXT       Replace the prompt in the session title
       --max-cost USD     Cost limit; 0 means none
       --stdin            Append stdin to PROMPT (reads until EOF)
-      --json             Require a JSON answer
+      --json             Require a JSON answer; still an ID unless --wait
       --schema FILE      Require JSON matching a schema
       --no-hooks         Skip hooks
 
 Output
-  stdout   The answer, and nothing else
-  stderr   Status lines: ask RUN · state · model · details
-  exit     0 ok · 1 failed · 2 usage error
+  default  Detach; stdout is the stable run ID, one line, after admission
+  --wait   Block; stdout is only the answer (empty on failure)
+  stderr   Status and errors
+  exit     0 admitted (--wait: succeeded) · 1 failed · 2 usage error
 
-Runs
-  RUN is named from the prompt, like login-checked; a follow-up
-  keeps the name. The run's id, like k3f9a2, works too.
-  Use the RUN printed on stderr; examples below assume that name.
-  Follow-ups keep their directory and inherit model and access; use --write
-  after a read run to implement the result, and --read to switch back.
-  A positive recorded cost limit is inherited; else model, then settings.
-  Pipe a prompt on stdin, or use - in place of PROMPT.
-  With an argument prompt, use --stdin to append piped context.
+Admission is not task success. Collect the result with ask wait ID.
+Use - or piped stdin for the prompt; --stdin appends context to an argument prompt.
+-m accepts models from ask models or roles from ask models --roles.
 
 Examples
-  ask --model claude:haiku-4.5 "Where is login checked?"
-  git diff | ask --stdin "Review this diff"
-  ask --model codex:gpt-6.1-sol --title "Review login" "Inspect the login flow."
-  ask continue login-checked --write "Fix it and run the test."` + "\n\ndocs  ask docs usage"
-	case "start":
-		return `ask start · start a detached task and return its stable ID
-
-Usage
-  ask start [run options] PROMPT
-
-Uses the options from ask help run, including -c RUN for a follow-up.
-A prompt can come from stdin. No daemon: a detached worker owns the run lock
-and records results. The ID is printed only after admission succeeds.
-
-Output
-  stdout   The six-character run ID, one line; never the answer
-  stderr   Launch errors
-  exit     0 admitted · 1 launch failed · 2 usage error
-
-The worker survives launcher exit and terminal hangup, subject to host/sandbox
-process limits. Admission does not promise model success. Use ask wait or show
-for results and ask stop ID to cancel. No automatic retries or crash recovery.
-Private worker.log contains lifecycle messages only; tasks and results retain
-prompts and answers as usual. Agent output and hook notes are not logged.
-
-Examples
-  a=$(ask start --model claude:sonnet-5.5 "Inspect login.")
-  b=$(ask start --model codex:gpt-6.1-sol "Review sessions.")
-  done=$(ask wait --id "$a" "$b")
-  ask show "$done"
-  ask stop "$a"` + "\n\ndocs  ask docs runs"
+  id=$(ask -m claude:haiku-4.5 "Where is login checked?")
+  ask wait "$id"
+  git diff | ask --wait --stdin "Review this diff"
+  ask -m codex:gpt-6.1-sol -w "Fix the login test and run it."` + "\n\ndocs  ask docs usage"
 	case "continue":
 		return `ask continue · follow up or finish unfinished work
 
 Usage
   ask continue RUN [options] PROMPT
-  ask continue RUN [--jobs N] [--no-hooks]
+  ask continue RUN [--wait] [--jobs N] [--no-hooks]
 
-A prompt continues the agent's conversation. Without one:
+A prompt continues the agent's conversation; default stdout is a new stable
+run ID. Add --wait to block and return the answer instead.
+Without a prompt:
   running         Use ask wait RUN
   stopped/failed  Finish in the saved session if usable; otherwise restart
-  completed       Enter a follow-up in a terminal; scripts must give a prompt
+  completed       Give an explicit follow-up prompt
 
 Batches recover only unfinished/failed tasks; successes stay untouched.
 Use RUN/TASK for one task. Auth, refusal and cost blockers need an explicit
 prompt after resolving the blocker; ask never retries them automatically.
 
-Options
+Options for a follow-up
+  -m, --model MODEL    Model or role from the same agent; else inherit
   -w, --write          Allow edits and commands
+      --wait           Run synchronously and return the answer
   -r, --read           Use read-only access
-  -m, --model MODEL    Choose a model from the same agent
-  -j, --jobs N         Parallel tasks when recovering a batch
       --no-hooks       Skip hooks
 
-Follow-ups keep their directory and inherit model and access; --model, --read
-and --write can change the latter. Recovery uses its saved settings and announces
-whether it continues a conversation or restarts from the beginning on stderr.
+Follow-ups keep their directory and inherit model/access; -m, -r and -w override.
+Recovery keeps saved task options and returns the existing run ID by default.
+--wait blocks for results, --jobs N sets parallelism, --no-hooks skips hooks.
+With --wait, recovery diagnostics go to stderr.
 Use - for streamed stdin prompts; immediately available piped input also works.
-See ask help run for other task options.
+See ask help run for other follow-up options.
 
 Examples
-  ask continue login-bug "What did you find?"
-  ask continue login-bug --write "Fix it."
+  id=$(ask continue login-bug "What did you find?")
+  ask wait "$id"
+  ask continue login-bug --wait -w "Fix it."
   ask continue login-bug
 
-The older --continue RUN and -c RUN forms remain supported.` + "\n\ndocs  ask docs runs"
+--continue RUN and -c RUN remain aliases for prompted follow-ups.` + "\n\ndocs  ask docs runs"
 	case "bench":
 		return `ask bench · compare models on the same tasks
 
@@ -276,10 +250,10 @@ Examples
 
 Usage
   ask batch [options] FILE|-
-  ask batch --resume RUN [-j N] [--no-hooks]
+  ask batch --resume RUN [--wait] [-j N] [--no-hooks]
 
 --resume recovers only unfinished/failed tasks, using usable saved sessions
-or announcing a restart. Successes and auth/refusal/cost blockers stay untouched.
+or restarting. Successes and auth/refusal/cost blockers stay untouched.
 
 Tasks · a JSON array, or one object per line
   prompt     The task (required)
@@ -296,7 +270,8 @@ Tasks · a JSON array, or one object per line
   json       Require a JSON answer
   schema     A JSON Schema, inline
 
-Results · a JSON array on stdout, in task order
+Results · --wait returns a JSON array in task order
+ask wait RUN also returns this array for a multi-task batch.
   run, id           RUN/TASK, and the task id
   model, name       Requested model and the model's own name
   ok                true or false
@@ -308,28 +283,41 @@ Results · a JSON array on stdout, in task order
   followups         Follow-ups your hooks asked for
 
 Options
-  --model, --read, --write, --worktree, --directory, --timeout   Task defaults
+  -m, --model MODEL            Model or role default
+  -w, --write                  Allow edits and commands by default
+      --wait                   Run synchronously and return the result array
+  --read, --worktree, --directory, --timeout   Task defaults
   --title TEXT                 Default session-title text for every task
   --json, --schema FILE         Defaults for JSON answers or a schema
   --max-cost USD               Each task's cost limit
   -j N                         Tasks at once (default: 4, or your settings)
   --no-hooks                   Skip your hooks
 
+Output
+  default  Detach; stdout is the stable batch run ID after admission
+  --wait   Block; stdout is the result array, including failures
+  stderr   Status and errors
+  exit     0 admitted (--wait: all succeeded) · 1 failed · 2 usage error
+
 Use - for stdin; omitting FILE also reads stdin. Explicit --read refuses write tasks.
 
 Examples
-  ask batch -j 4 --model claude:haiku-4.5 tasks.json
+  id=$(ask batch -j 4 -m claude:haiku-4.5 tasks.json)
+  ask wait "$id"
+  ask batch --wait -m claude:haiku-4.5 tasks.json
   ask batch --resume summarize-public-api` + "\n\ndocs  ask docs batches"
 	case "show":
-		return `ask show · print a run again, without starting its agent
+		return `ask show · inspect a run immediately
 
 Usage
   ask show RUN [--json]
   ask show RUN/TASK [--json]
 
+Never waits or starts an agent. Use ask wait RUN to collect a completed result.
+
 Output
-  stdout   The answer; with --json, the whole result
-  stderr   The run's status line
+  stdout   The available answer/result; --json includes recorded result data
+  stderr   Current status and errors
 
 Examples
   ask show login-checked
@@ -338,23 +326,26 @@ Examples
 		return `ask runs · list recent runs, newest first
 
 Usage
-  ask runs [-n N] [--all]
+  ask runs [-n N] [--all] [--json]
 
 Options
   -n N    How many (default: 20)
   --all   Every run, not only this repository's
+  --json  Machine-readable run state
 
 Output
   RUN  ID  STARTED  STATUS  MODEL  TIME  TASK
 
 Examples
   ask runs
-  ask runs --all -n 50` + "\n\ndocs  ask docs runs"
+  ask runs --all -n 50
+  ask runs --json` + "\n\ndocs  ask docs runs"
 	case "wait":
-		return `ask wait · wait for the first of selected runs to finish
+		return `ask wait · wait for completion and return the answer/result
 
 Usage
-  ask wait [--id] [RUN...]
+  ask wait RUN [--json]
+  ask wait [--json | --id] [RUN...]
 
 With references, return the first finished run or task from that exact set,
 including already finished work. Ties use argument order. References are pinned
@@ -363,14 +354,17 @@ Without references, snapshot active runs in this repository (all its worktrees),
 or under the current directory outside git. Later launches are not included.
 
 Options
+  --json   Print the selected result as JSON, including failure details
   --id     Print only the winner's stable ID (ID<TAB>POSITION for a batch task)
 
 Output
-  stdout   The answer, like ask show; with --id, identity only
-  stderr   Status and errors; multiple selections also identify the winner
+  stdout   The answer/result; --json returns result data, --id identity only
+  stderr   Status and errors; plain multi-run output also identifies the winner
   exit     0 success or no active runs · 1 failed/stopped · 2 usage error
 
 Examples
+  ask wait k3f9a2
+  ask wait k3f9a2 --json
   ask wait k3f9a2 b7x01q
   ask wait --id k3f9a2 b7x01q
   ask wait` + "\n\ndocs  ask docs runs"

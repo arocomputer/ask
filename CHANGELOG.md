@@ -31,16 +31,19 @@
   and refuses to suppress possible extension policy hooks. Other adapters reject integration
   policies they cannot enforce; see `ask docs environment` for supported defaults and limits.
 - Make promptless `ask continue` finish unfinished work in usable saved conversations, restart
-  otherwise with an announcement, guide active runs to `ask wait`, and collect completed-run
-  follow-ups in terminals. Keep successful batch tasks and auth/refusal/cost blockers untouched.
+  otherwise with diagnostics under `--wait`, guide active runs to `ask wait`, and require explicit
+  prompts for completed-run follow-ups. Keep successful batch tasks and auth/refusal/cost
+  blockers untouched.
   Persist private live session and worktree metadata for interrupted attempts, invalidate stale
   rerun results, and avoid waiting on empty nonterminal stdin. Existing aliases remain supported.
-- Add `ask start` for detached tasks with stable IDs acknowledged only after lock acquisition
-  and pending-state recording, private lifecycle logs, and cancellation through `ask stop`.
-  `ask wait A B` selects the first completion from exactly those runs, including saved results;
-  `--id` separates machine-readable identity from answers. No-argument wait is scoped to the
-  current repository (or current directory outside git). Concurrent name/ID claims cannot
-  overwrite records or send a worker to a different run.
+- Make tasks, prompted continuations and batches detach by default, returning a stable run ID
+  after admission. Add `--wait` for synchronous answers/results; update answer-consuming scripts
+  to use it. Keep `-w` for write and `-m` for a model or role. Remove the separate `ask start`
+  command without a compatibility alias. Make `ask show` immediate inspection, add machine state
+  with `ask runs --json` and result collection with `ask wait --json`, and align help, docs and
+  the generated agent skill. Launch success means admitted; collection reports task failure.
+  `ask wait A B` still selects the first completion from those references; `--id` returns only
+  its identity. No-argument wait is scoped to active work in the current repository or directory.
 
 - Show coarse Codex and Claude Code activity while runs work, including in `ask runs`. The
   optional `ASK_REPORT` activity field updates terminal rows and rate-limited plain status lines

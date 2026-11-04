@@ -16,6 +16,8 @@ func TestHelp(t *testing.T) {
 			t.Fatal("help is too long")
 		}
 		match(t, r.stdout, `ask continue RUN`)
+		match(t, r.stdout, `--wait`)
+		noMatch(t, r.stdout, `(?m)^  start +`)
 		match(t, r.stdout, `ask help COMMAND · ask models · ask docs`)
 		if exists(s.tmp + "/model-list-ran") {
 			t.Fatal("help ran model discovery")
@@ -54,7 +56,7 @@ func TestHelp(t *testing.T) {
 	})
 	t.Run("a command's page and its --help print the same text", func(t *testing.T) {
 		s := fresh(t)
-		for _, command := range []string{"run", "start", "continue", "batch", "bench", "show", "runs", "wait", "clean", "stop", "models", "title", "install", "packages", "remove", "setup", "settings", "docs", "update"} {
+		for _, command := range []string{"run", "continue", "batch", "bench", "show", "runs", "wait", "clean", "stop", "models", "title", "install", "packages", "remove", "setup", "settings", "docs", "update"} {
 			fromTopic := s.ask("help", command)
 			eq(t, fromTopic.code, 0)
 			fromFlag := s.ask(command, "--help")

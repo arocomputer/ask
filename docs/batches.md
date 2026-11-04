@@ -1,13 +1,16 @@
 # Batches
 
-`ask batch` runs many tasks in parallel, on one model or several, and prints all the answers as one
-JSON array.
+`ask batch` launches tasks in parallel, on one model or several, and returns one stable batch
+run ID on stdout after admission. `ask wait ID` blocks for results. Add `--wait` to
+run synchronously and return the array directly; use it in pipelines that consume results.
 
 ```sh
-ask batch [-j N] [--model MODEL] [--write] [--worktree] FILE
-ask batch [-j N] [--model MODEL] [--write] [--worktree] -        # tasks on stdin
+ask batch [--wait] [-j N] [-m MODEL] [-w] [--worktree] FILE
+ask batch [--wait] [-j N] [-m MODEL] [-w] [--worktree] -        # tasks on stdin
 ```
 
+`-m` / `--model` accepts a model or configured role; a configured default is optional.
+`-w` / `--write` allows edits and commands; tasks default to read-only.
 Choose model ids from `ask models`; the ids and run names below illustrate one installation.
 Use the names or ids printed by your own runs for `ask show`, `ask continue` and `ask wait`.
 
@@ -46,11 +49,14 @@ settings limits apply unless you explicitly give `max_cost` again.
 ## Running
 
 ```sh
-ask batch -j 4 --model claude:haiku-4.5 tasks.json
+id=$(ask batch -j 4 -m claude:haiku-4.5 tasks.json)
+ask show "$id"             # inspect immediately
+ask wait "$id"             # collect results after completion
+ask batch --wait -j 4 -m claude:haiku-4.5 tasks.json
 ```
 
-`-j` is how many tasks run at once (default 4, or the `jobs` [setting](settings.md)). In a terminal, stderr shows live task rows (queued, running with elapsed time and usage so far,
-ok or failed) above a running total of usage and cost, then a summary. The total labels reported usage and leaves out cost when any task did not report it. In pipes, status lines go to stderr as tasks start and end:
+`-j` is how many tasks run at once (default 4, or the `jobs` [setting](settings.md)). With `--wait` in a terminal, stderr shows live task rows (queued, running with elapsed time and usage so far,
+ok or failed) above a running total of usage and cost, then a summary. The total labels reported usage and leaves out cost when any task did not report it. With `--wait` in pipes, status lines go to stderr as tasks start and end:
 
 ```text
 ask summarize-public-api-src · started · batch of 3 · 3 at a time
@@ -65,7 +71,12 @@ ask summarize-public-api-src · 2/3 ok · 15:00 · reported: 64.6k in · 1.3k ou
 
 ## Results
 
-stdout gets one JSON array, in task order, whatever order the tasks finished in:
+A detached launch exits 0 when admitted, before task outcomes are known. Admission failure
+prints no ID and returns nonzero. Use `ask runs --json` for machine-readable state.
+
+`ask batch --wait FILE` returns one JSON array on stdout, in task order, whatever order the
+tasks finished in. `ask wait ID` returns that array for multi-task batches; a run with only
+one task returns its answer instead:
 
 ```json
 [
@@ -113,11 +124,14 @@ stdout gets one JSON array, in task order, whatever order the tasks finished in:
 ]
 ```
 
+`ask wait ID --json` wraps these results with stable identity and state; see
+[Waiting for runs](runs.md#waiting-for-runs).
+
 Write tasks in a git repository also have `changes` and `commits`, and worktree tasks that changed
-something have `worktree: {path, branch}`. The batch exits 1 if any task failed. Result records include the effective `model` and `write` access after task hooks, so follow-ups inherit what actually ran. With `jq`:
+something have `worktree: {path, branch}`. Synchronous execution and result collection exit 1 if any task failed or stopped. Result records include the effective `model` and `write` access after task hooks, so follow-ups inherit what actually ran. With `jq`:
 
 ```sh
-ask batch --model claude:haiku-4.5 tasks.json | jq -r '.[] | select(.ok) | "\(.id): \(.answer)"'
+ask batch --wait --model claude:haiku-4.5 tasks.json | jq -r '.[] | select(.ok) | "\(.id): \(.answer)"'
 ```
 
 An answer rejected by JSON/schema validation has `ok: false`, `error` and `raw_answer` (the
@@ -132,7 +146,7 @@ unvalidated private content. Successful results and other failures omit `raw_ans
 ```sh
 for m in claude:sonnet-5.5 codex:gpt-6.1-sol opencode:deepseek-4.1-flash; do
   echo "{\"id\": \"$m\", \"model\": \"$m\", \"prompt\": \"Is there a race in src/queue.js?\"}"
-done | ask batch -
+done | ask batch --wait -
 ```
 
 **Parallel fixes that can't collide:** give each task its own worktree, then review each branch.
@@ -140,7 +154,7 @@ done | ask batch -
 ```sh
 gh issue list --label bug --limit 5 --json number,title,body |
   jq -c '.[] | {id: "issue-\(.number)", prompt: "Fix issue #\(.number): \(.title)\n\n\(.body)"}' |
-  ask batch --write --worktree --model claude:sonnet-5.5 -
+  ask batch --wait --write --worktree --model claude:sonnet-5.5 -
 ```
 
 Each issue becomes a task with its own branch (`ask/RUN-1-issue-12`, where RUN is the batch's
@@ -150,23 +164,26 @@ merge them one by one.
 **Follow up on every task of a batch:**
 
 ```sh
-ask show summarize-public-api-src | jq -c '.[] | select(.ok) | {continue: .run, prompt: "Now write a test for that."}' | ask batch --write -
+ask wait summarize-public-api-src | jq -c '.[] | select(.ok) | {continue: .run, prompt: "Now write a test for that."}' | ask batch --wait --write -
 ```
 
 ## Resuming
 
 A batch that was stopped, or had failures, can be continued without a prompt. Only unfinished
 or failed tasks run again; successful results stay. ask finishes the original task in each
-usable saved conversation, otherwise restarts from the beginning and announces it on stderr.
+usable saved conversation, otherwise restarts from the beginning. Add `--wait` for synchronous
+results and recovery diagnostics on stderr.
 Auth, refusal and cost blockers stay untouched with guidance to resolve them and give an explicit
-prompt; other eligible tasks still recover. The result array goes to stdout:
+prompt; other eligible tasks still recover. Use `ask wait RUN` to collect results after recovery:
 
 ```sh
 ask continue summarize-public-api-src
+ask wait summarize-public-api-src
 ```
 
-`ask batch --resume RUN` remains a supported script alias for this recovery; it takes only `-j` and
-`--no-hooks`. To follow up in one task's saved conversation, use
+`ask batch --resume RUN` remains a supported script alias for this recovery; it takes only `-j`,
+`--no-hooks` and `--wait`. Recovery returns the existing stable batch ID by default; add
+`--wait` for the result array. To follow up in one task's saved conversation, use
 `ask continue RUN/TASK "prompt"`; it inherits that task's model and access.
 Only one ask can run a batch at a time; a second is refused while the first is going.
 Use `ask wait RUN` to wait for that batch. See [Runs](runs.md) for listing, showing and stopping runs.
