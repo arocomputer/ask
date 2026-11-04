@@ -395,6 +395,9 @@ func completedFollowup(p *tui.Prompter, r *runs.Run, at int, ref string) (string
 		}
 		ref = runs.Ref(r, at)
 	}
+	if at >= 0 && at < len(r.Results) && r.Results[at] != nil && r.Results[at].B("ok") {
+		fmt.Fprintln(os.Stderr, answerText(r.Tasks[at], r.Results[at]))
+	}
 	prompt, err := p.Input("Follow-up", "")
 	if err != nil {
 		return "", "", err
