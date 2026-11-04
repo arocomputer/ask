@@ -115,8 +115,24 @@ Follow-ups inherit the recorded model even if the role changes later.
 RUN is the name or id in a status line; use RUN/TASK for a batch task. Script aliases remain supported:
 ` + "`--continue RUN`" + ` / ` + "`-c RUN`" + ` for follow-ups, ` + "`ask batch --resume RUN`" + ` for batch recovery.
 
-For parallel background runs, redirect each run's stdout and stderr to separate files so answers
-and status do not interleave. Run ask in the background when you can, then ` + "`ask wait RUN`" + ` for a specific run or
+For parallel handoff, use ` + "`ask start [run options] \"task\"`" + `. It prints only a stable run ID
+once a detached worker holds the run lock and has recorded pending work. Keep those IDs:
+
+    a=$(ask start --model MODEL "first task")
+    b=$(ask start --model MODEL "second task")
+    finished=$(ask wait --id "$a" "$b")
+    ask show "$finished"
+
+` + "`ask wait A B`" + ` returns the first finished selection, including saved completions;
+` + "`--id`" + ` prints identity only, without mixing the answer. Remove the returned ID from your
+set before waiting for the rest; waiting does not consume results. Check wait's exit status:
+1 means failed or stopped, 2 means a usage error. ` + "`ask wait ID`" + ` prints that run's answer.
+` + "`ask stop ID`" + ` cancels its worker and agents; interrupting wait only stops waiting.
+No-argument wait snapshots active work in the current repo (current directory outside git),
+so use explicit IDs for handoff. Names move to their latest follow-up; IDs stay fixed.
+Normal runs print only answers on stdout; start and wait --id explicitly print identity.
+Status and errors go to stderr. Private worker logs contain lifecycle messages only.
+
 ` + "`ask wait`" + ` for the first active run to finish. ` + "`ask show RUN`" + ` prints a completed run.
 stdout carries only answers; status and recovery notices go to stderr.
 If JSON/schema validation fails, ` + "`ask show RUN --json`" + ` includes ` + "`raw_answer`" + ` for inspection or repair;

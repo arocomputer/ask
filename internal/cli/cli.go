@@ -18,12 +18,13 @@ import (
 
 var options = map[string][]string{
 	"run":      {"-m", "-r", "-w", "--worktree", "-c", "--stdin", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
+	"start":    {"-m", "-r", "-w", "--worktree", "-c", "--stdin", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
 	"continue": {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "-j", "--max-cost", "--title", "--no-hooks"},
 	"batch":    {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "-j", "--resume", "--no-hooks"},
 	"bench":    {"-m", "-r", "-w", "-C", "-t", "--max-cost", "--title", "-j", "-n", "--json", "--keep", "--yes", "--no-hooks"},
 	"title":    {"--command", "--description", "--hook"},
 	"setup":    {"--check", "--json", "--yes"}, "settings": {"--json", "--dry-run"}, "docs": {"--raw", "--search", "--url"}, "update": {"--check"},
-	"show": {"--json"}, "runs": {"-n", "--all"}, "wait": {}, "clean": {"--days", "--dry-run", "--yes"}, "stop": {}, "models": {"--roles", "--names", "--all", "--enable", "--disable", "--max-cost"}, "help": {}, "install": {}, "packages": {}, "remove": {},
+	"show": {"--json"}, "runs": {"-n", "--all"}, "wait": {"--id"}, "clean": {"--days", "--dry-run", "--yes"}, "stop": {}, "models": {"--roles", "--names", "--all", "--enable", "--disable", "--max-cost"}, "help": {}, "install": {}, "packages": {}, "remove": {},
 }
 
 var long = map[string]string{"--model": "-m", "--read": "-r", "--write": "-w", "--continue": "-c", "--directory": "-C", "--dir": "-C", "--timeout": "-t", "--jobs": "-j"}
@@ -228,6 +229,9 @@ func main(argv []string, version string) (int, error) {
 			fmt.Fprintln(os.Stdout, title)
 		}
 		return 0, nil
+	case "start":
+		opts.Set("detach", true)
+		return runOne(a, opts, words)
 	case "continue":
 		return continueRun(a, opts, words)
 	case "batch":
@@ -257,7 +261,7 @@ func main(argv []string, version string) (int, error) {
 	case "show":
 		return show(p, opts, words)
 	case "wait":
-		return wait(p, words)
+		return wait(p, opts, words)
 	case "clean":
 		if len(words) != 0 {
 			return 0, home.Usage("ask clean takes no arguments")
@@ -292,6 +296,13 @@ func main(argv []string, version string) (int, error) {
 
 // Main runs one CLI invocation and reports errors with the original exit-status contract.
 func Main(argv []string, version string) int {
+	if len(argv) > 0 && argv[0] == "__ask_worker" {
+		if len(argv) != 1 {
+			fmt.Fprintln(os.Stderr, "ask: internal worker takes no arguments")
+			return 2
+		}
+		return runWorker()
+	}
 	process.Listen()
 	code, e := main(argv, version)
 	process.AwaitShutdown()

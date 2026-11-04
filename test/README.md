@@ -58,6 +58,7 @@ docs page for that feature.
 | `batch_test.go` | `ask batch`: task files, defaults, parallel results, `--resume` | batches.md |
 | `bench_test.go` | `ask bench`: every task on every model, checks, worktrees, the report | bench.md |
 | `latency_test.go` | Opt-in local startup and fake-task end-to-end timings | this page |
+| `start_test.go` | Detached handoff: admission, lifecycle, private logs, cancellation, failures | runs.md |
 | `runs_test.go` | Saved runs: `runs`, `show`, `wait`, `stop`, `clean`, locks, private state | runs.md |
 | `names_test.go` | Run names: from the prompt, taken over by follow-ups, name hooks | runs.md |
 | `followups_test.go` | `continue`, `-c`: follow-ups, state-based recovery, blockers and live session persistence | runs.md |

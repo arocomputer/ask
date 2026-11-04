@@ -108,7 +108,31 @@ func load(dir string) (*Run, error) {
 }
 
 // Create writes prepared tasks once and returns their run folder; name may be empty.
+// Serialize claims so concurrent name selection cannot create unrelated runs with the same
+// handle or overwrite an ID. A follow-up may reuse its conversation's name.
 func Create(p home.Paths, id, name string, tasks []home.Object) (*Run, error) {
+	if err := os.MkdirAll(p.Runs, 0700); err != nil {
+		return nil, err
+	}
+	claim, err := os.OpenFile(filepath.Join(p.Home, ".run-create-lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	defer claim.Close()
+	if err := syscall.Flock(int(claim.Fd()), syscall.LOCK_EX); err != nil {
+		return nil, err
+	}
+	for _, n := range find.List(p.Runs) {
+		_, existingID, existingName := folder(n)
+		if existingID == id || existingName == id {
+			return nil, home.Usage("run ID %s is already claimed; retry", id)
+		}
+		if name != "" && (existingID == name || existingName == name) {
+			if len(tasks) != 1 || tasks[0].S("continues") != name || existingID == name {
+				return nil, home.Usage("run name %s was claimed concurrently; retry using a new run", name)
+			}
+		}
+	}
 	stamp := time.Now().UTC().Format("20060102T150405.000")
 	stamp = strings.ReplaceAll(stamp, ".", "")
 	base := stamp + "-" + id
@@ -116,7 +140,7 @@ func Create(p home.Paths, id, name string, tasks []home.Object) (*Run, error) {
 		base += "-" + name
 	}
 	dir := filepath.Join(p.Runs, base)
-	if e := os.MkdirAll(dir, 0700); e != nil {
+	if e := os.Mkdir(dir, 0700); e != nil {
 		return nil, e
 	}
 	if e := home.WriteJSON(filepath.Join(dir, "tasks.json"), home.TaskRecords(tasks)); e != nil {
@@ -676,17 +700,18 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 
 // Execute runs unfinished tasks up to jobs at once and atomically saves each completed result.
 // A nil result slice with an error means no task started; callers may discard a newly created run.
-func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event), selected ...int) ([]home.Object, error) {
-	return execute(a, r, jobs, enabled, false, report, selected...)
+// ready acknowledges admission after the run lock is acquired, before any task starts.
+func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event), ready func() error, selected ...int) ([]home.Object, error) {
+	return execute(a, r, jobs, enabled, false, report, ready, selected...)
 }
 
 // Continue finishes unfinished tasks using saved conversations when safe, restarting otherwise.
 // Blocked tasks and successful results stay untouched. Planning and reservations hold the run lock.
-func Continue(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event), selected ...int) ([]home.Object, error) {
-	return execute(a, r, jobs, enabled, true, report, selected...)
+func Continue(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event), ready func() error, selected ...int) ([]home.Object, error) {
+	return execute(a, r, jobs, enabled, true, report, ready, selected...)
 }
 
-func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report func(Event), selected ...int) ([]home.Object, error) {
+func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report func(Event), ready func() error, selected ...int) ([]home.Object, error) {
 	owner, e := lock(r)
 	if e != nil {
 		return nil, e
@@ -730,29 +755,34 @@ func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report fu
 		pending[i] = true
 	}
 	pendingFile := pendingPath(r)
-	savePending := func() {
+	savePending := func() error {
 		indices := make([]int, 0, len(pending))
 		for i := range pending {
 			indices = append(indices, i)
 		}
 		sort.Ints(indices)
-		if err := home.WriteJSON(pendingFile, pendingRecord{PID: os.Getpid(), Tasks: indices}); err != nil {
-			_ = os.Remove(pendingFile)
-		}
+		return home.WriteJSON(pendingFile, pendingRecord{PID: os.Getpid(), Tasks: indices})
 	}
-	savePending()
+	if err := savePending(); err != nil {
+		return nil, err
+	}
+	var failure error
 	defer func() {
-		if !process.Stopping() {
+		if failure == nil && !process.Stopping() {
 			_ = os.Remove(pendingFile)
 		}
 	}()
+	if ready != nil {
+		if err := ready(); err != nil {
+			return nil, err
+		}
+	}
 	if jobs > len(todo) {
 		jobs = len(todo)
 	}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	next := 0
-	var failure error
 	starts := make([]chan struct{}, len(todo)+1)
 	for i := range starts {
 		starts[i] = make(chan struct{})
@@ -862,7 +892,10 @@ func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report fu
 				} else {
 					_ = os.Remove(recoveryPath(r, i))
 					delete(pending, i)
-					savePending()
+					e = savePending()
+					if e != nil {
+						failure = e
+					}
 				}
 				mu.Unlock()
 				if e != nil {

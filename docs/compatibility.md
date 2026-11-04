@@ -7,7 +7,7 @@ they may change.
 
 | Contract | Where it is described |
 | --- | --- |
-| The command line: commands, options, exit codes (0 ok, 1 a run failed, 2 a usage error), stdout carrying only answers | `ask help`, [Usage](usage.md) |
+| The command line: commands, options, exit codes (0 ok, 1 a run failed, 2 a usage error), stdout carrying answers (or explicit identity output from `start` / `wait --id`) | `ask help`, [Usage](usage.md) |
 | Plain status lines start with `ask RUN · outcome ·`, where RUN is the run's name, or its id when it has none; terminals may redraw live state | [Runs](runs.md) |
 | Result fields (`run`, `id`, `model`, `write`, `name`, `ok`, `answer`/`error`, optional `raw_answer` on JSON/schema validation failure, `seconds`, `usage`, `session`, `dir`, `changes`, `commits`, `worktree`, `followups`) | [Batches](batches.md) |
 | Run records: `tasks.json` (optional task `title`) and `results.json` in `~/.ask/runs/STAMP-ID[-NAME]/` | [Runs](runs.md) |
@@ -45,8 +45,8 @@ result and record field names remain stable. Status lines now put `started`, `ok
 remains an alias for recovering unfinished or failed tasks. Use `ask continue RUN "prompt"` for
 follow-ups and `ask continue RUN` for state-based recovery: usable sessions continue the original
 task, otherwise ask announces a restart. Blockers require an explicit prompt after resolution. The JSON `continue` field remains.
-`run` and `continue` are now built-in command names; an existing prompt or custom command beginning with one is shadowed. Use `ask -- run ...` or
-`ask -- continue ...` for a literal prompt.
+`start`, `run` and `continue` are built-in command names; an existing prompt or custom command beginning with one is shadowed. Use `ask -- run ...` or
+`ask -- continue ...` (or `ask -- start ...`) for a literal prompt.
 Times are compact clocks above a minute and costs show cents at
 or above $0.01. `ask help` is the overview, also available with `ask --help` or `ask -h`.
 `ask help COMMAND` and `ask COMMAND --help` are equivalent for built-in commands; `-h` works

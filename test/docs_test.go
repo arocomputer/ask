@@ -23,7 +23,7 @@ func TestDocs(t *testing.T) {
 	match(t, s.ask("docs", "--search", "ASK_MAX_COST").stdout, `(?m)^agents:\d+ `)
 	eq(t, s.ask("docs", "claude", "--url").stdout, "https://github.com/arocomputer/ask/blob/main/packages/claude/README.md\n")
 	footer := regexp.MustCompile(`docs  ask docs ([a-z]+)\n$`)
-	for _, topic := range []string{"run", "batch", "bench", "show", "runs", "stop", "wait", "clean", "models", "title", "install", "packages", "remove", "hooks", "agents", "setup", "settings", "docs", "update"} {
+	for _, topic := range []string{"run", "start", "batch", "bench", "show", "runs", "stop", "wait", "clean", "models", "title", "install", "packages", "remove", "hooks", "agents", "setup", "settings", "docs", "update"} {
 		m := footer.FindStringSubmatch(s.ask("help", topic).stdout)
 		if m == nil {
 			t.Fatalf("help %s has no docs footer", topic)

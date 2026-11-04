@@ -251,9 +251,15 @@ guidance; completed runs accept a follow-up in a terminal or require an explicit
 Auth, refusal and cost blockers need resolution and an explicit prompt; see [Runs](runs.md).
 `--continue RUN` and `-c RUN` remain supported script aliases for conversation follow-ups.
 
+For detached work, `ask start [run options] PROMPT` returns a stable run ID after the worker
+is admitted. `ask wait A B` collects the first completion from that explicit set, including
+already completed work; `ask wait --id A B` returns just its identity. Use `ask stop ID` to
+cancel. See [Runs](runs.md#starting-detached-tasks) for lifecycle guarantees and examples.
+
 ## Output
 
-- **stdout** has only the answer: text, or JSON under `--json`/`--schema`. It is safe to pipe.
+- **stdout** for a normal run has only the answer: text, or JSON under `--json`/`--schema`.
+  It is safe to pipe. `start` and `wait --id` explicitly print identity instead.
 - **stderr** in a pipe has status lines when the run starts and ends, plus occasional activity
   lines when the agent reports them. Each begins with the run's name. The final line shows the
   model, outcome, time, what changed and reported usage.

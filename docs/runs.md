@@ -133,27 +133,78 @@ ask show summarize-public-api-src/api  # one task of a batch
 
 Showing a whole batch prints its outcome count on stderr and exits 1 if any task failed; saved wall time is not recorded.
 
-## Waiting for runs
+## Starting detached tasks
 
-`ask wait RUN` waits for a specific run, then prints its answer the way `ask show` does.
-Without `RUN`, `ask wait` collects the first active run to finish and watches only runs active
-when waiting begins. Answers go to stdout and status to stderr.
-Start runs in the background, keep working, and collect their answers. Wait
-until their started lines appear before calling `ask wait`; shell background jobs may not have
-created their run records yet:
+`ask start [run options] PROMPT` starts one task and prints its stable six-character ID on
+stdout, only after a detached worker has acquired the existing run and continuation locks and
+saved pending state. It accepts the options from `ask help run`, including `-c RUN` for a
+follow-up, JSON/schema answers, directory, access, worktree, cost and timeout limits. Prompts
+can come from stdin. There is no daemon and no shell background job to manage.
 
 ```sh
-ask --model claude:sonnet-5.5 "Why does the login test fail?" >login.answer 2>login.status &
-ask --model codex:gpt-6.1-sol "Review the session code for races." >session.answer 2>session.status &
-# Wait for both started lines in the status files before collecting an answer.
-ask wait # prints the first active run to finish
-ask wait login-test-fail # a specific run
+a=$(ask start --model claude:sonnet-5.5 "Why does the login test fail?")
+b=$(ask start --model codex:gpt-6.1-sol "Review the session code for races.")
+done=$(ask wait --id "$a" "$b")
+ask show "$done"
+# Collect the other ID separately when ready; completed answers stay saved.
+ask wait "$a"
+ask wait "$b"
 ```
 
-The background commands also write their answers to their own files; redirecting them keeps answers
-and terminal status displays from interleaving. `ask wait` watches runs active when it starts, not
-a completion queue: use `ask show RUN` for a run that already finished. If none is active, it
-prints `ask: no runs are running` and exits 0. A stopped run exits 1 with a command to continue it.
+Exit 0 from `start` means admitted, not completed successfully. Validation and launch errors
+return nonzero without an ID. The worker creates its own ID; no flag or inherited per-task
+identity can select an existing run for execution. New names and IDs are claimed atomically;
+if concurrent launches chose the same readable name, one may fail with a retry diagnostic.
+Use returned IDs for orchestration, since conversation names move to their latest turn.
+
+The worker has its own session, no controlling terminal, and standard streams connected to
+`/dev/null`. It survives launcher exit and terminal hangup, including on Linux without a
+parent-death signal. Agents still use the usual process groups, timeout and cancellation.
+Host or sandbox process cleanup can end detached workers; detachment cannot override it.
+`ask stop ID` cancels the worker and its agents. Interrupting `ask wait` only stops waiting.
+
+A private `worker.log` in the run folder records fixed lifecycle messages. It never copies
+prompts, answers, environment, raw agent output, hook notes or arbitrary error text. Task and
+result records still contain the usual prompts, answers and agent error reports; they are
+private, not secret-redacted. Use `ask wait ID` or `ask show ID` to see agent failures. If
+recording fails or the worker dies, `wait` reports stopped/incomplete work and points to the
+lifecycle log. An abrupt kill may prevent a final log message. There is no automatic retry,
+restart, or guarantee that descendants are cleaned up after the worker is killed outright
+(on macOS in particular). Use normal cancellation whenever possible.
+
+If the launcher is killed before receiving its acknowledgement, the launch outcome can be
+uncertain. Inspect `ask runs` before retrying: ask does not pretend that handoff and delivery
+of the ID to another process are an atomic transaction. Readiness means the worker is admitted;
+it does not promise that the agent has started, or that the machine cannot fail afterward.
+
+## Waiting for runs
+
+`ask wait A B` returns the first finished run or task from exactly those references, including
+already finished work. It resolves all references before waiting and pins their directories,
+so a name moving to a follow-up cannot change what is being watched. If several selections are
+finished at the same poll, argument order wins. Invalid references fail before any result is
+returned. Saved completions remain available; waiting does not consume them.
+
+Answers go to stdout with the normal `ask show` contract. With multiple selections, stderr
+also prints `ask: completed ID` (or `ID<TAB>POSITION` for a batch task). `ask wait --id A B` prints
+only that stable identity on stdout, without the answer or a result wrapper. It exits 0 for a
+successful selection, 1 for a failed or stopped selection, and 2 for a usage error. This makes
+identity and answer retrieval separate operations. For a batch task, POSITION is its one-based
+array position in `ask show ID` output, not an `ID/POSITION` reference: numeric task names take
+precedence in those references. Failed and stopped selections also count
+as finished; check the exit status. Failure status remains visible on stderr, including with `--id`; `ask show ID` shows it again.
+
+Without references, `ask wait` snapshots active runs in the current repository, including its
+worktrees. Outside git it watches active runs under the current directory. It does not include
+later launches or previously completed work. If none is active, it prints
+`ask: no runs are running` and exits 0 with empty stdout, also with `--id`.
+Use explicit IDs when collecting a known set, especially when tasks may finish quickly.
+
+```sh
+ask wait "$a"            # answer of this exact run, even if already finished
+ask wait --id "$a" "$b"  # stable identity of the first selected completion
+ask wait                 # first active run in this repository to finish
+```
 
 ## Stopping a run
 
@@ -202,6 +253,7 @@ name (runs from before names have none):
 ├── tasks.json     prepared tasks, including optional kept_worktree {path, branch} for follow-ups
 ├── results.json   the results so far, rewritten whole after each task
 ├── recovery-N.json  live session, effective task and location for an unfinished attempt (when reported)
+├── worker.log     detached tasks only: fixed lifecycle messages, no captured output
 └── lock           held with an operating system lock while ask runs the run; the kernel names its pid
 ```
 

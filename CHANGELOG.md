@@ -25,6 +25,12 @@
   follow-ups in terminals. Keep successful batch tasks and auth/refusal/cost blockers untouched.
   Persist private live session and worktree metadata for interrupted attempts, invalidate stale
   rerun results, and avoid waiting on empty nonterminal stdin. Existing aliases remain supported.
+- Add `ask start` for detached tasks with stable IDs acknowledged only after lock acquisition
+  and pending-state recording, private lifecycle logs, and cancellation through `ask stop`.
+  `ask wait A B` selects the first completion from exactly those runs, including saved results;
+  `--id` separates machine-readable identity from answers. No-argument wait is scoped to the
+  current repository (or current directory outside git). Concurrent name/ID claims cannot
+  overwrite records or send a worker to a different run.
 
 - Show coarse Codex and Claude Code activity while runs work, including in `ask runs`. The
   optional `ASK_REPORT` activity field updates terminal rows and rate-limited plain status lines

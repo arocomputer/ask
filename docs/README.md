@@ -11,7 +11,7 @@ the names or ids printed by your runs.
 | [Setup](setup.md) | Setting ask up the first time, and checking it |
 | [Settings](settings.md) | Agents, defaults, cost limits, worktrees and apps, in a terminal or by key |
 | [Usage](usage.md) | One task: read and write, what changed, worktrees, JSON answers, output |
-| [Runs](runs.md) | Run names, follow-ups, listing, waiting, stopping and cleaning up runs |
+| [Runs](runs.md) | Detached tasks, stable IDs, run names, follow-ups, waiting, stopping and cleaning up runs |
 | [Batches](batches.md) | Many tasks in parallel, recorded runs, resuming |
 | [Bench](bench.md) | Comparing models on the same tasks, scored by your own checks |
 | [Models](models.md) | Model ids, effort, turning models on and off, and models.json |

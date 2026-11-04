@@ -179,14 +179,14 @@ func TestRuns(t *testing.T) {
 			eq(t, r.stdout, "fake: slow one\n")
 			slow.wait(t)
 		})
-		t.Run("reports idle normally and rejects extra args and options", func(t *testing.T) {
+		t.Run("reports idle normally and validates every reference and option", func(t *testing.T) {
 			s := fresh(t)
 			idle := s.ask("wait")
 			eq(t, idle.code, 0)
 			eq(t, idle.stderr, "ask: no runs are running\n")
 			r := s.ask("wait", "one", "two")
 			eq(t, r.code, 2)
-			match(t, r.stderr, `takes at most one run`)
+			match(t, r.stderr, `no run one`)
 			r = s.ask("wait", "-t", "3")
 			eq(t, r.code, 2)
 		})
@@ -231,6 +231,76 @@ while [ ! -f "$HOME/$prompt-release" ]; do sleep 0.05; done
 printf 'answer: %s\n' "$prompt"`)
 			return s
 		}
+		t.Run("an explicit set ignores unrelated completions and returns stable identity", func(t *testing.T) {
+			s := gated(t)
+			launch := func(prompt string) string {
+				out := s.ask("start", "-m", "gate:small", prompt)
+				eq(t, out.code, 0)
+				id := strings.TrimSpace(out.stdout)
+				t.Cleanup(func() { s.ask("stop", id) })
+				return id
+			}
+			a, b, other := launch("alpha"), launch("bravo"), launch("other")
+			waiter := s.start([]string{"wait", "--id", a, b}, "", nil)
+			s.write(filepath.Join(s.tmp, "other-release"), "")
+			eq(t, s.ask("wait", other).code, 0)
+			select {
+			case out := <-waiter.done:
+				t.Fatalf("returned an unrelated completion: %+v", out)
+			case <-time.After(350 * time.Millisecond):
+			}
+			s.write(filepath.Join(s.tmp, "bravo-release"), "")
+			out := waiter.wait(t)
+			eq(t, out.code, 0)
+			eq(t, out.stdout, b+"\n")
+			// The saved completion is eligible, even while the first selection is active.
+			eq(t, s.ask("wait", "--id", a, b).stdout, b+"\n")
+			answer := s.ask("wait", a, b)
+			eq(t, answer.stdout, "answer: bravo\n")
+			match(t, answer.stderr, `ask: completed `+b)
+			eq(t, s.ask("wait", "--id", b, "missing").code, 2)
+			eq(t, s.ask("wait", "--id", b, "missing").stdout, "")
+			s.write(filepath.Join(s.tmp, "alpha-release"), "")
+			eq(t, s.ask("wait", a).code, 0)
+			eq(t, s.ask("wait", "--id", a, b).stdout, a+"\n")
+		})
+		t.Run("no argument wait scopes active work to the repository or current directory", func(t *testing.T) {
+			s := gated(t)
+			repo, _ := s.repo()
+			other := s.ask("start", "-m", "gate:small", "outside")
+			eq(t, other.code, 0)
+			id := strings.TrimSpace(other.stdout)
+			t.Cleanup(func() { s.ask("stop", id) })
+			s.cwd = filepath.Join(s.tmp, "empty")
+			s.mkdir(s.cwd)
+			eq(t, s.ask("wait", "--id").stdout, "")
+			s.cwd = repo
+			eq(t, s.ask("wait", "--id").stdout, "")
+			eq(t, s.ask("wait").stderr, "ask: no runs are running\n")
+			inside := s.ask("start", "-m", "gate:small", "inside")
+			eq(t, inside.code, 0)
+			innerID := strings.TrimSpace(inside.stdout)
+			t.Cleanup(func() { s.ask("stop", innerID) })
+			waiter := s.start([]string{"wait", "--id"}, "", nil)
+			s.write(filepath.Join(s.tmp, "outside-release"), "")
+			eq(t, s.ask("wait", id).code, 0)
+			select {
+			case out := <-waiter.done:
+				t.Fatalf("repository wait collected outside work: %+v", out)
+			case <-time.After(350 * time.Millisecond):
+			}
+			s.write(filepath.Join(s.tmp, "inside-release"), "")
+			eq(t, waiter.wait(t).stdout, innerID+"\n")
+		})
+		t.Run("machine identity separates the run ID and position from numeric task names", func(t *testing.T) {
+			s := fresh(t)
+			s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"id":"custom","prompt":"a"},{"id":"1","prompt":"b"}]`, nil)
+			id := strings.SplitN(s.latest(), "-", 3)[1]
+			out := s.ask("wait", "--id", id+"/custom")
+			eq(t, out.code, 0)
+			eq(t, out.stdout, id+"\t1\n")
+			eq(t, s.ask("show", id+"/1").stdout, "fake: b\n")
+		})
 		t.Run("an explicit run ignores simultaneous runs that finish before or after it", func(t *testing.T) {
 			s := gated(t)
 			other := s.start([]string{"-m", "gate:small", "other"}, "", nil)

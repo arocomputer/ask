@@ -74,6 +74,7 @@ Usage
 
 Tasks
   run        Start a task explicitly
+  start      Start a detached task and return its ID
   continue   Follow up or finish unfinished work
   batch      Run tasks in parallel
   bench      Compare models
@@ -81,7 +82,7 @@ Tasks
 Runs
   runs       List recent runs
   show       Show an answer
-  wait       Wait for a run
+  wait       Wait for the first of selected runs
   stop       Stop a run
   clean      Remove old runs and landed worktrees
 
@@ -169,6 +170,33 @@ Examples
   git diff | ask --stdin "Review this diff"
   ask --model codex:gpt-6.1-sol --title "Review login" "Inspect the login flow."
   ask continue login-checked --write "Fix it and run the test."` + "\n\ndocs  ask docs usage"
+	case "start":
+		return `ask start · start a detached task and return its stable ID
+
+Usage
+  ask start [run options] PROMPT
+
+Uses the options from ask help run, including -c RUN for a follow-up.
+A prompt can come from stdin. No daemon: a detached worker owns the run lock
+and records results. The ID is printed only after admission succeeds.
+
+Output
+  stdout   The six-character run ID, one line; never the answer
+  stderr   Launch errors
+  exit     0 admitted · 1 launch failed · 2 usage error
+
+The worker survives launcher exit and terminal hangup, subject to host/sandbox
+process limits. Admission does not promise model success. Use ask wait or show
+for results and ask stop ID to cancel. No automatic retries or crash recovery.
+Private worker.log contains lifecycle messages only; tasks and results retain
+prompts and answers as usual. Agent output and hook notes are not logged.
+
+Examples
+  a=$(ask start --model claude:sonnet-5.5 "Inspect login.")
+  b=$(ask start --model codex:gpt-6.1-sol "Review sessions.")
+  done=$(ask wait --id "$a" "$b")
+  ask show "$done"
+  ask stop "$a"` + "\n\ndocs  ask docs runs"
 	case "continue":
 		return `ask continue · follow up or finish unfinished work
 
@@ -323,21 +351,28 @@ Examples
   ask runs
   ask runs --all -n 50` + "\n\ndocs  ask docs runs"
 	case "wait":
-		return `ask wait · wait for a run to finish
+		return `ask wait · wait for the first of selected runs to finish
 
 Usage
-  ask wait [RUN]
+  ask wait [--id] [RUN...]
 
-With RUN, wait for that run or task, or show it if already finished.
-Without RUN, wait for the first run that was active when waiting began.
+With references, return the first finished run or task from that exact set,
+including already finished work. Ties use argument order. References are pinned
+when waiting begins; use stable IDs to avoid following a moving name.
+Without references, snapshot active runs in this repository (all its worktrees),
+or under the current directory outside git. Later launches are not included.
+
+Options
+  --id     Print only the winner's stable ID (ID<TAB>POSITION for a batch task)
 
 Output
-  stdout   The answer, like ask show
-  stderr   The status line
-  exit     0 on success or no active runs · 1 if failed or stopped
+  stdout   The answer, like ask show; with --id, identity only
+  stderr   Status and errors; multiple selections also identify the winner
+  exit     0 success or no active runs · 1 failed/stopped · 2 usage error
 
 Examples
-  ask wait login-bug
+  ask wait k3f9a2 b7x01q
+  ask wait --id k3f9a2 b7x01q
   ask wait` + "\n\ndocs  ask docs runs"
 	case "clean":
 		return `ask clean · remove worktrees whose work has landed, and old runs

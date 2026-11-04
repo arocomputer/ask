@@ -69,12 +69,13 @@ for each harness's tools, access controls and continuation support.
 ## Many at once
 
 `ask batch` runs tasks in parallel, on one model or several, each in its own worktree if you
-like, and prints every answer as one JSON array. Start runs in the background and use
-`ask wait RUN` for a specific run, `ask wait` for the first active run to finish, or `ask show RUN`
-for a completed run. `ask continue RUN` without a prompt finishes stopped or failed work in a
-usable saved conversation, otherwise announces a restart. Successful batch tasks stay untouched;
-auth, refusal and cost blockers need an explicit prompt after resolution. Completed runs accept a
-follow-up in a terminal; scripts supply a prompt.
+like, and prints every answer as one JSON array. `ask start "task"` starts a detached task and
+returns its stable ID. Use `ask wait A B` for the first completion from an explicit set,
+`ask wait --id A B` for just its identity, or `ask wait ID` for a specific answer. `ask show ID`
+prints a saved answer; `ask stop ID` cancels a run. `ask continue RUN` without a prompt finishes
+stopped or failed work in a usable saved conversation, otherwise announces a restart. Successful
+batch tasks stay untouched; auth, refusal and cost blockers need an explicit prompt after resolution.
+Completed runs accept a follow-up in a terminal; scripts supply a prompt.
 
 <p align="center"><img src="assets/screens/dark/batch.svg#gh-dark-mode-only" alt="ask batch running a review on three models at once" width="760">
   <img src="assets/screens/light/batch.svg#gh-light-mode-only" alt="ask batch running a review on three models at once" width="760"></p>

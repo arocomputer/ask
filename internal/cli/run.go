@@ -251,6 +251,9 @@ func runPrompt(a *agent.Registry, opts home.Object, prompt string) (int, error) 
 	if e != nil {
 		return 0, e
 	}
+	if opts.B("detach") {
+		return startWorker(a.Paths, name, tasks, !opts.B("--no-hooks"))
+	}
 	r, e := runs.Create(a.Paths, id, name, tasks)
 	if e != nil {
 		return 0, e
@@ -262,7 +265,7 @@ func runPrompt(a *agent.Registry, opts home.Object, prompt string) (int, error) 
 	for _, n := range notes {
 		report(runs.Event{Kind: "note", Note: n})
 	}
-	results, e := runs.Execute(a, r, 1, !opts.B("--no-hooks"), report)
+	results, e := runs.Execute(a, r, 1, !opts.B("--no-hooks"), report, nil)
 	process.AwaitShutdown()
 	final := ""
 	if e == nil {
@@ -529,7 +532,7 @@ func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hoo
 	if smart {
 		run = runs.Continue
 	}
-	results, e := run(a, r, jobs, hooksOn, report, selected...)
+	results, e := run(a, r, jobs, hooksOn, report, nil, selected...)
 	process.AwaitShutdown()
 	summary := ""
 	if batch {

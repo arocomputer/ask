@@ -15,89 +15,119 @@ import (
 	"github.com/arocomputer/ask/internal/tui"
 )
 
-// wait prints a selected run or task when finished, or waits for any active run without a ref.
-func wait(p home.Paths, words []string) (int, error) {
+// wait pins all references before polling. Explicit sets include saved completions; without
+// references it snapshots active runs in this repository (or current directory outside git).
+func wait(p home.Paths, opts home.Object, words []string) (int, error) {
+	type selection struct {
+		r   *runs.Run
+		i   int
+		ref string
+	}
+	selected := []selection{}
+	for _, ref := range words {
+		r, i, err := runs.Open(p, ref)
+		if err != nil {
+			return 0, err
+		}
+		selected = append(selected, selection{r, i, ref})
+	}
 	if len(words) == 0 {
-		return waitAny(p)
-	}
-	if len(words) != 1 {
-		return 0, home.Usage("ask wait takes at most one run, like ask wait login-checked")
-	}
-	r, i, e := runs.Open(p, words[0])
-	if e != nil {
-		return 0, e
+		dir, err := os.Getwd()
+		if err != nil {
+			return 0, err
+		}
+		if real, err := filepath.EvalSymlinks(dir); err == nil {
+			dir = real
+		}
+		checkouts := git.Checkouts(dir)
+		if checkouts == nil {
+			checkouts = []string{dir}
+		}
+		for _, r := range runs.All(p) {
+			if runs.In(r, checkouts) && runs.Owner(r) != 0 {
+				i := -1
+				if len(r.Tasks) == 1 {
+					i = 0
+				}
+				selected = append(selected, selection{r, i, r.ID})
+			}
+		}
+		if len(selected) == 0 {
+			fmt.Fprintln(os.Stderr, "ask: no runs are running")
+			return 0, nil
+		}
 	}
 	for {
-		// Check ownership before reloading so a released lock cannot leave us with stale results.
-		owner := runs.Owner(r)
-		pending, known := runs.Pending(r, owner)
-		// Read results after the pending snapshot, so a completed task cannot return an older attempt.
-		// Pin the directory: a follow-up can take over the name while we wait.
-		r, _, e = runs.Open(p, r.Dir)
-		if e != nil {
-			return 0, e
-		}
-		if runs.Owner(r) != owner {
-			continue
-		}
-		unfinished := -1
-		for at, result := range r.Results {
-			if (i < 0 || at == i) && (result == nil || owner == 0 && known && pending[at]) {
-				unfinished = at
-				break
+		for at := range selected {
+			s := &selected[at]
+			// Read pending state before results so an attempt cannot return its earlier failure.
+			owner := runs.Owner(s.r)
+			pending, known := runs.Pending(s.r, owner)
+			r, _, err := runs.Open(p, s.r.Dir)
+			if err != nil {
+				return 0, err
 			}
-		}
-		if unfinished < 0 {
+			if runs.Owner(r) != owner {
+				continue
+			}
+			s.r = r
+			unfinished := -1
+			for i, result := range r.Results {
+				if (s.i < 0 || i == s.i) && (result == nil || known && pending[i]) {
+					unfinished = i
+					break
+				}
+			}
+			if unfinished < 0 && (owner == 0 || s.i >= 0 && known && !pending[s.i]) {
+				if opts.B("--id") {
+					fmt.Fprintln(os.Stdout, waitID(r, s.i))
+					if s.i < 0 {
+						fmt.Fprintln(os.Stderr, status.StyledLine(status.BatchSaved(r), os.Stderr))
+					} else {
+						fmt.Fprintln(os.Stderr, status.StyledLine(status.Done(r.Results[s.i]), os.Stderr))
+					}
+					for i, result := range r.Results {
+						if (s.i < 0 || i == s.i) && !result.B("ok") {
+							return 1, nil
+						}
+					}
+					return 0, nil
+				}
+				if len(selected) > 1 {
+					fmt.Fprintln(os.Stderr, "ask: completed "+waitID(r, s.i))
+				}
+				return showRun(r, home.Object{}, s.ref, s.i)
+			}
 			if owner == 0 {
-				return showRun(r, home.Object{}, words[0], i)
+				if len(selected) > 1 && !opts.B("--id") {
+					fmt.Fprintln(os.Stderr, "ask: completed "+waitID(r, s.i))
+				}
+				if opts.B("--id") {
+					fmt.Fprintln(os.Stdout, waitID(r, s.i))
+				}
+				ref := runs.Ref(r, unfinished)
+				rerun := r.Label()
+				if s.i >= 0 && len(r.Tasks) > 1 {
+					rerun = ref
+				}
+				fmt.Fprintf(os.Stderr, "ask %s · stopped · continue: ask continue %s\n", ref, rerun)
+				if _, err := os.Stat(filepath.Join(r.Dir, "worker.log")); err == nil {
+					fmt.Fprintln(os.Stderr, "ask: worker lifecycle log: "+filepath.Join(r.Dir, "worker.log"))
+				}
+				return 1, nil
 			}
-			if i >= 0 && known && !pending[i] {
-				return showRun(r, home.Object{}, words[0], i)
-			}
-		}
-		if owner == 0 {
-			ref := runs.Ref(r, unfinished)
-			rerun := r.Label()
-			if i >= 0 && len(r.Tasks) > 1 {
-				rerun = ref
-			}
-			fmt.Fprintf(os.Stderr, "ask %s · stopped · continue: ask continue %s\n", ref, rerun)
-			return 1, nil
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
 }
 
-// waitAny returns the first run that was active when waiting began and then finishes.
-func waitAny(p home.Paths) (int, error) {
-	active := map[string]bool{}
-	for _, r := range runs.All(p) {
-		if runs.Owner(r) != 0 {
-			active[r.ID] = true
-		}
+// A separate numeric position avoids pretending ID/POSITION is an unambiguous task reference:
+// saved numeric task IDs take precedence over positional references.
+func waitID(r *runs.Run, i int) string {
+	if i >= 0 && len(r.Tasks) > 1 {
+		return fmt.Sprintf("%s\t%d", r.ID, i+1)
 	}
-	if len(active) == 0 {
-		fmt.Fprintln(os.Stderr, "ask: no runs are running")
-		return 0, nil
-	}
-	for {
-		for _, r := range runs.All(p) {
-			if !active[r.ID] || runs.Owner(r) != 0 {
-				continue
-			}
-			pending, known := runs.Pending(r, 0)
-			for i, result := range r.Results {
-				if result != nil && !(known && pending[i]) {
-					continue
-				}
-				ref := runs.Ref(r, i)
-				fmt.Fprintf(os.Stderr, "ask %s · stopped · continue: ask continue %s\n", ref, r.Label())
-				return 1, nil
-			}
-			return show(p, home.Object{}, []string{r.ID})
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
+	return r.ID
 }
 
 // kept is a worktree a run left behind, with whether it can go and why.
