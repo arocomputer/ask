@@ -106,12 +106,12 @@ does not verify that your account can use it. Every model is on until you turn i
 
 `ask models --names` prints `agent:id<TAB>Display Name`, and `--all` in a pipe prints
 `agent:id<TAB>on` or `off`. At a terminal, `ask models` groups each agent's ids with their names
-and cost limits. `ask help` shows each agent's models on a line, or how many when there are
-more than a dozen, including listing failures. `NO_COLOR` removes styling.
+and cost limits. `ask help` is a compact command overview and does not discover models.
+`NO_COLOR` removes styling.
 
 ## Turning models on and off
 
-Turn off what you don't use, so `ask models`, help and the agents that pick from them see only
+Turn off what you don't use, so `ask models` and the agents that pick from them see only
 the rest:
 
 ```sh
