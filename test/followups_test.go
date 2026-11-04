@@ -237,7 +237,10 @@ func TestContinueCommand(t *testing.T) {
 	t.Run("piped input is a follow-up prompt", func(t *testing.T) {
 		s := fresh(t)
 		first := s.ask("--wait", "-m", "fake:small", "investigate")
-		got := s.run([]string{"continue", "--wait", runID(t, first.stderr)}, "fix it", nil)
+		without := s.run([]string{"continue", "--wait", runID(t, first.stderr)}, "fix it", nil)
+		eq(t, without.code, 2)
+		eq(t, len(s.calls()), 1)
+		got := s.run([]string{"continue", "--wait", runID(t, first.stderr), "-"}, "fix it", nil)
 		eq(t, got.code, 0)
 		eq(t, got.stdout, "fake: fix it\n")
 		got = s.run([]string{"continue", "--wait", runID(t, first.stderr), "-"}, "another fix", nil)

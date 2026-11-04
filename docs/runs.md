@@ -88,9 +88,8 @@ ask continue login-test-fail --max-cost 5 "I resolved the blocker; finish the ta
 printf '%s' 'Now add tests.' | ask continue login-test-fail -
 ```
 
-Explicit prompts follow up as usual. Use `-` to read streamed or delayed stdin until EOF.
-Without `-`, stdin is read only when input is already available, then through EOF as usual;
-an open empty pipe cannot hang state-based recovery. For reliable scripting, supply a prompt argument or `-`.
+Explicit prompts follow up as usual. Use `-` to read stdin until EOF; without it,
+promptless recovery never reads stdin, so its behavior does not depend on pipe timing.
 
 `ask batch --resume RUN` remains a supported script alias for this recovery of unfinished or
 failed batch tasks; see [Batches](batches.md#resuming).

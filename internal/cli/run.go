@@ -298,13 +298,9 @@ func continueRun(a *agent.Registry, opts home.Object, words []string) (int, erro
 	if fromStdin && stdinTerminal() {
 		return 0, home.Usage("no prompt: pipe it in after -")
 	}
-	if (prompt == "" || fromStdin) && !stdinTerminal() {
+	if fromStdin {
 		var err error
-		if fromStdin {
-			prompt, err = home.ReadInput("-", "prompt")
-		} else {
-			prompt, err = availablePrompt()
-		}
+		prompt, err = home.ReadInput("-", "prompt")
 		if err != nil {
 			return 0, err
 		}

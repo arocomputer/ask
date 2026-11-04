@@ -71,14 +71,14 @@ func overview(a *agent.Registry) string {
 Usage
   ask [options] PROMPT         Start a task; prints its ID
 
-  runs                         List recent runs
-  show RUN                     Inspect a run without waiting
-  wait RUN                     Wait for its result
-  continue RUN [PROMPT]        Follow up or finish unfinished work
-  stop RUN                     Stop a run
+  ask runs                     List recent runs
+  ask show RUN                 Inspect a run without waiting
+  ask wait RUN                 Wait for its result
+  ask continue RUN [PROMPT]    Follow up or finish unfinished work
+  ask stop RUN                 Stop a run
 
-  models                       List available models
-  settings                     Change defaults and agents
+  ask models                   List available models
+  ask settings                 Change defaults and agents
 
 More: batch · bench · clean · docs · install · packages · remove · setup · update`}
 	commands := find.Sorted(a.Paths, "commands")
@@ -183,7 +183,7 @@ Follow-ups keep their directory and inherit model/access; -m, -r and -w override
 Recovery keeps saved task options and returns the existing run ID by default.
 --wait blocks for results, --jobs N sets parallelism, --no-hooks skips hooks.
 With --wait, recovery diagnostics go to stderr.
-Use - for streamed stdin prompts; immediately available piped input also works.
+Use - to read a follow-up prompt from stdin.
 See ask help run for other follow-up options.
 
 Examples

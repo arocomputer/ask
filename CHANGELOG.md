@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Require `-` for follow-up prompts on stdin, so pipe timing cannot change recovery behavior.
 - Add `ask runs --json` metadata and `ask wait --json` results with stable run IDs and batch
   positions. Report running and stopped selections in `ask show --json` with exit status 1;
   completed show results retain their format. Foreground start status includes the stable ID.
