@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep the caller's foreground or background choice when titling Ask commands in Claude Code.
 - Show coarse Codex and Claude Code activity while runs work, including in `ask runs`. The
   optional `ASK_REPORT` activity field updates terminal rows and rate-limited plain status lines
   without exposing commands, paths, reasoning or output; malformed activity cannot hide usage

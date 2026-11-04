@@ -52,9 +52,9 @@ write that description: `ask settings set hook on` adds a `PreToolUse` hook for 
 ```
 
 `ask title --hook` reads Claude Code's hook event on stdin. For a command that runs ask, it answers
-with the same tool input, the title as its description, and `run_in_background` set, so every ask
-run shows as `Sonnet 5.5 · Fix the login test · write` and runs in the background, whatever the
-agent wrote. For any other command it prints nothing and Claude Code carries on. It never blocks
+with the same tool input and the title as its description, so an ask run can show as
+`Sonnet 5.5 · Fix the login test · write`. It preserves the caller's choice of foreground or
+background execution. For any other command it prints nothing and Claude Code carries on. It never blocks
 a command: unreadable input prints nothing and exits 0. The original command is never changed.
 
 ## Agent sessions

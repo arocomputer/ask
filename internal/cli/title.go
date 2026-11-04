@@ -248,8 +248,8 @@ func commandTitle(a *agent.Registry, command, description string) string {
 }
 
 // hookTitle answers a PreToolUse hook event on stdin, the format Claude Code uses: for a shell
-// command that runs ask, it prints the tool input with the title as its description and
-// run_in_background set; for anything else, or input it cannot read, it prints nothing.
+// command that runs ask, it prints the tool input with the title as its description;
+// for anything else, or input it cannot read, it prints nothing.
 // It always exits 0, so a host never blocks a command on a title.
 func hookTitle(a *agent.Registry) (int, error) {
 	b, _ := io.ReadAll(os.Stdin)
@@ -270,7 +270,6 @@ func hookTitle(a *agent.Registry) (int, error) {
 	}
 	updated := input.Clone()
 	updated.Set("description", title)
-	updated.Set("run_in_background", true)
 	fmt.Fprintln(os.Stdout, home.JSON(home.O("hookSpecificOutput", home.O("hookEventName", "PreToolUse", "updatedInput", updated)), false))
 	return 0, nil
 }

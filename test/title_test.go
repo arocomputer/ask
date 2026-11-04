@@ -40,7 +40,9 @@ second line'`, "", "Small One · First line\n"},
 	t.Run("ask title --hook answers a PreToolUse event for ask commands and stays silent otherwise", func(t *testing.T) {
 		s := fresh(t)
 		event := `{"tool_name":"Bash","tool_input":{"command":"ask -m fake:small hi","description":"Say hi","timeout":5}}`
-		eq(t, s.run([]string{"title", "--hook"}, event, nil).stdout, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"ask -m fake:small hi","description":"Small One · Say hi","run_in_background":true,"timeout":5}}}`+"\n")
+		eq(t, s.run([]string{"title", "--hook"}, event, nil).stdout, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"ask -m fake:small hi","description":"Small One · Say hi","timeout":5}}}`+"\n")
+		background := `{"tool_name":"Bash","tool_input":{"command":"ask -m fake:small hi","description":"Say hi","run_in_background":true}}`
+		eq(t, s.run([]string{"title", "--hook"}, background, nil).stdout, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"ask -m fake:small hi","description":"Small One · Say hi","run_in_background":true}}}`+"\n")
 		other := s.run([]string{"title", "--hook"}, `{"tool_name":"Bash","tool_input":{"command":"ls","description":"List"}}`, nil)
 		eq(t, other.stdout+other.stderr, "")
 		eq(t, other.code, 0)
