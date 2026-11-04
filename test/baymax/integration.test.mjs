@@ -20,7 +20,7 @@ for (const name of names) {
     t.after(s.cleanup);
     let first;
     await t.test('write answer, usage and session reach the run record', async () => {
-      const out = await s.run(['-m', `${name}:${p.model}`, '-w', 'task']);
+      const out = await s.run(['-m', `${name}:${p.model}`, '--wait', '-w', 'task']);
       assert.equal(out.code, 0, out.stderr);
       const answer = p.answer || 'baymax answer';
       assert.equal(out.stdout, `${answer}\n`);
@@ -36,7 +36,7 @@ for (const name of names) {
     });
     await t.test(p.read === false ? 'read is refused before any prompt is sent' : 'read succeeds and is recorded as read access', async () => {
       const before = s.calls().length;
-      const out = await s.run(['-m', `${name}:${p.model}`, '-r', 'task']);
+      const out = await s.run(['-m', `${name}:${p.model}`, '--wait', '-r', 'task']);
       const { result } = s.record(out);
       if (p.read === false) {
         assert.equal(out.code, 1, out.stderr);
@@ -56,7 +56,7 @@ for (const name of names) {
     await t.test(p.session === false ? 'sessionless runs cannot be continued' : 'continuation passes the saved session to the fake CLI', async () => {
       assert.ok(first, 'initial run must succeed');
       const before = s.calls().length;
-      const out = await s.run(['-c', first.id, 'task']);
+      const out = await s.run(['-c', first.id, '--wait', 'task']);
       if (p.session === false) {
         assert.equal(out.code, 2, out.stderr);
         assert.match(out.stderr, /reported no session/);
@@ -75,7 +75,7 @@ for (const name of names) {
     });
     await t.test('harness failure is persisted without a successful answer', async () => {
       const before = s.calls().length;
-      const out = await s.run(['-m', `${name}:${p.model}`, '-w', 'fail'], p.failure || { FAKE_FAIL: 'fail' });
+      const out = await s.run(['-m', `${name}:${p.model}`, '--wait', '-w', 'fail'], p.failure || { FAKE_FAIL: 'fail' });
       assert.equal(out.code, 1, out.stderr);
       const { result } = s.record(out);
       assert.equal(result.ok, false);

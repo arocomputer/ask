@@ -94,14 +94,14 @@ function environment(s, result, access, cwd = s.work) {
 
 test('-w edits a normal folder with the isolated write environment', options, async (t) => {
   const s = fixture(t);
-  const [result] = await s.run(['-m', 'writer:deterministic', '-w', 'normal edit']);
+  const [result] = await s.run(['-m', 'writer:deterministic', '--wait', '-w', 'normal edit']);
   environment(s, result, 'write');
   assert.equal(readFileSync(join(s.work, 'project.txt'), 'utf8'), 'normal edit\n');
 });
 
 test('-r leaves the project unchanged with the isolated read environment', options, async (t) => {
   const s = fixture(t);
-  const [result] = await s.run(['-m', 'writer:deterministic', '-r', 'attempted edit']);
+  const [result] = await s.run(['-m', 'writer:deterministic', '--wait', '-r', 'attempted edit']);
   environment(s, result, 'read');
   assert.equal(readFileSync(join(s.work, 'project.txt'), 'utf8'), original);
 });
@@ -109,7 +109,7 @@ test('-r leaves the project unchanged with the isolated read environment', optio
 test('a checkout write records its changed path and excludes pre-existing edits', options, async (t) => {
   const s = await repository(t);
   writeFileSync(join(s.work, 'unrelated.txt'), 'pre-existing edit\n');
-  const [result] = await s.run(['-m', 'writer:deterministic', '-w', 'checkout edit']);
+  const [result] = await s.run(['-m', 'writer:deterministic', '--wait', '-w', 'checkout edit']);
   environment(s, result, 'write');
   assert.equal(readFileSync(join(s.work, 'project.txt'), 'utf8'), 'checkout edit\n');
   assert.equal(readFileSync(join(s.work, 'unrelated.txt'), 'utf8'), 'pre-existing edit\n');
@@ -118,7 +118,7 @@ test('a checkout write records its changed path and excludes pre-existing edits'
 
 test('a failed writer retains its actual changes without recording a successful answer', options, async (t) => {
   const s = await repository(t);
-  const [result] = await s.run(['-m', 'writer:deterministic', '-w', 'fail after edit'], '', 1);
+  const [result] = await s.run(['-m', 'writer:deterministic', '--wait', '-w', 'fail after edit'], '', 1);
   assert.equal(result.ok, false);
   assert.match(result.error, /simulated writer failed after editing/);
   assert.equal(result.answer, undefined);
@@ -132,7 +132,7 @@ test('--worktree keeps the write in its worktree and leaves the original checkou
   const head = await s.git('rev-parse', 'HEAD');
   writeFileSync(join(s.work, 'project.txt'), 'uncommitted original\n');
   const before = await s.git('status', '--porcelain=v1');
-  const [result] = await s.run(['-m', 'writer:deterministic', '-w', '--worktree', 'worktree edit']);
+  const [result] = await s.run(['-m', 'writer:deterministic', '--wait', '-w', '--worktree', 'worktree edit']);
   const path = result.worktree?.path;
   assert.ok(path && isAbsolute(path), 'changed worktree must be retained in the record');
   assert.equal(path, join(s.env.ASK_HOME, 'worktrees', result.run));
@@ -155,7 +155,7 @@ for (const writeDefault of [false, true]) {
       { id: 'default', prompt: 'default edit', dir: s.work },
       { id: 'override', prompt: 'override edit', dir: other, write: !writeDefault },
     ];
-    const results = await s.run(['batch', '-m', 'writer:deterministic', ...(writeDefault ? ['-w'] : []), '-'], JSON.stringify(tasks));
+    const results = await s.run(['batch', '--wait', '-m', 'writer:deterministic', ...(writeDefault ? ['-w'] : []), '-'], JSON.stringify(tasks));
     for (const [index, task] of tasks.entries()) {
       const result = results[index], write = task.write ?? writeDefault;
       environment(s, result, write ? 'write' : 'read', task.dir);
@@ -167,9 +167,9 @@ for (const writeDefault of [false, true]) {
 for (const readOverride of [false, true]) {
   test(`continuation ${readOverride ? '-r overrides inherited write' : 'inherits write access'}`, options, async (t) => {
     const s = fixture(t);
-    const [first] = await s.run(['-m', 'writer:deterministic', '-w', 'first edit']);
+    const [first] = await s.run(['-m', 'writer:deterministic', '--wait', '-w', 'first edit']);
     assert.equal(readFileSync(join(s.work, 'project.txt'), 'utf8'), 'first edit\n');
-    const [followup] = await s.run(['-c', first.run, ...(readOverride ? ['-r'] : []), 'followup edit']);
+    const [followup] = await s.run(['-c', first.run, '--wait', ...(readOverride ? ['-r'] : []), 'followup edit']);
     const observation = environment(s, followup, readOverride ? 'read' : 'write');
     assert.equal(observation.session, first.session);
     assert.equal(followup.session, first.session);

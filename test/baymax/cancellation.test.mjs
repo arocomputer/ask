@@ -54,7 +54,7 @@ function fixture(t) {
 
 test('a task timeout stops the agent and its descendants and records failure', { skip: !ask && 'run via ./x baymax', timeout: 20_000 }, async (t) => {
   const s = fixture(t);
-  const out = await execute(ask, ['-m', 'sleeper:slow', '-w', '-t', '1', 'wait'], { cwd: s.work, env: s.env, timeout: 15_000 });
+  const out = await execute(ask, ['-m', 'sleeper:slow', '--wait', '-w', '-t', '1', 'wait'], { cwd: s.work, env: s.env, timeout: 15_000 });
   assert.equal(out.code, 1, out.stderr);
   assert.equal(s.pids().length, 2, 'the simulated agent really launched its child');
   await until(() => s.pids().every((pid) => !alive(pid)));
@@ -67,7 +67,7 @@ test('a task timeout stops the agent and its descendants and records failure', {
 
 test('ask stop shuts down the entire running agent tree', { skip: !ask && 'run via ./x baymax', timeout: 20_000 }, async (t) => {
   const s = fixture(t);
-  const running = execute(ask, ['-m', 'sleeper:slow', '-w', 'stop me'], { cwd: s.work, env: s.env, timeout: 15_000 });
+  const running = execute(ask, ['-m', 'sleeper:slow', '--wait', '-w', 'stop me'], { cwd: s.work, env: s.env, timeout: 15_000 });
   // Attach a rejection handler immediately; later assertions still await the original promise.
   running.catch(() => {});
   await until(() => s.pids().length === 2);

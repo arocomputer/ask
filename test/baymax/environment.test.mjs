@@ -27,7 +27,7 @@ test('Pi environment fixture preserves auth and instructions while disabling int
     UNRELATED_SECRET: 'private-sentinel',
   };
   for (const access of ['-r', '-w']) {
-    const r = await s.run(['-m', 'pi:provider/model', access, 'task'], env);
+    const r = await s.run(['-m', 'pi:provider/model', '--wait', access, 'task'], env);
     assert.equal(r.code, 0, r.stderr);
     const call = s.calls().at(-1);
     assert.deepEqual(call.auth, { file: true, models: true, openai: true, awsSession: true, copilot: true, adc: true, unrelated: false, preload: false });
@@ -40,7 +40,7 @@ test('Pi environment fixture preserves auth and instructions while disabling int
   const before = s.calls().length;
   config.agents.pi.integrations.mcp = true;
   writeFileSync(path, JSON.stringify(config));
-  const denied = await s.run(['-r', '-m', 'pi:provider/model', 'task'], env);
+  const denied = await s.run(['-r', '-m', 'pi:provider/model', '--wait', 'task'], env);
   assert.equal(denied.code, 1);
   assert.equal(s.calls().length, before);
   assert.match(denied.stderr, /cannot enforce read/);
@@ -88,7 +88,7 @@ process.exit(r.status ?? 1);
   const path = join(s.env.ASK_HOME, 'environment.json');
   const policy = JSON.parse(readFileSync(path, 'utf8'));
   for (const access of ['-r', '-w']) {
-    const out = await s.run(['-m', `${name}:${model}`, access, 'task'], env);
+    const out = await s.run(['-m', `${name}:${model}`, '--wait', access, 'task'], env);
     assert.equal(out.code, 0, out.stderr);
     assert.match(out.stderr, /unavailable/, 'successful runs must show the integration limitation');
     assert.match(s.record(out).result.note, /unavailable/, 'limitation must survive in the saved run');
@@ -102,13 +102,13 @@ process.exit(r.status ?? 1);
   }
   policy.agents[name].inherit.push('TEST_PROVIDER_KEY');
   writeFileSync(path, JSON.stringify(policy));
-  const overridden = await s.run(['-m', `${name}:${model}`, '-w', 'task'], env);
+  const overridden = await s.run(['-m', `${name}:${model}`, '--wait', '-w', 'task'], env);
   assert.equal(overridden.code, 0, overridden.stderr);
   assert.equal(JSON.parse(readFileSync(log, 'utf8').trim().split('\n').at(-1)).variables.TEST_PROVIDER_KEY, true);
   const before = readFileSync(log, 'utf8');
   policy.agents[name].integrations = { plugins: false };
   writeFileSync(path, JSON.stringify(policy));
-  const denied = await s.run(['-m', `${name}:${model}`, '-w', 'task'], env);
+  const denied = await s.run(['-m', `${name}:${model}`, '--wait', '-w', 'task'], env);
   assert.equal(denied.code, 1);
   assert.match(s.record(denied).result.error, /cannot.*enforce/);
   assert.equal(readFileSync(log, 'utf8'), before);
