@@ -15,7 +15,7 @@ func TestSettings(t *testing.T) {
 		s.write(filepath.Join(s.home, "settings.json"), `{"model": "fake:big", "worktrees": "`+s.tmp+`/wt/ask-{name}", "branches": "agents/{name}"}`)
 		r := s.run([]string{"--wait", "-w", "--worktree", "-C", dir, "go"}, "", map[string]string{"FAKE_WRITE": "b.txt=new"})
 		eq(t, r.code, 0)
-		match(t, r.stderr, ` · started · Big · write · worktree ~/wt/ask-go\n`)
+		match(t, r.stderr, ` · started · Big · write · worktree ~/wt/ask-go · id [a-z0-9]{6}\n`)
 		match(t, r.stderr, ` · branch agents/go · `)
 		git("rev-parse", "--verify", "-q", "refs/heads/agents/go")
 		s.write(filepath.Join(s.home, "settings.json"), `{"jobs": 0}`)
