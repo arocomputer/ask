@@ -15,7 +15,7 @@ adapter prints nothing. Add the exact `provider/model` IDs you use to ask's
 `~/.ask/models.json`; consult upstream `pi --list-models` for available IDs.
 
 ```sh
-ask -m pi:anthropic/claude-sonnet-4-5 "Explain this project"
+ask --model pi:anthropic/claude-sonnet-4-5 "Explain this project"
 ask -w -m pi:anthropic/claude-sonnet-4-5#high "Fix the issue"
 ```
 

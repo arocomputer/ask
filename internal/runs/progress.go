@@ -43,3 +43,33 @@ func activities(r *Run, owner int) []string {
 	}
 	return out
 }
+
+type pendingRecord struct {
+	PID   int   `json:"pid"`
+	Tasks []int `json:"tasks"`
+}
+
+func pendingPath(r *Run) string { return filepath.Join(r.Dir, "pending.json") }
+
+// Pending reports unfinished task indices for the current owner, or the last stopped execution.
+func Pending(r *Run, owner int) (map[int]bool, bool) {
+	if owner < 0 {
+		return nil, false
+	}
+	data, err := os.ReadFile(pendingPath(r))
+	if err != nil {
+		return nil, false
+	}
+	var p pendingRecord
+	if json.Unmarshal(data, &p) != nil || p.PID <= 0 || owner > 0 && p.PID != owner || p.Tasks == nil {
+		return nil, false
+	}
+	out := make(map[int]bool, len(p.Tasks))
+	for _, i := range p.Tasks {
+		if i < 0 || i >= len(r.Tasks) {
+			return nil, false
+		}
+		out[i] = true
+	}
+	return out, true
+}

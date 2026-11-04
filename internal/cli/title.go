@@ -65,7 +65,7 @@ func invocationTitle(a *agent.Registry, argv []string, description, dir string, 
 		}
 		ref := words[0]
 		words = words[1:]
-		if len(words) == 0 && in.HasStdin && strings.TrimSpace(in.Stdin) != "" {
+		if (len(words) == 0 || len(words) == 1 && words[0] == "-") && in.HasStdin && strings.TrimSpace(in.Stdin) != "" {
 			words = []string{in.Stdin}
 		}
 		if len(words) == 0 {

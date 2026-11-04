@@ -34,6 +34,7 @@ second line'`, "", "Small One · First line\n"},
 	id := runID(t, first.stderr)
 	eq(t, s.ask("title", "--command", "ask -c "+id+" 'go again'").stdout, "Small One (high) · Go again · write\n")
 	eq(t, s.ask("title", "--command", "ask continue "+id+" 'go again'").stdout, "Small One (high) · Go again · write\n")
+	eq(t, s.ask("title", "--command", "ask continue "+id+" - <<'EOF'\ninspect logs\nEOF").stdout, "Small One (high) · Inspect logs · write\n")
 	eq(t, s.ask("title", "--command", "ask continue "+id).stdout, "Continue "+id+"\n")
 	eq(t, s.ask("title", "--command", "ask -c "+id+" -m fake:big -r 'look'").stdout, "Big · Look\n")
 	t.Run("ask title --hook answers a PreToolUse event for ask commands and stays silent otherwise", func(t *testing.T) {

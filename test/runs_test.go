@@ -279,6 +279,65 @@ printf 'answer: %s\n' "$prompt"`)
 			eq(t, waited, s.ask("show", "selected"))
 			eq(t, len(objects(t, waited.stdout)), 2)
 		})
+		t.Run("a failed task can be waited on while another task runs", func(t *testing.T) {
+			s := fresh(t)
+			s.localAgent("gate", `prompt=$(cat)
+if [ "$prompt" = failed ]; then echo failed >&2; exit 1; fi
+touch "$HOME/pending-ready"
+while [ ! -e "$HOME/release" ]; do sleep 0.05; done
+echo done`)
+			batch := s.start([]string{"batch", "-m", "gate:small", "-j", "2", "-"}, `[{"id":"bad","prompt":"failed"},{"id":"slow","prompt":"pending"}]`, nil)
+			until(t, func() bool { return exists(filepath.Join(s.tmp, "pending-ready")) })
+			waited := s.ask("wait", "failed/bad")
+			eq(t, waited.code, 1)
+			match(t, waited.stderr, `failed`)
+			s.write(filepath.Join(s.tmp, "release"), "")
+			eq(t, batch.wait(t).code, 1)
+		})
+		t.Run("waiting for a rerun does not return its earlier failure", func(t *testing.T) {
+			s := fresh(t)
+			s.localAgent("retry", `cat >/dev/null
+if [ ! -e "$HOME/first" ]; then touch "$HOME/first"; echo failed >&2; exit 1; fi
+touch "$HOME/retry-started"
+while [ ! -e "$HOME/release" ]; do sleep 0.05; done
+echo success`)
+			first := s.ask("-m", "retry:small", "retry")
+			eq(t, first.code, 1)
+			id := runID(t, first.stderr)
+			rerun := s.start([]string{"continue", id}, "", nil)
+			until(t, func() bool { return exists(filepath.Join(s.tmp, "retry-started")) })
+			waiter := s.start([]string{"wait", id}, "", nil)
+			select {
+			case out := <-waiter.done:
+				t.Fatalf("wait returned the old result: %+v", out)
+			case <-time.After(350 * time.Millisecond):
+			}
+			s.write(filepath.Join(s.tmp, "release"), "")
+			eq(t, rerun.wait(t).code, 0)
+			got := waiter.wait(t)
+			eq(t, got.code, 0)
+			eq(t, got.stdout, "success\n")
+		})
+		t.Run("an interrupted rerun is reported as stopped, not as its old failure", func(t *testing.T) {
+			s := fresh(t)
+			s.localAgent("retry", `cat >/dev/null
+if [ ! -e "$HOME/first" ]; then touch "$HOME/first"; echo old-failure >&2; exit 1; fi
+touch "$HOME/retry-started"
+sleep 10`)
+			first := s.ask("-m", "retry:small", "retry")
+			id := runID(t, first.stderr)
+			rerun := s.start([]string{"continue", id}, "", nil)
+			until(t, func() bool { return exists(filepath.Join(s.tmp, "retry-started")) })
+			waiter := s.start([]string{"wait", id}, "", nil)
+			time.Sleep(350 * time.Millisecond)
+			eq(t, s.ask("stop", id).code, 0)
+			rerun.wait(t)
+			got := waiter.wait(t)
+			eq(t, got.code, 1)
+			match(t, got.stderr, `stopped · rerun: ask continue `+id)
+			noMatch(t, got.stderr, `old-failure`)
+			match(t, s.ask("runs").stdout, `stopped .* rerun: ask continue `+id)
+		})
 		t.Run("saved failures return the same output and exit status as show", func(t *testing.T) {
 			s := fresh(t)
 			single := s.run([]string{"-m", "fake:small", "fail"}, "", map[string]string{"FAKE_FAIL": "fail"})
@@ -312,7 +371,7 @@ printf 'answer: %s\n' "$prompt"`)
 				waited := s.ask("wait", ref)
 				eq(t, waited.code, 1)
 				eq(t, waited.stdout, "")
-				eq(t, waited.stderr, "ask finished/2 · stopped · rerun: ask continue finished\n")
+				eq(t, waited.stderr, "ask finished/2 · stopped · rerun: ask continue "+ref+"\n")
 			}
 			eq(t, s.ask("wait", "finished/1"), s.ask("show", "finished/1"))
 		})

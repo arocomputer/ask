@@ -51,7 +51,8 @@ and a run that has finished; ask says so when either is missing.
 ## Rerunning unfinished work
 
 `ask continue RUN` without a prompt reruns a stopped or failed run from the beginning. For a
-batch, it reruns only unfinished or failed tasks, leaving successful results in place. ask tells
+batch, it reruns only unfinished or failed tasks, leaving successful results in place. A completed
+run needs a prompt. Use `RUN/TASK` to rerun just one unfinished or failed batch task. ask tells
 you on stderr that it is rerunning work from the beginning; stdout still carries only answers.
 Supply a prompt to follow up in the saved conversation instead.
 

@@ -102,4 +102,4 @@ Existing records keep their values. A new follow-up inherits the recorded model 
 and reuses a kept worktree's recorded path and branch even after `worktrees` or `branches` changes.
 When the earlier run kept no worktree, its follow-up creates one using the current settings.
 Resuming an older saved follow-up without a recorded path and branch still needs its original
-worktree directory and branch settings; a new `ask --continue RUN` uses the saved result's location.
+worktree directory and branch settings; a new `ask continue RUN "prompt"` uses the saved result's location.

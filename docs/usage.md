@@ -5,7 +5,7 @@ ask [options] "prompt"
 ask run [options] "prompt"
 ```
 
-`ask help` is a compact reference with the models installed here. `ask help batch`,
+`ask help` is a compact command reference. `ask help batch`,
 `ask help hooks` and `ask help agents` describe their contracts.
 
 Choose `MODEL` from `ask models`. Every run uses an explicit model: from `--model`, a follow-up, or

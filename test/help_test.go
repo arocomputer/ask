@@ -32,7 +32,7 @@ func TestHelp(t *testing.T) {
 		r := s.ask("run", "--help")
 		match(t, r.stdout, `--title TEXT`)
 		noMatch(t, r.stdout, `-t,? --title`)
-		match(t, r.stdout, `--timeout SECONDS.*alias: -t`)
+		match(t, r.stdout, `-t, --timeout SECONDS`)
 	})
 	t.Run("models show display names and keep ids for scripts", func(t *testing.T) {
 		s := fresh(t)

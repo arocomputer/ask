@@ -39,7 +39,7 @@ func TestModels(t *testing.T) {
 		start := time.Now()
 		r := s.run([]string{"-m", "fake:small", "spend it"}, "", map[string]string{"FAKE_SPEND": "spend"})
 		eq(t, r.code, 1)
-		match(t, r.stderr, `· failed · .* · stopped at the \$2\.00 cost limit; ask -c spend continues it`)
+		match(t, r.stderr, `· failed · .* · stopped at the \$2\.00 cost limit; follow up with ask continue spend PROMPT`)
 		if time.Since(start) > 10*time.Second {
 			t.Fatal("the agent was not stopped at its limit")
 		}

@@ -126,7 +126,8 @@ gap, not a claim that Kiro lacks headless mode.
 ask install team/tools                   # OWNER/REPO on GitHub
 ask install https://gitlab.com/team/tools.git
 ask install ~/code/my-ask-tools          # a local repository, while you work on it
-ask install                              # update every installed package
+ask update packages                      # update installed packages only
+ask install                              # older form: update every installed package
 ask packages                             # what is installed, and what each offers
 ask remove tools
 ```

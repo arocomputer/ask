@@ -23,7 +23,7 @@ they may change.
 
 ## How they change
 
-- **Additions don't break anything.** New result fields, report fields, environment variables,
+- **Additions are allowed.** New result fields, report fields, environment variables,
   events and options can appear in any release. Ignore what you don't know.
 - **A breaking change bumps the contract version.** Every agent, hook and command gets
   `ASK_CONTRACT`, now `1`. A change that could break one changes that number and is called out in
@@ -43,6 +43,8 @@ result and record field names remain stable. Status lines now put `started`, `ok
 `--continue` options remain supported script aliases for conversation follow-ups; batch `--resume`
 remains an alias for rerunning unfinished or failed tasks. Use `ask continue RUN "prompt"` for
 follow-ups and `ask continue RUN` for reruns from the beginning. The JSON `continue` field remains.
+`run` and `continue` are now built-in command names; an existing prompt or custom command beginning with one is shadowed. Use `ask -- run ...` or
+`ask -- continue ...` for a literal prompt.
 Times are compact clocks above a minute and costs show cents at
 or above $0.01. `ask help` is the overview, also available with `ask --help` or `ask -h`.
 `ask help COMMAND` and `ask COMMAND --help` are equivalent for built-in commands; `-h` works

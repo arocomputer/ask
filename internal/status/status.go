@@ -299,9 +299,13 @@ func Table(list []*runs.Run, now time.Time, color bool) string {
 		}
 		single := len(r.Tasks) == 1
 		state := ""
+		owner := runs.Owner(r)
+		pending, known := runs.Pending(r, owner)
 		switch {
-		case runs.Owner(r) != 0:
+		case owner != 0:
 			state = "running"
+		case known && len(pending) > 0:
+			state = "stopped"
 		case len(done) < len(r.Tasks):
 			state = "stopped"
 		case single:

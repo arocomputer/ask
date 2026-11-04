@@ -70,7 +70,7 @@ func overview(a *agent.Registry) string {
 
 Usage
   ask [options] PROMPT                 Start a task
-  ask continue RUN [options] [PROMPT] Continue a run
+  ask continue RUN [options] [PROMPT]  Continue a run
 
 Tasks
   run        Start a task explicitly
@@ -93,7 +93,7 @@ Setup
   install    Install or update packages
   packages   List installed packages
   remove     Remove packages
-  update     Update ask`}
+  update     Update ask or packages`}
 	commands := find.Sorted(a.Paths, "commands")
 	if len(commands) > 0 {
 		own := []string{"Your commands"}
@@ -136,18 +136,17 @@ Usage
   ask continue RUN [options] PROMPT
 
 Options
-  --model MODEL        agent:id[#effort], from ask models (or your default)
-  --continue RUN       Follow up on RUN or RUN/TASK, in its conversation
-  --write              Allow edits and commands (default: read only)
-  --read               Explicitly require read-only access (alias: -r)
-  --worktree           Work in a new git worktree and branch (with --write)
-  --directory DIR      Directory to work in (default: current; alias: --dir, -C)
-  --timeout SECONDS    Seconds per task (default: 900, or your settings; alias: -t)
-  --title TEXT         Replace prompt text in agent session titles
-  --max-cost USD       Dollars per task; 0 for no limit
-  --json               Require a JSON answer
-  --schema FILE        Require JSON matching this schema
-  --no-hooks           Skip your hooks
+  -m, --model MODEL      Agent and model, or use your configured default
+  -w, --write            Allow edits and commands
+  -r, --read             Require read-only access (the default)
+      --worktree         Work in a new worktree (with --write)
+  -C, --directory DIR    Working directory (default: current)
+  -t, --timeout SECONDS  Time limit (default: 900, or your settings)
+      --title TEXT       Replace the prompt in the session title
+      --max-cost USD     Cost limit; 0 means none
+      --json             Require a JSON answer
+      --schema FILE      Require JSON matching a schema
+      --no-hooks         Skip hooks
 
 Output
   stdout   The answer, and nothing else
@@ -166,7 +165,7 @@ Runs
 Examples
   ask --model claude:haiku-4.5 "Where is login checked?"
   ask --model codex:gpt-6.1-sol --title "Review login" "Inspect the login flow."
-  ask continue login-checked --write "Fix it and run the test."` + "\n\nShort forms: -m, -w, -c, -C, -t\ndocs  ask docs usage"
+  ask continue login-checked --write "Fix it and run the test."` + "\n\ndocs  ask docs usage"
 	case "continue":
 		return `ask continue · follow up or rerun unfinished work
 
@@ -176,7 +175,7 @@ Usage
 
 A prompt continues the agent's conversation. With no prompt, ask reruns
 interrupted or failed tasks from the beginning using their saved settings.
-Use RUN/TASK to follow up on one task in a batch. A completed run needs a prompt.
+Use RUN/TASK to follow up on or rerun one batch task. A completed run needs a prompt.
 
 Options
   -w, --write          Allow edits and commands
@@ -187,7 +186,7 @@ Options
 
 Follow-ups keep their directory and inherit model and access; --model, --read
 and --write can change the latter. A rerun uses its saved settings. Piped
-stdin can provide a prompt.
+stdin can provide a prompt; see ask help run for other task options.
 
 Examples
   ask continue login-bug "What did you find?"

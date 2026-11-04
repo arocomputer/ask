@@ -1,7 +1,7 @@
 # kilo
 
 The official ask agent for [Kilo CLI](https://kilo.ai/cli), the terminal agent from Kilo Code. It
-runs `kilo run` for ask, so `ask -m kilo:claude-sonnet-5.5 "..."` hands a task to Kilo.
+runs `kilo run` for ask, so `ask --model kilo:claude-sonnet-5.5 "..."` hands a task to Kilo.
 
 ## Install
 

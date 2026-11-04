@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/arocomputer/ask/internal/agent"
 	"github.com/arocomputer/ask/internal/home"
 )
 
@@ -38,5 +39,21 @@ func TestCompleteUsageOmitsMissingRounds(t *testing.T) {
 	}
 	if got := completeUsage(first, nil); got != nil {
 		t.Fatalf("unreported round treated as zero: %v", got)
+	}
+}
+
+func TestExecuteReloadsResultsAfterLock(t *testing.T) {
+	root := t.TempDir()
+	p := home.Paths{Home: root, Runs: filepath.Join(root, "runs")}
+	r, err := Create(p, "abc123", "", []home.Object{home.O("id", "1", "prompt", "test", "model", "fake:small", "dir", root, "timeout", 1.0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := home.WriteJSON(filepath.Join(r.Dir, "results.json"), home.ResultRecords([]home.Object{home.O("ok", true, "answer", "already done")})); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Execute(agent.New(p), r, 1, false, func(Event) { t.Error("finished task was rerun") })
+	if err != nil || len(got) != 1 || !got[0].B("ok") {
+		t.Fatalf("results: %v, error: %v", got, err)
 	}
 }

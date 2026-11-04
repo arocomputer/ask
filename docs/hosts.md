@@ -10,7 +10,7 @@ ask title --command "$command" --description "$description"
 `command` and `description` above are shell variables supplied by the host. To try it directly:
 
 ```sh
-ask title --command 'ask -m claude:sonnet-5.5 "Review login"' --description "review login"
+ask title --command 'ask --model claude:sonnet-5.5 "Review login"' --description "review login"
 ```
 
 `--command` is the complete shell command. ask splits literal shell words, quotes, backslash

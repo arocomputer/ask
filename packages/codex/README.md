@@ -1,7 +1,7 @@
 # codex
 
 The official ask agent for [Codex](https://developers.openai.com/codex).
-It runs `codex exec` for ask, so `ask -m codex:gpt-6.1-sol "..."` hands a task to Codex.
+It runs `codex exec` for ask, so `ask --model codex:gpt-6.1-sol "..."` hands a task to Codex.
 
 ## Install
 

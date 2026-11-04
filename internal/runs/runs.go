@@ -663,12 +663,18 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 
 // Execute runs unfinished tasks up to jobs at once and atomically saves each completed result.
 // A nil result slice with an error means no task started; callers may discard a newly created run.
-func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event)) ([]home.Object, error) {
+func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event), selected ...int) ([]home.Object, error) {
 	owner, e := lock(r)
 	if e != nil {
 		return nil, e
 	}
 	defer owner.Close()
+	// Another invocation may have finished after this run was opened but before we took the lock.
+	current, e := load(r.Dir)
+	if e != nil {
+		return nil, e
+	}
+	r.Results = current.Results
 	var h *hooks.Hooks
 	if enabled {
 		h = hooks.New(a.Paths)
@@ -676,7 +682,7 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 	ordered := !enabled || len(find.Find(a.Paths, "hooks")) == 0
 	todo := []int{}
 	for i, x := range r.Results {
-		if !x.B("ok") {
+		if !x.B("ok") && (len(selected) == 0 || selected[0] == i) {
 			todo = append(todo, i)
 		}
 	}
@@ -685,6 +691,27 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 		return nil, e
 	}
 	defer release()
+	pending := make(map[int]bool, len(todo))
+	for _, i := range todo {
+		pending[i] = true
+	}
+	pendingFile := pendingPath(r)
+	savePending := func() {
+		indices := make([]int, 0, len(pending))
+		for i := range pending {
+			indices = append(indices, i)
+		}
+		sort.Ints(indices)
+		if err := home.WriteJSON(pendingFile, pendingRecord{PID: os.Getpid(), Tasks: indices}); err != nil {
+			_ = os.Remove(pendingFile)
+		}
+	}
+	savePending()
+	defer func() {
+		if !process.Stopping() {
+			_ = os.Remove(pendingFile)
+		}
+	}()
 	if jobs > len(todo) {
 		jobs = len(todo)
 	}
@@ -754,6 +781,9 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 				e := home.WriteJSON(filepath.Join(r.Dir, "results.json"), home.ResultRecords(r.Results))
 				if e != nil {
 					failure = e
+				} else {
+					delete(pending, i)
+					savePending()
 				}
 				mu.Unlock()
 				if e != nil {

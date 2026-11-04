@@ -177,8 +177,8 @@ exec claude "$@"   # the prompt arrives on stdin
 ```sh
 chmod +x ~/.ask/agents/claude
 ask models
-ask -m claude:sonnet-5.5 "What does this project do?"
-ask -m claude:haiku-4.5 -w "Add a .editorconfig with 2-space indents."
+ask --model claude:sonnet-5.5 "What does this project do?"
+ask --model claude:haiku-4.5 --write "Add a .editorconfig with 2-space indents."
 ```
 
 This minimal agent does not report sessions or usage, so it cannot support `ask continue RUN "prompt"`.
@@ -234,7 +234,7 @@ console.log(out.result);
 Run inside ask's own repository:
 
 ```text
-$ ask -m claude:haiku-4.5 "Which file decides how ask formats its status lines? One sentence."
+$ ask --model claude:haiku-4.5 "Which file decides how ask formats its status lines? One sentence."
 ask file-decides-ask-formats · ok · Haiku 4.5 · 8.5s · 94.7k in · 439 out · $0.08
 The file `internal/status/status.go` formats ask's status lines, including event lines, completion
 status, and batch summaries.

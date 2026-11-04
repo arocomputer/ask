@@ -11,7 +11,7 @@ The adapter never changes trust settings.
 ```sh
 ask install e
 ask models e
-ask -m e:openai/gpt-5.5 "Explain this project"
+ask --model e:openai/gpt-5.5 "Explain this project"
 ask -w -m e:openai/gpt-5.5#high "Fix the issue"
 ```
 

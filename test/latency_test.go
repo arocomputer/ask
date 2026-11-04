@@ -49,7 +49,7 @@ func BenchmarkLatency(b *testing.B) {
 				}
 				calls := s.calls()
 				if c.name == "startup" {
-					if !strings.Contains(stdout.String(), "ask --model MODEL") || len(calls) != 0 {
+					if !strings.Contains(stdout.String(), "ask [options] PROMPT") || len(calls) != 0 {
 						b.Fatalf("expected help without an agent call; stdout=%q calls=%v", stdout.String(), calls)
 					}
 					continue

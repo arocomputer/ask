@@ -1,7 +1,7 @@
 # copilot
 
 The official ask agent for [GitHub Copilot CLI](https://github.com/github/copilot-cli). It runs
-`copilot` non-interactively for ask, so `ask -m copilot:gpt-5.4 "..."` hands a task to Copilot.
+`copilot` non-interactively for ask, so `ask --model copilot:gpt-5.4 "..."` hands a task to Copilot.
 
 ## Install
 

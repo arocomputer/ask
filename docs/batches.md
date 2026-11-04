@@ -50,17 +50,17 @@ ask batch -j 4 --model claude:haiku-4.5 tasks.json
 ```
 
 `-j` is how many tasks run at once (default 4, or the `jobs` [setting](settings.md)). In a terminal, stderr shows live task rows (queued, running with elapsed time and usage so far,
-ok or failed) above a running total of usage and cost, then a summary. The total leaves out cost when a task reported usage without one. In pipes, the same status lines go to stderr as tasks start and end:
+ok or failed) above a running total of usage and cost, then a summary. The total labels reported usage and leaves out cost when any task did not report it. In pipes, status lines go to stderr as tasks start and end:
 
 ```text
 ask summarize-public-api-src · started · batch of 3 · 3 at a time
 ask summarize-public-api-src/api · started · Haiku 4.5 · read · ~/code/app
 ask summarize-public-api-src/tests · started · GPT-6.1 Sol · read · ~/code/app
 ask summarize-public-api-src/fix · started · Haiku 4.5 · write · ~/code/app
-ask summarize-public-api-src/api · ok · Haiku 4.5 · 18.1s · 22.4k in · 640 out · $0.07
+ask summarize-public-api-src/api · ok · Haiku 4.5 · 18.1s · 22.4k in · 640 out · 18.0k cache read · $0.07
 ask summarize-public-api-src/fix · ok · Haiku 4.5 · 25.3s · 1 file changed · 30.2k in · 410 out · $0.03
 ask summarize-public-api-src/tests · failed · GPT-6.1 Sol · 15:00 · 12.0k in · 240 out · timed out
-ask summarize-public-api-src · 2/3 ok · 15:00 · 64.6k in · 1.3k out
+ask summarize-public-api-src · 2/3 ok · 15:00 · reported: 64.6k in · 1.3k out
 ```
 
 ## Results

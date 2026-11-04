@@ -20,7 +20,7 @@ func TestRun(t *testing.T) {
 		s := fresh(t)
 		r := s.ask()
 		eq(t, r.code, 0)
-		match(t, r.stdout, `ask --model MODEL`)
+		match(t, r.stdout, `ask \[options\] PROMPT`)
 	})
 	t.Run("a missing -m is a usage error that lists the models", func(t *testing.T) {
 		s := fresh(t)

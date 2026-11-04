@@ -30,24 +30,38 @@ func wait(p home.Paths, words []string) (int, error) {
 	for {
 		// Check ownership before reloading so a released lock cannot leave us with stale results.
 		owner := runs.Owner(r)
+		pending, known := runs.Pending(r, owner)
+		// Read results after the pending snapshot, so a completed task cannot return an older attempt.
 		// Pin the directory: a follow-up can take over the name while we wait.
 		r, _, e = runs.Open(p, r.Dir)
 		if e != nil {
 			return 0, e
 		}
+		if runs.Owner(r) != owner {
+			continue
+		}
 		unfinished := -1
 		for at, result := range r.Results {
-			if (i < 0 || at == i) && result == nil {
+			if (i < 0 || at == i) && (result == nil || owner == 0 && known && pending[at]) {
 				unfinished = at
 				break
 			}
 		}
-		if unfinished < 0 && (i >= 0 || owner == 0) {
-			return showRun(r, home.Object{}, words[0], i)
+		if unfinished < 0 {
+			if owner == 0 {
+				return showRun(r, home.Object{}, words[0], i)
+			}
+			if i >= 0 && known && !pending[i] {
+				return showRun(r, home.Object{}, words[0], i)
+			}
 		}
 		if owner == 0 {
 			ref := runs.Ref(r, unfinished)
-			fmt.Fprintf(os.Stderr, "ask %s · stopped · rerun: ask continue %s\n", ref, r.Label())
+			rerun := r.Label()
+			if i >= 0 && len(r.Tasks) > 1 {
+				rerun = ref
+			}
+			fmt.Fprintf(os.Stderr, "ask %s · stopped · rerun: ask continue %s\n", ref, rerun)
 			return 1, nil
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -71,8 +85,9 @@ func waitAny(p home.Paths) (int, error) {
 			if !active[r.ID] || runs.Owner(r) != 0 {
 				continue
 			}
+			pending, known := runs.Pending(r, 0)
 			for i, result := range r.Results {
-				if result != nil {
+				if result != nil && !(known && pending[i]) {
 					continue
 				}
 				ref := runs.Ref(r, i)

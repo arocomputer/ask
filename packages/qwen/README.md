@@ -1,7 +1,7 @@
 # qwen
 
 The official ask agent for [Qwen Code](https://github.com/QwenLM/qwen-code). It runs `qwen` headless
-for ask, so `ask -m qwen:qwen-3-coder-plus "..."` hands a task to Qwen Code.
+for ask, so `ask --model qwen:qwen-3-coder-plus "..."` hands a task to Qwen Code.
 
 ## Install
 

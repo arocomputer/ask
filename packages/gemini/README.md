@@ -1,7 +1,7 @@
 # gemini
 
 The official ask agent for [Gemini CLI](https://geminicli.com). It runs `gemini` headless for ask,
-so `ask -m gemini:gemini-3.5-flash "..."` hands a task to Gemini CLI.
+so `ask --model gemini:gemini-3.5-flash "..."` hands a task to Gemini CLI.
 
 ## Install
 

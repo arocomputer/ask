@@ -280,14 +280,24 @@ func continueRun(a *agent.Registry, opts home.Object, words []string) (int, erro
 	}
 	ref := words[0]
 	prompt := strings.Join(words[1:], " ")
-	if prompt == "" && !stdinTerminal() {
+	fromStdin := prompt == "-"
+	if fromStdin && stdinTerminal() {
+		return 0, home.Usage("no prompt: pipe it in after -")
+	}
+	if (prompt == "" || fromStdin) && !stdinTerminal() {
 		var err error
 		prompt, err = home.ReadInput("-", "prompt")
 		if err != nil {
 			return 0, err
 		}
 	}
+	if fromStdin && home.Trim(prompt) == "" {
+		return 0, home.Usage("no prompt on stdin")
+	}
 	if home.Trim(prompt) != "" {
+		if opts.Has("-C") {
+			return 0, home.Usage("a follow-up uses its original directory; remove --directory")
+		}
 		if opts.Has("-j") {
 			return 0, home.Usage("--jobs is for rerunning a batch without a prompt")
 		}
@@ -303,15 +313,12 @@ func continueRun(a *agent.Registry, opts home.Object, words []string) (int, erro
 	if err != nil {
 		return 0, err
 	}
-	if at >= 0 && len(r.Tasks) > 1 {
-		return 0, home.Usage("rerun the whole batch with ask continue %s, or give a prompt to continue this task", r.Label())
-	}
 	if runs.Owner(r) != 0 {
 		return 0, home.Usage("%s is still running; use ask wait %s", ref, ref)
 	}
 	todo := 0
-	for _, result := range r.Results {
-		if !result.B("ok") {
+	for i, result := range r.Results {
+		if !result.B("ok") && (at < 0 || len(r.Tasks) == 1 || at == i) {
 			todo++
 		}
 	}
@@ -322,16 +329,24 @@ func continueRun(a *agent.Registry, opts home.Object, words []string) (int, erro
 	if err != nil {
 		return 0, err
 	}
-	fmt.Fprintf(os.Stderr, "ask %s · rerunning %s from the beginning\n", r.Label(), status.Plural(todo, "task"))
-	results, err := execute(a, r, jobs, !opts.B("--no-hooks"), nil, len(r.Tasks) > 1)
+	fmt.Fprintf(os.Stderr, "ask %s · rerunning %s from the beginning\n", ref, status.Plural(todo, "task"))
+	var selected []int
+	if at >= 0 && len(r.Tasks) > 1 {
+		selected = []int{at}
+	}
+	results, err := execute(a, r, jobs, !opts.B("--no-hooks"), nil, len(r.Tasks) > 1, selected...)
 	if err != nil {
 		return 0, err
 	}
-	if len(results) == 1 {
-		if !results[0].B("ok") {
+	if len(results) == 1 || len(selected) != 0 {
+		index := 0
+		if len(selected) != 0 {
+			index = selected[0]
+		}
+		if !results[index].B("ok") {
 			return 1, nil
 		}
-		fmt.Fprintln(os.Stdout, answerText(r.Tasks[0], results[0]))
+		fmt.Fprintln(os.Stdout, answerText(r.Tasks[index], results[index]))
 		return 0, nil
 	}
 	fmt.Fprintln(os.Stdout, home.JSON(home.ResultRecords(results), true))
@@ -436,16 +451,21 @@ func jobCount(a *agent.Registry, opts home.Object) (int, error) {
 
 // execute runs a created run's unfinished tasks with the live rows and status lines a batch
 // shows on stderr, and returns every task's result in task order.
-func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hooks.Note, batch bool) ([]home.Object, error) {
+func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hooks.Note, batch bool, selected ...int) ([]home.Object, error) {
 	todo := 0
-	for _, x := range r.Results {
-		if !x.B("ok") {
+	for i, x := range r.Results {
+		if !x.B("ok") && (len(selected) == 0 || selected[0] == i) {
 			todo++
 		}
 	}
 	begin := time.Now()
 	header := status.BatchStart(r, jobs, todo)
-	live := status.NewLive(r, header, batch)
+	var live *status.Live
+	if len(selected) == 0 {
+		live = status.NewLive(r, header, batch)
+	} else {
+		batch = false
+	}
 	if batch && live == nil {
 		fmt.Fprintln(os.Stderr, status.StyledLine(header, os.Stderr))
 	}
@@ -455,7 +475,7 @@ func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hoo
 	for _, n := range notes {
 		report(runs.Event{Kind: "note", Note: n})
 	}
-	results, e := runs.Execute(a, r, jobs, hooksOn, report)
+	results, e := runs.Execute(a, r, jobs, hooksOn, report, selected...)
 	process.AwaitShutdown()
 	summary := ""
 	if batch {
