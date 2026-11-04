@@ -47,6 +47,11 @@ The thread id Codex announces first is reported to ask at once, so `ask -c RUN` 
 
 The agent rewrites ask's report as each Codex turn completes, so token counts show live. Codex
 reports no cost. The report names the model by Codex's display name.
+Codex JSON item events also report coarse activity: thinking, running commands, editing files,
+searching, using tools or answering. Only the item type is used; commands, paths, reasoning,
+messages and tool input/output never enter activity. Unknown or malformed events are skipped.
+The label describes the latest recognized item event, rather than every concurrent operation;
+a completed turn clears it. ask samples it on stderr, so brief activity can be missed.
 
 ## Cost limits
 

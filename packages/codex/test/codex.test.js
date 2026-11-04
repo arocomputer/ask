@@ -96,6 +96,48 @@ test('reports usage while Codex is still running', async () => {
   await running;
 });
 
+test('item events report only coarse activity live, keeping the session and clearing at turn end', async (t) => {
+  const cases = [
+    ['item.started', 'reasoning', 'thinking'],
+    ['item.updated', 'command_execution', 'running commands'],
+    ['item.completed', 'file_change', 'editing files'],
+    ['item.started', 'web_search', 'searching'],
+    ['item.updated', 'mcp_tool_call', 'using tools'],
+    ['item.completed', 'agent_message', 'answering'],
+  ];
+  for (const [type, itemType, activity] of cases) await t.test(itemType, async () => {
+    const secret = 'PRIVATE_command_path_reasoning_output';
+    const item = { type: itemType, command: secret, text: secret, changes: [{ path: secret }], arguments: secret, result: secret };
+    const running = run('hi', { extra: { FAKE_EVENTS: `${JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 7 } })}\n${JSON.stringify({ type, item })}`, FAKE_EVENT_PAUSE: '250' } });
+    const live = await pollJson(join(tmp(), 'report.json'), running, (report) => report.activity === activity);
+    assert.deepEqual(live, { session: 'fake', input: 7, output: 0, cached: 0, activity });
+    const r = await running;
+    assert.equal(r.code, 0);
+    assert.equal(r.stdout, 'codex: hi\n');
+    assert.equal(r.stderr, '');
+    assert.equal(r.report.activity, '');
+    assert.equal(r.report.input, 107);
+    assert.ok(!JSON.stringify(r.report).includes(secret));
+  });
+});
+
+test('malformed and unknown item events cannot corrupt activity, sessions or usage', async () => {
+  const events = [
+    '{"type":"thread.started",', 'null', '[]',
+    '{"type":"item.started"}', '{"type":"item.updated","item":null}',
+    '{"type":"item.completed","item":{"type":"__proto__","text":"PRIVATE"}}',
+    '{"type":"item.started","item":{"type":"future","command":"PRIVATE"}}',
+    JSON.stringify({ type: 'future', text: '"turn.completed"' }),
+  ].join('\n');
+  const r = await run('hi', { extra: { FAKE_EVENTS: events } });
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, 'codex: hi\n');
+  assert.equal(r.stderr, '');
+  assert.equal(r.report.session, 'fake');
+  assert.equal(r.report.input, 100);
+  assert.equal(r.report.activity, '');
+});
+
 test('reports its display name', async () => {
   writeJson(join(tmp(), 'codex', 'models_cache.json'), { models: [{ slug: 'gpt-x', display_name: 'GPT-6.1-Sol' }] });
   assert.equal((await run('hi')).report.name, 'GPT-6.1 Sol');

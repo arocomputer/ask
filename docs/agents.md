@@ -69,7 +69,7 @@ ask runs the agent with no arguments, in the directory the agent should work in 
 | stdout | The answer, and nothing else. |
 | exit code | 0 when the answer is good, anything else when the run failed. |
 | stderr | On failure, the reason as the last line. ask shows that line. |
-| `$ASK_REPORT` | Optional JSON: `{"session", "name", "input", "output", "cached", "cost", "note"}`. |
+| `$ASK_REPORT` | Optional JSON: `{"session", "name", "input", "output", "cached", "cost", "note", "activity"}`. |
 
 In the report, `session` is the agent session the run used, `name` is the model that actually ran
 (`Sonnet 5.5`), the counts are tokens, `cost` is in USD, and `note` is a short remark ask adds to
@@ -80,6 +80,21 @@ report even when the run fails or times out, so write it as early as you know so
 the session, and rewrite it whole as you learn more. ask also reads it while the agent runs, so
 usage you rewrite as it grows shows live in the terminal. Write a temporary file and rename it over
 the report, so ask never reads half a file; ask skips a report it can't parse until the next one.
+
+`activity` is an optional string describing the most recently observed work, chosen only from
+`thinking`, `running commands`, `editing files`, `searching`, `using tools`, and `answering`.
+For example, `{"session":"abc","input":1200,"activity":"editing files"}`. Derive it from
+structured event types, never commands, paths, reasoning, messages, tool arguments or output.
+An empty string, omission, `null`, unknown string or other JSON type clears the label without
+discarding valid usage, cost or session fields. This additive field needs no
+contract version change; agents may omit it and older ask versions ignore it.
+
+ask polls reports about twice a second. Activity is transient: it appears in the live stderr row,
+or as `ask RUN · activity · CATEGORY` in a pipe or dumb terminal. Plain output suppresses repeats
+and emits at most one activity line per task every five seconds (reset for a follow-up round).
+Brief changes may be missed or suppressed. Activity is neither an answer nor a heartbeat, and is
+not saved in run results. Keep cumulative usage and session when replacing the report; optional
+activity must not replace them. Timeouts and reported-cost limits apply as before.
 
 ask handles everything else: timeouts, stopping, batches, recording runs, follow-ups, worktrees,
 reporting what changed and checking JSON answers. Official agents apply `ASK_TITLE` when their

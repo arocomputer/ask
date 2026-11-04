@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Show safe coarse Codex activity on stderr while runs work. The optional `ASK_REPORT` activity
+  field updates terminal rows and rate-limited plain status lines without exposing commands,
+  paths, reasoning or output; malformed activity cannot hide valid usage or cost limits.
+
 - Prevent old release reruns from replacing the latest Homebrew formula; serialize formula
   updates and guard the release tag and main before pushing.
 - Ignore local agent state and environment files; use Dependabot for Go dependency and Actions updates.

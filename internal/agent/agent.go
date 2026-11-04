@@ -220,10 +220,10 @@ func exitText(r process.Result) string {
 }
 
 // Run sends the prompt on stdin and reads the optional report even after failure or timeout.
-// While the agent runs, progress (if not nil) gets each new usage the agent rewrites its report
-// with. The user-facing title goes as ASK_TITLE; max_cost goes as ASK_MAX_COST, and ask stops the
+// While the agent runs, progress (if not nil) gets usage and coarse activity snapshots each poll.
+// The user-facing title goes as ASK_TITLE; max_cost goes as ASK_MAX_COST, and ask stops the
 // agent once its reported cost passes it; the session survives, so a follow-up continues the work.
-func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home.Object)) home.Object {
+func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Progress)) home.Object {
 	work, err := os.MkdirTemp("", "ask-")
 	if err != nil {
 		return home.O("ok", false, "note", err.Error())
@@ -264,25 +264,24 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home
 		}
 		tick := time.NewTicker(500 * time.Millisecond)
 		defer tick.Stop()
-		last := ""
 		for {
 			select {
 			case <-done:
 				return
 			case <-tick.C:
 			}
-			if b, err := os.ReadFile(vars["ASK_REPORT"]); err == nil && string(b) != last {
+			if b, err := os.ReadFile(vars["ASK_REPORT"]); err == nil {
 				var report Report
 				if json.Unmarshal(b, &report) == nil {
-					last = string(b)
-					if usage := report.usage(); usage != nil {
-						if progress != nil {
-							progress(usage)
-						}
-						if limit > 0 && usage.Has("cost") && usage.N("cost") > limit && !overLimit {
-							overLimit = true
-							close(stop)
-						}
+					usage := report.usage()
+					if limit > 0 && usage != nil && usage.Has("cost") && usage.N("cost") > limit && !overLimit {
+						overLimit = true
+						close(stop)
+					}
+					if progress != nil {
+						// Repeat snapshots so a rate-limited display can show a suppressed category
+						// even when the agent has no new events during a long operation.
+						progress(Progress{Usage: usage, Activity: report.activity()})
 					}
 				}
 			}
@@ -337,13 +336,15 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home
 // Report is the agent's optional version 1 metadata; unknown fields are ignored.
 // Pointer counts distinguish an omitted metric from a reported zero.
 type Report struct {
-	Session string   `json:"session"`
-	Name    string   `json:"name"`
-	Input   *float64 `json:"input"`
-	Output  *float64 `json:"output"`
-	Cached  *float64 `json:"cached"`
-	Cost    *float64 `json:"cost"`
-	Note    string   `json:"note"`
+	// Decode activity separately: a bad optional signal must never hide valid cost or usage.
+	Activity json.RawMessage `json:"activity"`
+	Session  string          `json:"session"`
+	Name     string          `json:"name"`
+	Input    *float64        `json:"input"`
+	Output   *float64        `json:"output"`
+	Cached   *float64        `json:"cached"`
+	Cost     *float64        `json:"cost"`
+	Note     string          `json:"note"`
 }
 
 // usage returns the report's valid counts and cost, or nil when it has none.
@@ -358,4 +359,23 @@ func (report Report) usage() home.Object {
 		return nil
 	}
 	return usage
+}
+
+// Progress is a transient snapshot, never part of the saved result or answer.
+type Progress struct {
+	Usage    home.Object
+	Activity string
+}
+
+// activity accepts only fixed, non-sensitive categories, never agent-supplied display text.
+func (report Report) activity() string {
+	var value string
+	if json.Unmarshal(report.Activity, &value) != nil {
+		return ""
+	}
+	switch value {
+	case "thinking", "running commands", "editing files", "searching", "using tools", "answering":
+		return value
+	}
+	return ""
 }

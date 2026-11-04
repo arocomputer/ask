@@ -17,6 +17,7 @@ import (
 // LiveRow holds one task's latest state; Started is reset for each follow-up round.
 type LiveRow struct {
 	Ref, Name, Access, Dir, State, Reason, Final string
+	Activity                                     string
 	Started                                      time.Time
 	Notes                                        []string
 	Usage                                        any // usage so far while running, then the result's
@@ -113,6 +114,9 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 				mark = string([]rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")[tick%10])
 			}
 			text = r.Access + " · " + r.Dir + " · " + Clock(now.Sub(r.Started))
+			if r.Activity != "" {
+				text = r.Activity + " · " + text
+			}
 			if u := Usage(r.Usage); u != "" {
 				text += " · " + u
 			}
@@ -292,13 +296,17 @@ func (l *Live) Update(e runs.Event, name, note string) {
 			row.Dir = "worktree " + row.Dir
 		}
 		row.State = "running"
+		row.Activity = ""
 		row.Started = time.Now()
 		if _, extra, ok := strings.Cut(note, "\n"); ok {
 			row.Notes = append(row.Notes, strings.TrimPrefix(extra, "ask "+row.Ref+" · note · "))
 		}
+	case "activity":
+		row.Activity = e.Activity
 	case "usage":
 		row.Usage = e.Result
 	case "done":
+		row.Activity = ""
 		row.Usage = e.Result.Get("usage")
 		row.Name = e.Result.S("name")
 		row.State = "failed"

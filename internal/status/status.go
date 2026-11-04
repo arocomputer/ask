@@ -109,12 +109,15 @@ func clip(s string, n int) string {
 	return string(units[:n])
 }
 
-// EventLine formats a task start, hook event, or completed result.
+// EventLine formats a task start, coarse activity, hook event, or completed result.
 func EventLine(r *runs.Run, e runs.Event) string {
 	if e.Kind == "done" {
 		return Done(e.Result)
 	}
 	ref := runs.Ref(r, e.Index)
+	if e.Kind == "activity" {
+		return line(ref, "activity", e.Activity)
+	}
 	if e.Kind == "start" {
 		t := e.Started.Task
 		where := home.Tilde(e.Started.Dir)

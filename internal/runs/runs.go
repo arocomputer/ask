@@ -531,13 +531,14 @@ func combine(a, b home.Object) home.Object {
 	return x
 }
 
-// Event is a task's start, usage so far (in Result), hook note/follow-up, or final result, with its position.
+// Event is a task's start, live usage (in Result) or activity, hook note/follow-up, or final result.
 type Event struct {
-	Kind    string
-	Index   int
-	Started task.Started
-	Note    hooks.Note
-	Result  home.Object
+	Kind     string
+	Activity string
+	Index    int
+	Started  task.Started
+	Note     hooks.Note
+	Result   home.Object
 }
 
 // withHooks applies refusal and result decisions, allowing at most three session follow-ups.
@@ -565,10 +566,13 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 	}
 	started := func(info task.Started) { worktree = info.Worktree; report(Event{Kind: "start", Started: info}) }
 	var earlier any // usage of finished rounds, so live usage keeps counting through follow-ups
-	progress := func(u home.Object) {
-		if sum, ok := AddUsage(earlier, u).(home.Object); ok {
-			report(Event{Kind: "usage", Result: sum})
+	progress := func(p agent.Progress) {
+		if p.Usage != nil {
+			if sum, ok := AddUsage(earlier, p.Usage).(home.Object); ok {
+				report(Event{Kind: "usage", Result: sum})
+			}
 		}
+		report(Event{Kind: "activity", Activity: p.Activity})
 	}
 	result := task.Run(a, t, h, started, progress)
 	if process.Stopping() {

@@ -208,19 +208,36 @@ await adapter({
       // --json streams events on stdout; each finished turn reports its tokens (Codex reports no cost).
       const usage = { input: 0, output: 0, cached: 0 };
       let sessionId;
+      let activity = '';
+      const activities = new Map([
+        ['reasoning', 'thinking'], ['command_execution', 'running commands'],
+        ['file_change', 'editing files'], ['web_search', 'searching'],
+        ['mcp_tool_call', 'using tools'], ['agent_message', 'answering'],
+      ]);
       const onLine = (line) => {
-        if (line.includes('"thread.started"')) {
-          sessionId = JSON.parse(line).thread_id;
+        let event;
+        try { event = JSON.parse(line); } catch { return; }
+        if (!event || typeof event !== 'object') return;
+        if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
+          sessionId = event.thread_id;
           report({ session: sessionId });
         }
-        if (!line.includes('"turn.completed"')) return;
-        try {
-          const u = JSON.parse(line).usage || {};
-          usage.input += u.input_tokens || 0;
-          usage.output += (u.output_tokens || 0) + (u.reasoning_output_tokens || 0);
-          usage.cached += u.cached_input_tokens || 0;
-          report({ ...usage });
-        } catch {}
+        // Only fixed labels derived from item types cross the report boundary. Never inspect
+        // command text, paths, reasoning, tool arguments/results, or message content.
+        if (['item.started', 'item.updated', 'item.completed'].includes(event.type)) {
+          const category = activities.get(event.item?.type);
+          if (category && category !== activity) {
+            activity = category;
+            report({ activity });
+          }
+        }
+        if (event.type !== 'turn.completed') return;
+        const u = event.usage || {};
+        usage.input += u.input_tokens || 0;
+        usage.output += (u.output_tokens || 0) + (u.reasoning_output_tokens || 0);
+        usage.cached += u.cached_input_tokens || 0;
+        activity = '';
+        report({ ...usage, activity });
       };
       const r = await exec(CLI, args, { input: prompt, onLine });
       if (title && sessionId) await nameThread(CLI, sessionId, title);

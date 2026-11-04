@@ -161,10 +161,22 @@ func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool)
 // reporter serializes complete status lines from parallel tasks to stderr.
 func reporter(a *agent.Registry, r *runs.Run, live *status.Live) func(runs.Event) {
 	var mu sync.Mutex
+	activity := map[int]string{}
+	shown := map[int]time.Time{}
 	return func(e runs.Event) {
 		mu.Lock()
 		defer mu.Unlock()
 		if live == nil {
+			if e.Kind == "start" {
+				delete(activity, e.Index)
+				delete(shown, e.Index)
+			}
+			if e.Kind == "activity" {
+				if e.Activity == "" || e.Activity == activity[e.Index] || time.Since(shown[e.Index]) < 5*time.Second {
+					return
+				}
+				activity[e.Index], shown[e.Index] = e.Activity, time.Now()
+			}
 			if e.Kind != "usage" { // plain status lines report usage once, at the end
 				fmt.Fprintln(os.Stderr, status.StyledLine(status.EventLine(r, e), os.Stderr))
 			}

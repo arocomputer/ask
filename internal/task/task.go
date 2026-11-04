@@ -53,8 +53,8 @@ type Started struct {
 }
 
 // Run returns one complete result, converting task errors into failed results.
-// progress (if not nil) gets the agent's usage so far while it runs.
-func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started), progress func(home.Object)) home.Object {
+// progress (if not nil) gets the agent's usage and coarse activity while it runs.
+func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started), progress func(agent.Progress)) home.Object {
 	begin := time.Now()
 	dir := t.S("dir")
 	var w *git.Worktree

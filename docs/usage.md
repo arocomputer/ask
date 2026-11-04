@@ -17,6 +17,12 @@ ask --model claude:sonnet-5.5 "Where is the retry logic, and what are its limits
 ask --model codex:gpt-6.1-sol#high "Review the last commit for bugs."
 ```
 
+Agents that report activity (including Codex) show coarse labels such as `running commands` or
+`editing files` on stderr while working. Terminals refresh the live row; pipes and dumb terminals
+get deduplicated activity lines at most once every five seconds per task. These labels contain no
+commands, paths, reasoning or output. Brief events can be missed; a label describes the most recent
+observed work, not a guarantee that the agent is still making progress. Stdout carries only answers.
+
 ## The prompt
 
 Give it as arguments, or on stdin with `-` or no prompt at all. Words after `--` are always the

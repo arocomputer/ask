@@ -46,6 +46,52 @@ func TestAgents(t *testing.T) {
 		r := s.ask("-m", "echo:big", "go")
 		match(t, r.stderr, `(?m) · ok · Echo 2 · [\d.]+s · 1\.2k in · 30 out · \$0\.50 · partial$`)
 	})
+
+	t.Run("activity stays on stderr, deduplicated and throttled across category changes", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("active", `cat >/dev/null
+for report in '{"activity":"thinking","input":1}' '{"activity":"thinking","input":2}' '{"activity":"editing files","input":3}'; do
+  echo "$report" > "$ASK_REPORT.tmp"
+  mv "$ASK_REPORT.tmp" "$ASK_REPORT"
+  sleep 1.1
+done
+sleep 3.3
+echo answer`)
+		r := s.ask("-m", "active:small", "go")
+		eq(t, r.code, 0)
+		eq(t, r.stdout, "answer\n")
+		eq(t, strings.Count(r.stderr, " · activity · "), 2)
+		match(t, r.stderr, ` · activity · thinking`)
+		match(t, r.stderr, ` · activity · editing files`)
+		noMatch(t, r.stderr, `hook|\x1b`)
+		noMatch(t, s.ask("show", runID(t, r.stderr), "--json").stdout, `"activity"\s*:`)
+	})
+	t.Run("malformed activity never hides live cost limits or the session", func(t *testing.T) {
+		for _, value := range []string{`{"command":"PRIVATE"}`, `["PRIVATE"]`, `42`, `true`, `null`, `"PRIVATE\u001b[2J"`} {
+			t.Run(value, func(t *testing.T) {
+				s := fresh(t)
+				s.localAgent("active", `cat >/dev/null; echo '{"activity":`+value+`,"cost":3,"input":7,"session":"safe-session"}' > "$ASK_REPORT"; sleep 10; echo answer`)
+				r := s.ask("-m", "active:small", "--max-cost", "2", "--timeout", "2", "go")
+				eq(t, r.code, 1)
+				eq(t, r.stdout, "")
+				match(t, r.stderr, `stopped at the \$2.00 cost limit; ask -c`)
+				noMatch(t, r.stderr, `PRIVATE|activity|timed out|\x1b`)
+				result := obj(t, s.ask("show", runID(t, r.stderr), "--json").stdout)
+				eq(t, result.s("session"), "safe-session")
+				jsonEqual(t, result["usage"], object{"cost": 3, "input": 7})
+			})
+		}
+	})
+	t.Run("malformed activity does not prevent timeouts", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("active", `cat >/dev/null; echo '{"activity":{"text":"PRIVATE"}}' > "$ASK_REPORT"; sleep 10`)
+		r := s.ask("-m", "active:small", "--timeout", "0.8", "go")
+		eq(t, r.code, 1)
+		eq(t, r.stdout, "")
+		match(t, r.stderr, `timed out`)
+		noMatch(t, r.stderr, `PRIVATE|activity`)
+	})
+
 	t.Run("a failed agent's last stderr line is the error", func(t *testing.T) {
 		s := fresh(t)
 		s.localAgent("echo", `echo noise >&2; echo "quota exceeded" >&2; exit 3`)

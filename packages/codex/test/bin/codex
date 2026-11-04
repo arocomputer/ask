@@ -5,7 +5,8 @@
  * schema}, schema being the --output-schema file's content. The answer is $FAKE_ANSWER (default:
  * the last prompt line). A prompt containing $FAKE_FAIL fails, $FAKE_HANG never returns,
  * $FAKE_SLOW answers after 300 ms; $FAKE_PAUSE waits that many ms after reporting usage. $FAKE_EXIT is the exit code after an answer; $FAKE_IGNORE_TERM
- * makes it ignore SIGTERM.
+ * makes it ignore SIGTERM. $FAKE_EVENTS streams extra JSONL before usage, waiting
+ * $FAKE_EVENT_PAUSE ms after each line.
  */
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 
@@ -50,6 +51,10 @@ else {
     process.exitCode = 1;
   } else {
     writeFileSync(after('-o'), FAKE_ANSWER ?? `codex: ${stdin.trim().split('\n').pop()}`);
+    for (const line of (process.env.FAKE_EVENTS || '').split('\n').filter(Boolean)) {
+      console.log(line);
+      if (process.env.FAKE_EVENT_PAUSE) await new Promise((resolve) => setTimeout(resolve, Number(process.env.FAKE_EVENT_PAUSE)));
+    }
     const usage = { input_tokens: 100, cached_input_tokens: 40, output_tokens: 8, reasoning_output_tokens: 2 };
     console.log(JSON.stringify({ type: 'turn.completed', usage }));
     if (process.env.FAKE_PAUSE) await new Promise((resolve) => setTimeout(resolve, Number(process.env.FAKE_PAUSE)));

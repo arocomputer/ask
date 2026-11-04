@@ -10,6 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/runs"
+	"github.com/arocomputer/ask/internal/task"
 )
 
 // TestFrame pins running rows with usage so far, queued and final rows, and a footer with total usage.
@@ -81,5 +83,35 @@ func TestLiveBatchFinishPrintsTotals(t *testing.T) {
 	b, _ := io.ReadAll(r)
 	if !strings.Contains(string(b), "10 in · 5 out · $0.02") {
 		t.Fatalf("missing totals: %q", b)
+	}
+}
+
+// TestLiveActivity keeps progress in the current row and clears it for follow-ups and completion.
+func TestLiveActivity(t *testing.T) {
+	l := &Live{state: LiveState{Rows: []LiveRow{{Ref: "run", State: "queued"}}}, done: make(chan struct{})}
+	l.program = tea.NewProgram(&liveModel{width: 100, height: 24}, tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
+	go func() { defer close(l.done); _, _ = l.program.Run() }()
+	defer l.Finish("", false)
+	start := runs.Event{Kind: "start", Started: task.Started{Task: home.O(), Dir: "/tmp"}}
+	l.Update(start, "Model", "")
+	l.Update(runs.Event{Kind: "usage", Result: home.O("input", 7)}, "", "")
+	l.Update(runs.Event{Kind: "activity", Activity: "editing files"}, "", "")
+	frame := strings.Join(Frame(l.state, time.Now(), 0, 100, 24, false, true), "\n")
+	if !strings.Contains(frame, "editing files") || !strings.Contains(frame, "7 in") || len(l.state.Rows[0].Notes) != 0 {
+		t.Fatalf("activity must share the live row with usage: %q", frame)
+	}
+	l.Update(runs.Event{Kind: "activity"}, "", "")
+	if l.state.Rows[0].Activity != "" {
+		t.Fatal("stale activity after a cleared report")
+	}
+	l.Update(runs.Event{Kind: "activity", Activity: "editing files"}, "", "")
+	l.Update(start, "Model", "")
+	if l.state.Rows[0].Activity != "" {
+		t.Fatal("stale activity after follow-up start")
+	}
+	l.Update(runs.Event{Kind: "activity", Activity: "answering"}, "", "")
+	l.Update(runs.Event{Kind: "done", Result: home.O("run", "run", "ok", true, "name", "Model")}, "", "")
+	if frame := strings.Join(Frame(l.state, time.Now(), 0, 100, 24, false, true), "\n"); strings.Contains(frame, "answering") {
+		t.Fatalf("activity survived completion: %q", frame)
 	}
 }
