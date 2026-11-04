@@ -33,8 +33,10 @@ own line of turns, named `RUN-TASK` (or `RUN-TASK-2` and so on when another run 
 
 A follow-up:
 
-- runs where the first run ran: the same directory, or the same worktree if it kept one (a
-  removed worktree is created again, under a new name if another run has taken that one).
+- runs where the first run ran: the same directory, or the kept worktree's recorded path and branch.
+  If ask discarded an unchanged worktree, a write follow-up creates one again, under a new name
+  if another run has taken that one. A read follow-up needs the kept worktree to exist.
+  A kept worktree replaced by another repository or branch is refused.
   `--worktree` can't move a follow-up of a run in your checkout into a worktree; ask refuses it;
 - keeps the model and access (`--read`/`--write`) unless you give new ones. The model may change within
   the same agent (`--continue login-test-fail --model claude:haiku-4.5`), but not to another agent;
@@ -44,6 +46,12 @@ A batch task can be a follow-up too, with `"continue": "RUN"` (see [Batches](bat
 
 Continuing needs an agent that reports sessions (see [Agents](agents.md#sessions)) and a run that
 has finished; ask says so when either is missing.
+
+Only one pending task may use an agent session or kept worktree at a time. ask refuses a conflicting
+follow-up with exit code 2; retry after the other run finishes. This applies across ask processes
+sharing `ASK_HOME`, including references to older turns. A batch reserves all its pending follow-ups
+before starting tasks and holds them until the batch finishes, so duplicate continuations are
+refused even with `--jobs 1`. Stopping or exiting releases the reservations automatically.
 
 ## Listing
 
@@ -146,7 +154,7 @@ name (runs from before names have none):
 
 ```text
 ~/.ask/runs/20261001T140912345-k3f9a2-login-test-fail/
-├── tasks.json     the tasks, as they were given
+├── tasks.json     prepared tasks, including optional kept_worktree {path, branch} for follow-ups
 ├── results.json   the results so far, rewritten whole after each task
 └── lock           held with an operating system lock while ask runs the run; the kernel names its pid
 ```

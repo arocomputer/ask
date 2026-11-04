@@ -99,5 +99,7 @@ Add `.ask/worktrees/` to the repository's `.gitignore`.
 `opencode`, `cursor`, `pi` or `all`), which live in those apps' own files. An unknown key or a
 value of the wrong kind is an error that names the key, so a typo never silently does nothing.
 Existing records keep their values. A new follow-up inherits the recorded model and access,
-and finds its worktree where the current `worktrees` setting puts it; keep that setting stable
-while continuing work in a kept worktree.
+and reuses a kept worktree's recorded path and branch even after `worktrees` or `branches` changes.
+When the earlier run kept no worktree, its follow-up creates one using the current settings.
+Resuming an older saved follow-up without a recorded path and branch still needs its original
+worktree directory and branch settings; a new `ask --continue RUN` uses the saved result's location.

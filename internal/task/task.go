@@ -3,7 +3,10 @@ package task
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/arocomputer/ask/internal/agent"
@@ -14,6 +17,26 @@ import (
 )
 
 var fence = regexp.MustCompile("(?is)^\\s*```[a-z]*\\s*\\n(.*?)\\n\\s*```\\s*$")
+
+// KeptWorktree resolves a prepared task's saved location. Older reuse records saved only the
+// folder's basename; their template directory and branch pattern still come from settings.
+func KeptWorktree(p home.Paths, t home.Object) (*home.WorktreeRecord, error) {
+	if kept, ok := t.Get("kept_worktree").(home.Object); ok {
+		return &home.WorktreeRecord{Path: kept.S("path"), Branch: kept.S("branch")}, nil
+	}
+	if !t.B("reuse") {
+		return nil, nil
+	}
+	template, err := p.Worktree(git.Root(t.S("dir")), "{name}")
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(filepath.Dir(template), t.S("worktree"))
+	prefix, suffix, _ := strings.Cut(filepath.Base(template), "{name}")
+	name := strings.TrimSuffix(strings.TrimPrefix(t.S("worktree"), prefix), suffix)
+	branch, err := p.Branch(name)
+	return &home.WorktreeRecord{Path: path, Branch: branch}, err
+}
 
 // fullPrompt is the prompt as given, plus the JSON answer instruction for --json or --schema.
 func fullPrompt(t home.Object) string {
@@ -64,7 +87,16 @@ func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started)
 	m, e := agent.Parse(a.Paths, t.S("model"))
 	r := home.Object{}
 	if e == nil && t.B("worktree") {
-		w, e = git.Add(a.Paths, dir, t.S("worktree"), t.B("reuse"))
+		var kept *home.WorktreeRecord
+		kept, e = KeptWorktree(a.Paths, t)
+		if e == nil && kept != nil && !t.B("write") {
+			if info, err := os.Stat(kept.Path); err != nil || !info.IsDir() {
+				e = home.Usage("a read follow-up needs its kept worktree to exist: %s", kept.Path)
+			}
+		}
+		if e == nil {
+			w, e = git.Add(a.Paths, dir, t.S("worktree"), kept)
+		}
 		if e == nil {
 			dir = w.Dir
 		}

@@ -252,6 +252,12 @@ func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	}
 	live.Finish(final, false)
 	if e != nil {
+		// An admission failure must not take over the conversation's name with an empty run.
+		if results == nil && runs.Owner(r) == 0 {
+			if err := runs.Delete(r); err != nil {
+				return 0, err
+			}
+		}
 		return 0, e
 	}
 	if !results[0].B("ok") {
@@ -318,6 +324,11 @@ func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	}
 	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes)
 	if e != nil {
+		if results == nil && !opts.B("--resume") && runs.Owner(r) == 0 {
+			if err := runs.Delete(r); err != nil {
+				return 0, err
+			}
+		}
 		return 0, e
 	}
 	fmt.Fprintln(os.Stdout, home.JSON(home.ResultRecords(results), true))
@@ -373,7 +384,7 @@ func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hoo
 	summary := status.BatchEnd(r, float64(time.Since(begin).Milliseconds())/1000)
 	live.Finish(summary, false)
 	if e != nil {
-		return nil, e
+		return results, e
 	}
 	if live == nil {
 		fmt.Fprintln(os.Stderr, status.StyledLine(summary, os.Stderr))

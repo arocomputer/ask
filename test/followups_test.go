@@ -3,13 +3,78 @@ package test
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
 // TestFollowups pins -c: which session, model and access a follow-up gets, and what it refuses.
 func TestFollowups(t *testing.T) {
+	t.Run("a batch refuses two aliases for the same agent session before starting either", func(t *testing.T) {
+		s := fresh(t)
+		first := s.ask("-m", "fake:small", "remember")
+		ref := filepath.Join(s.home, "runs", s.latest())
+		input, _ := json.Marshal([]object{{"continue": runID(t, first.stderr), "prompt": "one"}, {"continue": ref, "prompt": "two"}})
+		r := s.run([]string{"batch", "-j", "2", "-"}, string(input), nil)
+		eq(t, r.code, 2)
+		match(t, r.stderr, `agent session is already in use`)
+		eq(t, len(s.calls()), 1)
+		eq(t, len(s.dirs()), 1)
+	})
+	t.Run("separate processes cannot follow the same session and release it when stopped", func(t *testing.T) {
+		s := fresh(t)
+		s.ask("-m", "fake:small", "remember")
+		ref := filepath.Join(s.home, "runs", s.latest())
+		run := s.start([]string{"-c", ref, "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		until(t, func() bool { return len(s.calls()) == 2 })
+		second := s.ask("-c", ref, "more")
+		eq(t, second.code, 2)
+		match(t, second.stderr, `agent session is already in use`)
+		eq(t, len(s.calls()), 2)
+		eq(t, len(s.dirs()), 2)
+		if e := run.cmd.Process.Signal(syscall.SIGTERM); e != nil {
+			t.Fatal(e)
+		}
+		eq(t, run.wait(t).code, 130)
+		eq(t, s.ask("-c", ref, "finish").code, 0)
+	})
+	t.Run("different sessions cannot share a kept worktree while result hooks are running", func(t *testing.T) {
+		s := fresh(t)
+		dir, git := s.repo()
+		trees, alias := filepath.Join(s.tmp, "trees"), filepath.Join(s.tmp, "alias")
+		s.mkdir(trees)
+		if err := os.Symlink(trees, alias); err != nil {
+			t.Fatal(err)
+		}
+		s.json(filepath.Join(s.home, "settings.json"), object{"worktrees": filepath.Join(alias, "{name}")})
+		s.localAgent("turn", `cat >/dev/null
+echo changed > a.txt
+printf '{"session":"%s"}\n' "$ASK_MODEL" > "$ASK_REPORT"
+echo done`)
+		eq(t, s.ask("-m", "turn:small", "-w", "--worktree", "-C", dir, "edit").code, 0)
+		first := filepath.Join(s.home, "runs", s.latest())
+		eq(t, s.ask("-c", first, "-m", "turn:big", "another turn").code, 0)
+		second := filepath.Join(s.home, "runs", s.latest())
+		// The lock key must stay the same before and after recreating a path through a symlink.
+		git("worktree", "remove", "--force", filepath.Join(alias, "edit"))
+		s.hook("hold", []string{"result"}, `touch "$HOME/in-hook"
+while [ -e "$HOME/hold" ]; do sleep 0.05; done`)
+		s.write(filepath.Join(s.tmp, "hold"), "")
+		t.Cleanup(func() { _ = os.Remove(filepath.Join(s.tmp, "hold")) })
+		run := s.start([]string{"-c", first, "more"}, "", nil)
+		until(t, func() bool { return exists(filepath.Join(s.tmp, "in-hook")) })
+		blocked := s.ask("-c", second, "--no-hooks", "more")
+		eq(t, blocked.code, 2)
+		match(t, blocked.stderr, `worktree is already in use`)
+		if err := os.Remove(filepath.Join(s.tmp, "hold")); err != nil {
+			t.Fatal(err)
+		}
+		eq(t, run.wait(t).code, 0)
+		// A failed reservation must also release the session lock it acquired first.
+		eq(t, s.ask("-c", second, "finish").code, 0)
+	})
 	t.Run("-c continues the agent session where it ran, with the same model", func(t *testing.T) {
 		s := fresh(t)
 		work := filepath.Join(s.tmp, "work")

@@ -37,11 +37,11 @@ func TestAddNeverSharesAWorktree(t *testing.T) {
 	if e := os.MkdirAll(filepath.Join(p.Worktrees, "fix"), 0700); e != nil {
 		t.Fatal(e)
 	}
-	w, e := Add(p, repo, "fix", false)
+	w, e := Add(p, repo, "fix", nil)
 	if e != nil || w.Path != filepath.Join(p.Worktrees, "fix-2") || w.Branch != "ask/fix-2" {
 		t.Fatal(w, e)
 	}
-	again, e := Add(p, repo, "fix-2", true)
+	again, e := Add(p, repo, "fix-2", &home.WorktreeRecord{Path: w.Path, Branch: w.Branch})
 	if e != nil || again.Path != w.Path {
 		t.Fatal(again, e)
 	}

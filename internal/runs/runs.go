@@ -380,7 +380,7 @@ func Prepare(p home.Paths, items []any, defaults home.Object, label string, sing
 				x.Set("worktree", old.Get("worktree"))
 			}
 			if kept, ok := result.Get("worktree").(home.Object); ok {
-				x.Set("worktree", filepath.Base(kept.S("path")))
+				x.Set("kept_worktree", kept)
 				x.Set("reuse", true)
 			}
 			if t.B("worktree") && !x.B("worktree") {
@@ -429,12 +429,15 @@ func Prepare(p home.Paths, items []any, defaults home.Object, label string, sing
 		}
 		x.Set("write", x.B("write"))
 		if x.B("worktree") && !x.B("write") {
-			path, err := p.Worktree(git.Root(x.S("dir")), x.S("worktree"))
+			kept, err := task.KeptWorktree(p, x)
 			if err != nil {
 				return nil, err
 			}
-			info, err := os.Stat(path)
-			if !x.B("reuse") || err != nil || !info.IsDir() {
+			if kept == nil {
+				return nil, home.Usage("%s: a worktree is for write runs; add -w", where)
+			}
+			info, err := os.Stat(kept.Path)
+			if err != nil || !info.IsDir() {
 				return nil, home.Usage("%s: a worktree is for write runs; add -w", where)
 			}
 		}
@@ -615,7 +618,7 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 		report(Event{Kind: "followup", Note: *followup})
 		next := t.Clone()
 		if worktree != nil {
-			next.Set("worktree", filepath.Base(worktree.Path))
+			next.Set("kept_worktree", home.O("path", worktree.Path, "branch", worktree.Branch))
 			next.Set("reuse", true)
 		}
 		next.Set("prompt", followup.Text)
@@ -631,6 +634,7 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 }
 
 // Execute runs unfinished tasks up to jobs at once and atomically saves each completed result.
+// A nil result slice with an error means no task started; callers may discard a newly created run.
 func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event)) ([]home.Object, error) {
 	owner, e := lock(r)
 	if e != nil {
@@ -648,6 +652,11 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 			todo = append(todo, i)
 		}
 	}
+	release, e := lockContinuations(a.Paths, r, todo)
+	if e != nil {
+		return nil, e
+	}
+	defer release()
 	if jobs > len(todo) {
 		jobs = len(todo)
 	}
