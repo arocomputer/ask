@@ -12,6 +12,7 @@ func TestTitle(t *testing.T) {
 	for _, c := range []struct{ command, description, want string }{
 		{`cd /tmp && A=value ask -m fake:small#high -w "fix login" 2>&1 | tail -20`, "", "Small One (high) · Fix login · write\n"},
 		{`ask -m fake:big -w --worktree 'fix it'`, "  add a test  ", "Big · Add a test · worktree\n"},
+		{`ask start -m fake:big -w 'fix login'`, "", "Big · Fix login · write\n"},
 		{`ask -m fake:small 'first line
 second line'`, "", "Small One · First line\n"},
 		{`ask -m fake:small '` + strings.Repeat("x", 70) + `'`, "", "Small One · X" + strings.Repeat("x", 58) + "…\n"},

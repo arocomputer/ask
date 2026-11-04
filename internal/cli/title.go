@@ -42,7 +42,7 @@ func invocationTitle(a *agent.Registry, argv []string, description, dir string, 
 	} else if find.Path(a.Paths, "commands", args[0]) != "" {
 		return "", nil
 	}
-	if command != "run" && command != "continue" && command != "batch" {
+	if command != "run" && command != "start" && command != "continue" && command != "batch" {
 		return "", nil
 	}
 	opts, words, err := parse(command, args)
