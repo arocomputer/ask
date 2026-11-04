@@ -69,31 +69,18 @@ func overview(a *agent.Registry) string {
 	lines := []string{`ask · hand tasks to coding agents
 
 Usage
-  ask [options] PROMPT                 Start a task
-  ask continue RUN [options] [PROMPT]  Continue a run
+  ask [options] PROMPT         Start a task; prints its ID
 
-Tasks
-  run        Start a detached task explicitly
-  continue   Follow up or finish unfinished work
-  batch      Run tasks in parallel
-  bench      Compare models
+  runs                         List recent runs
+  show RUN                     Inspect a run without waiting
+  wait RUN                     Wait for its result
+  continue RUN [PROMPT]        Follow up or finish unfinished work
+  stop RUN                     Stop a run
 
-Runs
-  runs       List recent runs
-  show       Inspect a run immediately
-  wait       Wait for completion and return the result
-  stop       Stop a run
-  clean      Remove old runs and landed worktrees
+  models                       List available models
+  settings                     Change defaults and agents
 
-Setup
-  setup      Set up ask
-  settings   Change defaults and agents
-  models     List available models
-  docs       Read documentation
-  install    Install or update packages
-  packages   List installed packages
-  remove     Remove packages
-  update     Update ask or packages`}
+More: batch · bench · clean · docs · install · packages · remove · setup · update`}
 	commands := find.Sorted(a.Paths, "commands")
 	if len(commands) > 0 {
 		own := []string{"Your commands"}
