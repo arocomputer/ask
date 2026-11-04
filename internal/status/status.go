@@ -320,9 +320,25 @@ func Table(list []*runs.Run, now time.Time, color bool) string {
 		if first.B("continues") {
 			about = "↪ " + first.S("continues") + " " + about
 		}
-		if state == "running" && len(r.Created) >= 15 {
-			if started, err := time.Parse("20060102T150405", r.Created[:15]); err == nil && !now.Before(started) {
-				elapsed = Clock(now.Sub(started))
+		if state == "running" {
+			if len(r.Created) >= 15 {
+				if started, err := time.Parse("20060102T150405", r.Created[:15]); err == nil && !now.Before(started) {
+					elapsed = Clock(now.Sub(started))
+				}
+			}
+			activities := runs.Activities(r)
+			if single && activities[0] != "" {
+				about = activities[0] + " · " + about
+			} else if !single {
+				var active []string
+				for i, activity := range activities {
+					if activity != "" {
+						active = append(active, r.Tasks[i].S("id")+": "+activity)
+					}
+				}
+				if len(active) > 0 {
+					about = strings.Join(active, "; ")
+				}
 			}
 		}
 		if state == "stopped" {
