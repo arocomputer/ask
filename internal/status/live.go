@@ -174,7 +174,7 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 			all = append(all, r.Usage)
 		}
 		if u := Usage(batchUsage(all)); u != "" {
-			footer += " · " + u
+			footer += " · reported: " + u
 		}
 		lines = append(lines, ClipLine(footer, width-1))
 	}

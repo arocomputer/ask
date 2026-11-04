@@ -73,7 +73,9 @@ ask runs the agent with no arguments, in the directory the agent should work in 
 
 In the report, `session` is the agent session the run used, `name` is the model that actually ran
 (`Sonnet 5.5`), the counts are tokens, `cost` is in USD, and `note` is a short remark ask adds to
-the status line (`hit step cap; answer may be partial`). Every field is optional. ask reads the
+the status line (`hit step cap; answer may be partial`). `cached` is reported cache-read tokens;
+whether they are included in `input` depends on the agent. A missing metric is unknown, not zero.
+Every field is optional. ask reads the
 report even when the run fails or times out, so write it as early as you know something, above all
 the session, and rewrite it whole as you learn more. ask also reads it while the agent runs, so
 usage you rewrite as it grows shows live in the terminal. Write a temporary file and rename it over

@@ -38,27 +38,33 @@ func Clock(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d:%02d", n/3600, (n/60)%60, n%60)
 }
 
-// Usage prints token totals and optional cost, omitting empty reports.
+// Usage prints the counts and cost the agent reported, omitting missing metrics.
 func Usage(v any) string {
 	u, _ := v.(home.Object)
-	if !u.B("input") && !u.B("output") && !u.Has("cost") {
-		return ""
-	}
 	k := func(n float64) string {
 		if n >= 1000 {
 			return home.Fixed(n/1000, 1) + "k"
 		}
 		return home.String(n)
 	}
-	text := k(u.N("input")) + " in · " + k(u.N("output")) + " out"
+	parts := []string{}
+	if u.Has("input") {
+		parts = append(parts, k(u.N("input"))+" in")
+	}
+	if u.Has("output") {
+		parts = append(parts, k(u.N("output"))+" out")
+	}
+	if u.B("cached") {
+		parts = append(parts, k(u.N("cached"))+" cache read")
+	}
 	if u.Has("cost") {
 		digits := 4
 		if u.N("cost") >= 0.01 {
 			digits = 2
 		}
-		text += " · $" + home.Fixed(u.N("cost"), digits)
+		parts = append(parts, "$"+home.Fixed(u.N("cost"), digits))
 	}
-	return text
+	return strings.Join(parts, " · ")
 }
 
 // SafeText replaces control characters in text supplied by agents, hooks and saved records.
@@ -204,7 +210,11 @@ func BatchEnd(r *runs.Run, seconds float64) string {
 		}
 		all = append(all, x.Get("usage"))
 	}
-	return line(r.Label(), fmt.Sprintf("%d/%d ok", ok, len(r.Tasks)), Duration(seconds), Usage(batchUsage(all)))
+	usage := Usage(batchUsage(all))
+	if usage != "" {
+		usage = "reported: " + usage
+	}
+	return line(r.Label(), fmt.Sprintf("%d/%d ok", ok, len(r.Tasks)), Duration(seconds), usage)
 }
 
 // batchUsage sums a batch's task usage, leaving out cost unless every task that reported usage
@@ -212,8 +222,12 @@ func BatchEnd(r *runs.Run, seconds float64) string {
 func batchUsage(list []any) any {
 	sum, _ := runs.AddUsage(list...).(home.Object)
 	for _, v := range list {
-		if u, ok := v.(home.Object); ok && home.Truth(v) && !u.Has("cost") {
+		u, _ := v.(home.Object)
+		if !u.Has("cost") {
 			delete(sum, "cost")
+		}
+		if !u.Has("cached") {
+			delete(sum, "cached")
 		}
 	}
 	return sum
@@ -305,6 +319,11 @@ func Table(list []*runs.Run, now time.Time, color bool) string {
 		about, _, _ := strings.Cut(first.S("prompt"), "\n")
 		if first.B("continues") {
 			about = "↪ " + first.S("continues") + " " + about
+		}
+		if state == "running" && len(r.Created) >= 15 {
+			if started, err := time.Parse("20060102T150405", r.Created[:15]); err == nil && !now.Before(started) {
+				elapsed = Clock(now.Sub(started))
+			}
 		}
 		if state == "stopped" {
 			about = "resume: ask batch --resume " + r.Label()

@@ -88,14 +88,16 @@ until their started lines appear before calling `ask wait`; shell background job
 created their run records yet:
 
 ```sh
-ask --model claude:sonnet-5.5 "Why does the login test fail?" &
-ask --model codex:gpt-6.1-sol "Review the session code for races." &
-# Wait for both started lines on stderr before collecting an answer.
-ask wait # first run to finish
+ask --model claude:sonnet-5.5 "Why does the login test fail?" >login.answer 2>login.status &
+ask --model codex:gpt-6.1-sol "Review the session code for races." >session.answer 2>session.status &
+# Wait for both started lines in the status files before collecting an answer.
+ask wait # prints the first active run to finish
 ```
 
-If no run is active, it prints `ask: no runs are running` and exits 0. A run that was stopped before
-finishing exits 1 with how to continue it.
+The background commands also write their answers to their own files; redirecting them keeps answers
+and terminal status displays from interleaving. `ask wait` watches runs active when it starts, not
+a completion queue: use `ask show RUN` for a run that already finished. If none is active, it
+prints `ask: no runs are running` and exits 0. A stopped run exits 1 with a command to rerun it.
 
 ## Stopping a run
 

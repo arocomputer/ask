@@ -159,7 +159,8 @@ Runs
   RUN is named from the prompt, like login-checked; a follow-up
   keeps the name. The run's id, like k3f9a2, works too.
   Use the RUN printed on stderr; examples below assume that name.
-  Follow-ups keep their directory and inherit model and access.
+  Follow-ups keep their directory and inherit model and access; use --write
+  after a read run to implement the result, and --read to switch back.
   A positive recorded cost limit is inherited; else model, then settings.
   Pipe a prompt on stdin, or use - in place of PROMPT.
 

@@ -15,7 +15,7 @@ func TestCompat(t *testing.T) {
 		}
 		shown := s.ask("show", "abc123")
 		eq(t, shown.stdout, "The token expiry is compared in seconds against milliseconds.\n")
-		match(t, shown.stderr, `(?m)^ask abc123 · ok · Fake 1\.0 · 41\.2s · 1 file changed · 52\.1k in · 2\.0k out · \$0\.31$`)
+		match(t, shown.stderr, `(?m)^ask abc123 · ok · Fake 1\.0 · 41\.2s · 1 file changed · 52\.1k in · 2\.0k out · 40\.0k cache read · \$0\.31$`)
 		match(t, s.ask("runs").stdout, `(?m)^abc123 .* ok +Fake 1\.0 +41\.2s +Why does the login test fail\?$`)
 		followup := s.ask("-c", "abc123", "Fix it.")
 		eq(t, followup.code, 0)
@@ -30,7 +30,7 @@ func TestCompat(t *testing.T) {
 		}
 		shown := s.ask("show", "port-parser-rust")
 		eq(t, shown.code, 1)
-		match(t, shown.stderr, `(?m)^ask port-parser-rust · failed · Fake 1\.0 · 6:12 · 412\.0k in · 9\.1k out · \$25\.31 · stopped at the \$25 cost limit; ask -c port-parser-rust continues it$`)
+		match(t, shown.stderr, `(?m)^ask port-parser-rust · failed · Fake 1\.0 · 6:12 · 412\.0k in · 9\.1k out · 300\.0k cache read · \$25\.31 · stopped at the \$25 cost limit; ask -c port-parser-rust continues it$`)
 		eq(t, s.ask("show", "k3f9a2").stderr, shown.stderr)
 		match(t, s.ask("runs", "--all").stdout, `(?m)^port-parser-rust +k3f9a2 .* failed +Fake 1\.0 +6:12 +Port the parser to Rust\.$`)
 		followup := s.ask("-c", "port-parser-rust", "Go on.")

@@ -37,7 +37,40 @@ func TestBatchEndPartialCost(t *testing.T) {
 		{"ok": true, "usage": home.Object{"input": 10, "output": 5, "cost": 0.01}},
 		{"ok": true, "usage": home.Object{"input": 100, "output": 50}},
 	}}
-	if got := BatchEnd(r, 1); got != "ask abc123 · 2/2 ok · 1.0s · 110 in · 55 out" {
+	if got := BatchEnd(r, 1); got != "ask abc123 · 2/2 ok · 1.0s · reported: 110 in · 55 out" {
 		t.Fatal(got)
+	}
+}
+
+func TestUsageReportedMetrics(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		usage home.Object
+		want  string
+	}{
+		{"cached input", home.O("input", 1200000, "output", 7000, "cached", 1100000), "1200.0k in · 7.0k out · 1100.0k cache read"},
+		{"cost only", home.O("cost", 0.05), "$0.05"},
+		{"cached only", home.O("cached", 3000), "3.0k cache read"},
+		{"unreported", home.Object{}, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Usage(tt.usage); got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBatchUsageOmitsPartialCache(t *testing.T) {
+	usage := batchUsage([]any{home.O("input", 100, "cached", 60), home.O("input", 50)})
+	if got := Usage(usage); got != "150 in" {
+		t.Fatalf("partial cache presented as total: %s", got)
+	}
+}
+
+func TestBatchUsageOmitsCostWhenTaskReportsNothing(t *testing.T) {
+	usage := batchUsage([]any{home.O("input", 100, "cost", 0.5), nil})
+	if got := Usage(usage); got != "100 in" {
+		t.Fatalf("partial cost presented as total: %s", got)
 	}
 }

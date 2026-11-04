@@ -45,11 +45,7 @@ func waitAny(p home.Paths) (int, error) {
 					continue
 				}
 				ref := runs.Ref(r, i)
-				resume := "ask -c " + ref
-				if len(r.Tasks) > 1 {
-					resume = "ask batch --resume " + r.Label()
-				}
-				fmt.Fprintf(os.Stderr, "ask %s · stopped · resume: %s\n", ref, resume)
+				fmt.Fprintf(os.Stderr, "ask %s · stopped · rerun: ask batch --resume %s\n", ref, r.Label())
 				return 1, nil
 			}
 			return show(p, home.Object{}, []string{r.ID})

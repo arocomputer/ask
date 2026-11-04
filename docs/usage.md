@@ -202,7 +202,8 @@ ask find-bugs-src-parser · failed · Sonnet 5.5 · 12.3s · answer does not mat
 ## Follow-ups
 
 Every run gets a name from its prompt. Continue the same agent conversation with `--continue`; see
-[Runs](runs.md).
+[Runs](runs.md). A follow-up keeps the previous access mode unless you change it. Use `--write`
+to implement a read-only investigation, and `--read` to switch back.
 
 ```sh
 ask --model claude:sonnet-5.5 "Why does the login test fail?"
@@ -224,6 +225,11 @@ ask login-test-fail · ok · Sonnet 5.5 · 14.2s · 31.0k in · 812 out · $0.09
 - **Exit code**: 0 on success, 1 when the run failed, 2 when ask was called wrong (the message says
   what to fix; `ask help COMMAND` shows the options). Missing or malformed model specifications
   also show available models grouped by agent.
+
+Usage shows only metrics an agent reports. Cache reads are shown separately; whether they are
+included in input depends on the agent. A batch labels summed values as reported usage and omits
+cost when any task did not report it. Saved results are not a complete spending history: interrupted
+or retried attempts may be absent, and agents differ in what they report.
 
 Stopping ask (Ctrl-C) stops the agent too.
 

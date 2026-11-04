@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // TestRuns pins saved runs: show, stop, locks, damaged records and --resume.
@@ -38,6 +39,20 @@ func TestRuns(t *testing.T) {
 		match(t, stopped.stderr, `^ask `+id+` · stopped`)
 		eq(t, run.wait(t).code, 130)
 		eq(t, s.ask("stop", id).code, 1)
+	})
+	t.Run("wait suggests rerunning a stopped single task", func(t *testing.T) {
+		s := fresh(t)
+		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		until(t, func() bool { return len(s.calls()) == 1 })
+		parts := strings.Split(s.latest(), "-")
+		id := parts[len(parts)-1]
+		waiter := s.start([]string{"wait"}, "", nil)
+		time.Sleep(400 * time.Millisecond)
+		eq(t, s.ask("stop", id).code, 0)
+		got := waiter.wait(t)
+		eq(t, got.code, 1)
+		match(t, got.stderr, `stopped · rerun: ask batch --resume `+id)
+		run.wait(t)
 	})
 	t.Run("a run another ask is running cannot be resumed at the same time", func(t *testing.T) {
 		s := fresh(t)
@@ -221,6 +236,15 @@ func TestRuns(t *testing.T) {
 		if _, e := os.Stat(filepath.Join(dir, "b.txt")); e != nil {
 			t.Fatal("the merged change is gone from the checkout")
 		}
+	})
+	t.Run("runs shows elapsed time for an active run", func(t *testing.T) {
+		s := fresh(t)
+		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		until(t, func() bool { return len(s.calls()) == 1 })
+		id := strings.Split(s.latest(), "-")[1]
+		match(t, s.ask("runs").stdout, `running +fake:small +0:[0-9]{2}`)
+		eq(t, s.ask("stop", id).code, 0)
+		run.wait(t)
 	})
 	t.Run("runs lists recorded runs, newest first, with their outcome and model", func(t *testing.T) {
 		s := fresh(t)

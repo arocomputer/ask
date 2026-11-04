@@ -93,11 +93,12 @@ Run ` + "`ask help`" + ` for usage, ` + "`ask help COMMAND`" + ` for a command's
 
 - ` + "`ask -m MODEL \"question\"`" + `: a read-only answer from another agent, on stdout.
 - ` + "`ask -m MODEL -w \"task\"`" + `: let it change files; add ` + "`--worktree`" + ` to work on its own branch.
-- ` + "`ask -c RUN \"follow-up\"`" + `: continue that run's conversation. RUN is the name in its status line.
+- ` + "`ask -c RUN \"follow-up\"`" + `: continue that conversation; add ` + "`-w`" + ` to implement a read-only investigation.
 - ` + "`ask batch FILE`" + `: many tasks in parallel, one JSON result array.
 
-Run ask in the background when you can, then ` + "`ask wait`" + ` to collect the first running run
-that finishes. ` + "`ask show RUN`" + ` prints a completed run; status lines on stderr say how it went.
+Run ask in the background when you can. For parallel runs, redirect each run's stdout and stderr
+to separate files so answers and status do not interleave. ` + "`ask wait`" + ` prints the first run
+that was active when waiting began and then finishes; ` + "`ask show RUN`" + ` prints a completed run.
 `
 
 // SkillState is "missing", "current", "outdated" (written by an older ask) or "yours".

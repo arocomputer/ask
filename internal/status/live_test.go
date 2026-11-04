@@ -26,7 +26,7 @@ func TestFrame(t *testing.T) {
 		"⠋ a  Small One  read · /tmp · 0:02 · 1.2k in · 30 out · $0.05",
 		"· b  Big        queued",
 		"✗ c  Big        quota exceeded",
-		"0/3 ok · 1 failed · 0:02 · 1.2k in · 30 out · $0.05",
+		"0/3 ok · 1 failed · 0:02 · reported: 1.2k in · 30 out",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("%#v", got)
