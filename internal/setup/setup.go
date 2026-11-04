@@ -88,7 +88,7 @@ description: Delegate focused questions, reviews or implementation tasks to codi
 ` + mark + `
 
 Run ` + "`ask help`" + ` for usage, ` + "`ask help COMMAND`" + ` for a command's options,
-` + "`ask models`" + ` for the models available here, and
+` + "`ask models`" + ` for the models available here, ` + "`ask models --roles`" + ` for user-defined roles, and
 ` + "`ask docs PAGE`" + ` (or ` + "`ask docs --search TERM`" + `) for the full docs.
 
 Use Ask when an independent investigation, review or bounded implementation can move the work
@@ -107,6 +107,10 @@ and validation to run. Review the returned evidence and changes before integrati
 Delegate independent questions in a batch; give parallel write tasks separate worktrees and avoid
 overlapping ownership. Running tests or builds needs write access. A worktree starts from HEAD,
 so pass relevant uncommitted context explicitly. Choose models from ` + "`ask models`" + ` rather than guessing ids.
+
+A role is an explicit user-defined alias for an exact model and effort, usable as MODEL in runs,
+batches and benches. Respect the user's role choices; ask does not route tasks automatically.
+Follow-ups inherit the recorded model even if the role changes later.
 
 RUN is the name or id in a status line; use RUN/TASK for a batch task. Script aliases remain supported:
 ` + "`--continue RUN`" + ` / ` + "`-c RUN`" + ` for follow-ups, ` + "`ask batch --resume RUN`" + ` for batch reruns.

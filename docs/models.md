@@ -17,6 +17,76 @@ codex:gpt-6.1-sol
 - **effort** is passed to the agent, which passes it on in its CLI's own form. Supported
   values depend on the model and CLI; ask does not validate them.
 
+## Model roles
+
+Optionally give exact models your own names in `~/.ask/settings.json` (or
+`$ASK_HOME/settings.json`):
+
+```json
+{
+  "roles": {
+    "fast": "claude:haiku-4.5",
+    "deep": "codex:gpt-6.1-sol#high",
+    "review": "claude:sonnet-5.5#high"
+  },
+  "model": "fast"
+}
+```
+
+These names are your choices: ask supplies no roles and never routes a task automatically.
+Use a role anywhere a run, batch task or benchmark accepts a model:
+
+```sh
+ask --model fast "Explain this function"
+ask --model deep "Investigate the failure"
+ask continue RUN --model review "Review the fix"
+ask batch tasks.json --model fast
+ask bench tasks.json --model fast --model deep
+ask models --roles
+```
+
+`ask models --roles` prints `name<TAB>agent:id[#effort]`, sorted by role name, with lowercase
+model ids. It reads settings without calling agents, so it also lists roles whose agents are
+missing or whose models are off. Existing `ask models`, `--all` and `--names` output is unchanged;
+roles are listed only with `--roles`, which takes no other flags or model arguments.
+
+Edit roles through **Model roles** in `ask settings`, or replace the map from a script:
+
+```sh
+ask settings set roles '{"fast":"claude:haiku-4.5","deep":"codex:gpt-6.1-sol#high"}'
+ask settings get roles --json
+ask settings set model fast
+ask settings unset roles
+```
+
+`set roles` replaces the whole map, so include every role you want to keep; use `--dry-run`
+to review without saving. The terminal menu adds, edits and removes individual roles. **Defaults**
+can choose a role as the default model. Removing a role used by `model` requires choosing a new
+default or unsetting `model` before starting a task without `--model`.
+
+Names must match `[a-z][a-z0-9_-]*`: lowercase ASCII letters, digits, underscores and hyphens,
+starting with a letter. Targets must be direct `agent:id[#effort]` strings, with no spaces and
+at most one `#`. Duplicate names, uppercase names, malformed targets and role-to-role references
+are errors; chains and cycles are not supported. Multiple names may point to the same model.
+There are no effort overrides such as `fast#high`; define a role with that effort instead.
+
+Roles resolve before tasks are saved. Task and result records, hooks and agent calls receive the
+concrete model and effort, so editing or removing a role cannot change a saved run's model.
+Follow-ups inherit the recorded model unless you explicitly choose another, and must keep the
+same agent even when the override is a role. Reruns keep the recorded model. Benches deduplicate
+roles and exact specifications that resolve to the same model and effort, and record that
+specification in their reports.
+
+A role respects the target's enabled state and cost limit in `models.json`; an explicit task or
+command cost limit still takes precedence. A follow-up inherits a positive recorded limit before
+looking at the target model's limit or your current default. Roles have no separate budget.
+Manage enabled state and model limits with the concrete `agent:id`, not a role.
+
+Saving roles checks syntax without requiring installed agents or querying model catalogs.
+Running a role requires its agent to be installed and its model to be on. As with exact model
+specifications, ask cannot verify account availability, provider-side aliases or supported effort
+values; those remain the agent's responsibility.
+
 ## Listing
 
 ```sh

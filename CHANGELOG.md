@@ -11,6 +11,11 @@
   Failed results still omit `answer` and exit 1; the contract remains version 1.
 - Teach useful, focused delegation in the generated Ask skill without requiring Ask for every
   handoff; cover explicit context, independent parallel work and structured failure recovery.
+- Add optional user-defined model roles in `settings.json`: direct names such as `fast`, `deep`
+  and `review` for exact models and efforts, with no automatic routing. Discover them with
+  `ask models --roles` and edit them in `ask settings` or `ask settings set roles JSON`.
+  Runs, batches and benches record resolved models; follow-ups and reruns keep their recorded
+  models after role edits, with existing enabled-state and cost-limit rules.
 
 - Show coarse Codex and Claude Code activity while runs work, including in `ask runs`. The
   optional `ASK_REPORT` activity field updates terminal rows and rate-limited plain status lines

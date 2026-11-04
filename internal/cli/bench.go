@@ -35,12 +35,16 @@ func bench(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	if len(words) != 1 {
 		return 0, home.Usage("ask bench takes one file of tasks, like ask bench tasks.json -m claude:sonnet-5.5 -m codex:gpt-6.1-sol")
 	}
+	settings, e := a.Paths.ReadSettings()
+	if e != nil {
+		return 0, e
+	}
 	models := []string{}
 	for _, m := range strings.Split(opts.S("-m"), ",") {
 		if m = home.Trim(m); m == "" {
 			continue
 		}
-		spec, e := agent.Parse(a.Paths, m)
+		spec, e := agent.Resolve(a.Paths, settings, m)
 		if e != nil {
 			return 0, e
 		}

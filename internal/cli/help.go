@@ -116,7 +116,7 @@ Setup
 		lines = append(lines, strings.Join(own, "\n"))
 	}
 	lines = append(lines, `Common options
-  -m, --model MODEL   Choose a model
+  -m, --model MODEL   Model or role (ask models --roles)
   -w, --write         Allow edits and commands
       --worktree      Work in a separate worktree
 
@@ -136,7 +136,7 @@ Usage
   ask continue RUN [options] PROMPT
 
 Options
-  -m, --model MODEL      Agent and model, or use your configured default
+  -m, --model MODEL      Agent:model[#effort] or role; else your default
   -w, --write            Allow edits and commands
   -r, --read             Require read-only access (the default)
       --worktree         Work in a new worktree (with --write)
@@ -212,7 +212,7 @@ Tasks · a batch file, without model, plus
              Runs as you, even for read-only tasks; only use trusted checks
 
 Options
-  --model MODEL  A model to compare; repeat for each model
+  --model MODEL  Model or role to compare; repeat for each model
   -n N           Attempts per task and model (default: 1)
   --read         Require read-only tasks
   --write        Allow edits and commands
@@ -246,7 +246,7 @@ Usage
 Tasks · a JSON array, or one object per line
   prompt     The task (required)
   id         Result id (default: position)
-  model      agent:id[#effort] (default: --model, then followed-up run, then settings)
+  model      agent:id[#effort] or role (default: --model, followed-up run, settings)
   continue   RUN or RUN/TASK to follow up
   write      Allow edits (default: --read/--write, then followed-up run, else read)
   worktree   Work in a new git worktree (default: --worktree)
@@ -365,6 +365,7 @@ Example
 
 Usage
   ask models [--names] [--all]
+  ask models --roles                  Your configured roles: name<TAB>agent:id[#effort]
   ask models MODEL... --enable | --disable | --max-cost USD
 
 Output
@@ -380,6 +381,7 @@ Changes, saved in ~/.ask/models.json
 Examples
   ask models
   ask models --all
+  ask models --roles                 # explicit aliases in settings.json; no automatic routing
   ask models codex:gpt-5.6-sol opencode:gpt-4o --disable
   ask models claude:opus-5.5 --max-cost 10
   ask settings NAME                  # in a terminal, choose that agent's models` + "\n\ndocs  ask docs models"
@@ -510,7 +512,8 @@ Usage
   ask settings unset KEY        Back to the default
 
 Keys
-  model       The model when -m gives none, like claude:sonnet-5.5
+  model       Model or configured role when -m gives none
+  roles       JSON object of names to exact agent:id[#effort] strings; no role references
   timeout     Seconds per task (default: 900)
   jobs        Batch tasks at once (default: 4)
   max_cost    Dollars a task may spend; ask stops it there (default: no limit)
@@ -527,6 +530,8 @@ Examples
   ask settings
   ask settings opencode
   ask settings set max_cost 2
+  ask settings set roles '{"fast":"codex:gpt-6.1-sol"}'
+  ask settings set model fast
   ask settings set worktrees '~/code/worktrees/ask-{name}' --dry-run
   ask settings get --json` + "\n\ndocs  ask docs settings"
 	}

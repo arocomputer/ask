@@ -119,10 +119,11 @@ func Tilde(path string) string {
 }
 
 // Settings are the keys settings.json may hold, each replacing a built-in default:
-// model (the default -m), timeout (seconds per task), jobs (batch tasks at once), max_cost (USD a
-// task may spend; none when absent or 0), worktrees (a path whose last part holds {name}) and
-// branches (a worktree's branch name, holding {name}).
-var Settings = []string{"model", "timeout", "jobs", "max_cost", "worktrees", "branches"}
+// model (the default -m), roles (names for exact model specifications), timeout (seconds per
+// task), jobs (batch tasks at once), max_cost (USD a task may spend; none when absent or 0),
+// worktrees (a path whose last part holds {name}) and branches (a worktree's branch name,
+// holding {name}).
+var Settings = []string{"model", "roles", "timeout", "jobs", "max_cost", "worktrees", "branches"}
 
 // ReadSettings reads the optional settings.json, like {"worktrees": "~/code/worktrees/ask-{name}"}.
 // Unknown keys and malformed values are errors.
@@ -142,6 +143,9 @@ func (p Paths) ReadSettings() (Object, error) {
 	o, ok := v.(Object)
 	if !ok {
 		return nil, Usage(`%s must be a JSON object, like {"worktrees": "~/code/worktrees/ask-{name}"}`, path)
+	}
+	if e := checkRoleDuplicates(UTF8(b)); e != nil {
+		return nil, Usage("%s: %s", path, e)
 	}
 	if e := p.checkSettings(o); e != nil {
 		return nil, e
@@ -204,6 +208,10 @@ func (p Paths) checkSettings(o Object) error {
 		case "model":
 			if s, ok := val.(string); !ok || Trim(s) == "" {
 				bad = `a model like "claude:sonnet-5.5"`
+			}
+		case "roles":
+			if e := checkRoles(val); e != nil {
+				return Usage("%s: %s", path, e)
 			}
 		case "timeout":
 			if n, ok := val.(float64); !ok || !(n > 0 && n <= 2000000) {

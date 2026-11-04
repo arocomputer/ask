@@ -59,7 +59,7 @@ setting (see [Usage](usage.md#cost-limits)).
 
 | Option | Meaning |
 | --- | --- |
-| `--model MODEL` | A model to compare. Give one `--model` per model, or several separated by commas. |
+| `--model MODEL` | An exact model or configured [model role](models.md#model-roles) to compare. Give one `--model` per model, or several separated by commas. |
 | `-n N` | Attempts per task and model. Default 1. |
 | `--read`, `--write`, `--directory`, `--timeout`, `--title`, `--max-cost` | Defaults for every task, as in a batch. An explicit `--read` refuses write tasks. |
 | `-j N` | Attempts at once. Default 4, or the `jobs` [setting](settings.md). |

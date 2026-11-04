@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,23 +23,26 @@ import (
 // that models.json lookups, run records and the agent (ASK_MODEL) all see; Spec is rebuilt from it.
 type Model struct{ Spec, Agent, ID, Effort string }
 
-var specPattern = regexp.MustCompile(`^([a-z0-9][a-z0-9_-]*):([^#\s]+)(?:#(\S+))?$`)
-
-// Parse validates a model specification, lowercases its id, and requires its agent to be installed.
-func Parse(p home.Paths, spec string) (Model, error) {
-	m := specPattern.FindStringSubmatch(spec)
-	if m != nil {
-		for _, r := range m[2] + m[3] {
-			if home.Space(r) {
-				m = nil
-				break
-			}
+// Resolve expands an optional user-defined role, then parses its exact model specification.
+// Records and agent calls use only the resolved model, never the role name.
+func Resolve(p home.Paths, settings home.Object, spec string) (Model, error) {
+	if !strings.Contains(spec, ":") {
+		target, ok := home.Roles(settings)[spec]
+		if !ok {
+			return Model{}, home.Usage("unknown model role %q; expected agent:id[#effort] or a configured role; see ask models --roles", spec)
 		}
+		spec = target.(string)
 	}
-	if m == nil {
-		return Model{}, home.Usage("bad model \"%s\": expected agent:id[#effort]; see `ask models`", spec)
+	return Parse(p, spec)
+}
+
+// Parse validates an exact model specification, lowercases its id, and requires its agent to be installed.
+func Parse(p home.Paths, spec string) (Model, error) {
+	name, id, effort, err := home.ParseModelSpec(spec)
+	if err != nil {
+		return Model{}, err
 	}
-	if find.Path(p, "agents", m[1]) == "" {
+	if find.Path(p, "agents", name) == "" {
 		names := []string{}
 		for _, x := range find.Sorted(p, "agents") {
 			names = append(names, x.Name)
@@ -49,14 +51,13 @@ func Parse(p home.Paths, spec string) (Model, error) {
 		if text == "" {
 			text = "none"
 		}
-		return Model{}, home.Usage("no agent \"%s\" in %s; installed: %s; run ask setup, or ask install %s if it is an official agent", m[1], p.Agents, text, m[1])
+		return Model{}, home.Usage("no agent %q in %s; installed: %s; run ask setup, or ask install %s if it is an official agent", name, p.Agents, text, name)
 	}
-	id := strings.ToLower(m[2])
-	spec = m[1] + ":" + id
-	if m[3] != "" {
-		spec += "#" + m[3]
+	spec = name + ":" + id
+	if effort != "" {
+		spec += "#" + effort
 	}
-	return Model{spec, m[1], id, m[3]}, nil
+	return Model{spec, name, id, effort}, nil
 }
 
 type listedModel struct{ id, name string }

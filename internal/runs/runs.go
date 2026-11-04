@@ -257,7 +257,8 @@ func lock(r *Run) (*os.File, error) {
 // else the limit of the run it follows up, else its model's in models.json, else the max_cost
 // setting; 0 means none. A model that
 // models.json turns off is refused. An explicit -r in defaults is a ceiling: a task asking for
-// write access is refused rather than run with it. The model is stored as agent.Parse spells it.
+// write access is refused rather than run with it. Roles resolve before saving; the model is
+// stored as agent.Parse spells it, so later role edits cannot change a saved run.
 func Prepare(p home.Paths, items []any, defaults home.Object, label string, single bool, missing func(string) error) ([]home.Object, error) {
 	settings, e := p.ReadSettings()
 	if e != nil {
@@ -357,7 +358,7 @@ func Prepare(p home.Paths, items []any, defaults home.Object, label string, sing
 			if x.Get("model") == nil {
 				x.Set("model", result.Get("model"))
 			}
-			m, e := agent.Parse(p, x.S("model"))
+			m, e := agent.Resolve(p, settings, x.S("model"))
 			if e != nil {
 				return nil, e
 			}
@@ -404,7 +405,7 @@ func Prepare(p home.Paths, items []any, defaults home.Object, label string, sing
 		if !x.B("model") {
 			return nil, missing(where)
 		}
-		m, e := agent.Parse(p, x.S("model"))
+		m, e := agent.Resolve(p, settings, x.S("model"))
 		if e != nil {
 			return nil, e
 		}

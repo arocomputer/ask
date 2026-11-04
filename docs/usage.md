@@ -8,7 +8,8 @@ ask run [options] "prompt"
 `ask help` is a compact command reference. `ask help batch`,
 `ask help hooks` and `ask help agents` describe their contracts.
 
-Choose `MODEL` from `ask models`. Every run uses an explicit model: from `--model`, a follow-up, or
+Choose `MODEL` from `ask models`, or a user-defined [model role](models.md#model-roles) from
+`ask models --roles`. Every run uses an explicit model: from `--model`, a follow-up, or
 your default [setting](settings.md). The examples below use particular agents and models;
 replace them with ids available in your installation. `RUN` is a name or id printed by ask
 (see [Runs](runs.md)).

@@ -87,6 +87,12 @@ func (d *draft) set(key, value string) error {
 	var v any = value
 	if value == "" {
 		v = nil
+	} else if key == "roles" {
+		roles, e := home.ParseRoles(value)
+		if e != nil {
+			return e
+		}
+		v = roles
 	} else if key == "timeout" || key == "jobs" || key == "max_cost" {
 		n, e := strconv.ParseFloat(strings.TrimPrefix(value, "$"), 64)
 		if e != nil {
@@ -94,8 +100,8 @@ func (d *draft) set(key, value string) error {
 		}
 		v = n
 	}
-	if name, id, _ := strings.Cut(value, ":"); key == "model" && value != "" && (name == "" || id == "") {
-		return home.Usage("model must be agent:id[#effort], like claude:sonnet-5.5, not %q", value)
+	if name, id, _ := strings.Cut(value, ":"); key == "model" && value != "" && (name == "" || id == "") && !home.Roles(s).Has(value) {
+		return home.Usage("model must be agent:id[#effort] or a configured role (ask models --roles), not %q", value)
 	}
 	s.Set(key, v)
 	if v == nil {
@@ -363,7 +369,7 @@ func getSettings(p home.Paths, key string, asJSON bool) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	defaults := home.O("timeout", 900.0, "jobs", 4.0, "max_cost", 0.0, "worktrees", "~/.ask/worktrees/{name}", "branches", "ask/{name}")
+	defaults := home.O("roles", home.Object{}, "timeout", 900.0, "jobs", 4.0, "max_cost", 0.0, "worktrees", "~/.ask/worktrees/{name}", "branches", "ask/{name}")
 	values := home.Object{}
 	for _, k := range home.Settings {
 		if s.Has(k) {
@@ -392,6 +398,8 @@ func getSettings(p home.Paths, key string, asJSON bool) (int, error) {
 			fmt.Fprintln(os.Stdout, home.JSON(v, false))
 		case v == nil:
 			fmt.Fprintln(os.Stdout)
+		case key == "roles":
+			fmt.Fprintln(os.Stdout, home.JSON(v, false))
 		case key == "hook":
 			fmt.Fprintln(os.Stdout, map[bool]string{true: "on", false: "off"}[v == true])
 		default:

@@ -64,6 +64,67 @@ func TestSettings(t *testing.T) {
 		eq(t, strings.Contains(s.read(filepath.Join(s.home, "settings.json")), "model"), false)
 		match(t, s.ask("settings", "get").stdout, `(?m)^timeout +900 \(default\)$`)
 	})
+	t.Run("roles can be reviewed, saved, read as JSON and removed without changing other settings", func(t *testing.T) {
+		s := fresh(t)
+		eq(t, s.ask("settings", "get", "roles", "--json").stdout, "{}\n")
+		eq(t, s.ask("settings", "set", "timeout", "1800").code, 0)
+		roles := `{"fast":"fake:small#low","deep":"fake:big#high"}`
+		dry := s.ask("settings", "set", "roles", roles, "--dry-run")
+		eq(t, dry.code, 0)
+		match(t, dry.stderr, `"fast": "fake:small#low"`)
+		noMatch(t, s.read(filepath.Join(s.home, "settings.json")), `roles`)
+		eq(t, s.ask("settings", "set", "roles", roles).code, 0)
+		jsonEqual(t, obj(t, s.ask("settings", "get", "roles", "--json").stdout), obj(t, roles))
+		jsonEqual(t, obj(t, s.ask("settings", "get", "roles").stdout), obj(t, roles))
+		eq(t, s.ask("settings", "set", "model", "fast").code, 0)
+		eq(t, s.ask("settings", "get", "timeout").stdout, "1800\n")
+		eq(t, s.ask("settings", "set", "model", "unknown").code, 2)
+		eq(t, s.ask("settings", "unset", "model").code, 0)
+		eq(t, s.ask("settings", "unset", "roles").code, 0)
+		eq(t, s.ask("settings", "get", "roles").stdout, "{}\n")
+		eq(t, s.ask("settings", "get", "timeout").stdout, "1800\n")
+		match(t, s.ask("help").stdout, `ask models --roles`)
+		match(t, s.ask("help", "settings").stdout, `ask settings set roles`)
+	})
+	t.Run("invalid, ambiguous and cyclic role maps fail on read and save before any agent starts", func(t *testing.T) {
+		for _, tc := range []struct{ roles, message string }{
+			{`null`, `"roles" must be an object`},
+			{`[]`, `"roles" must be an object`},
+			{`{"fast":false}`, `role "fast" must target`},
+			{`{"fast":null}`, `role "fast" must target`},
+			{`{"Fast":"fake:small"}`, `names must match`},
+			{`{"fast":"fake:small","FAST":"fake:big"}`, `names must match`},
+			{`{"fake:small":"fake:big"}`, `names must match`},
+			{`{"fast#high":"fake:big"}`, `names must match`},
+			{`{"":"fake:small"}`, `names must match`},
+			{`{"fast":""}`, `expected agent:id`},
+			{`{"fast":"fake:"}`, `expected agent:id`},
+			{`{"fast":"fake:small#"}`, `expected agent:id`},
+			{`{"fast":"fake:small#low#high"}`, `expected agent:id`},
+			{`{"fast":"fake:small high"}`, `expected agent:id`},
+			{`{"fast":"fake:small\u00a0"}`, `expected agent:id`},
+			{`{"fast":"deep","deep":"fake:big"}`, `roles cannot reference roles`},
+			{`{"fast":"fast"}`, `including cycles`},
+			{`{"fast":"deep","deep":"fast"}`, `including cycles`},
+			{`{"fast":"fake:small","fast":"fake:big"}`, `role "fast" is defined twice`},
+		} {
+			s := fresh(t)
+			bad := s.ask("settings", "set", "roles", tc.roles)
+			eq(t, bad.code, 2)
+			match(t, bad.stderr, tc.message)
+			eq(t, exists(filepath.Join(s.home, "settings.json")), false)
+			s.write(filepath.Join(s.home, "settings.json"), `{"roles":`+tc.roles+`}`)
+			bad = s.ask("-m", "fake:small", "no")
+			eq(t, bad.code, 2)
+			match(t, bad.stderr, tc.message)
+			eq(t, len(s.calls()), 0)
+		}
+		s := fresh(t)
+		s.write(filepath.Join(s.home, "settings.json"), `{"roles":{},"roles":{"fast":"fake:small"}}`)
+		match(t, s.ask("settings", "get").stderr, `"roles" is defined twice`)
+		s.write(filepath.Join(s.home, "settings.json"), `{"roles":{},"typo":true}`)
+		match(t, s.ask("settings", "get").stderr, `unknown setting "typo"`)
+	})
 	t.Run("bad values and arguments are usage errors", func(t *testing.T) {
 		s := fresh(t)
 		for _, args := range [][]string{{"settings", "set", "jobs", "0"}, {"settings", "set", "worktrees", "../wt/{name}"}, {"settings", "set", "colour", "red"}, {"settings", "set", "skills", "emacs"}, {"settings", "set", "hook", "maybe"}, {"setup", "--json"}, {"setup", "extra"}, {"settings", "nobody"}} {

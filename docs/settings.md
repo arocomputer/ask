@@ -10,6 +10,7 @@ ask settings  ~/.ask
 
 What do you want to change?
 › Agents           claude, codex, opencode
+  Model roles      {} (default)
   Defaults         claude:sonnet-5.5 · no cost limit · edited
   Worktrees        ~/code/worktrees/ask-{name}
   Apps             ask skill in 5 of 5 apps · task titles on
@@ -43,6 +44,9 @@ Home/End, deletion and bracketed paste; pasted newlines become spaces rather tha
 
 - **Agents**: each agent: install or remove an official one, which of its models are on, and
   their cost limits. `ask settings NAME` opens one directly, like `ask settings opencode`.
+- **Model roles**: optional names such as `fast`, `deep` and `review`, each pointing directly to
+  an exact `agent:id[#effort]`. Add or select one to edit it; enter `-` as its target to remove it.
+  See [Model roles](models.md#model-roles).
 - **Defaults**: the model when you don't give `-m`, the cost limit, the timeout and batch jobs.
 - **Worktrees**: where `--worktree` works, and its branch name.
 - **Apps**: the ask skill for each app that reads skills, and task titles in Claude Code.
@@ -52,6 +56,9 @@ Home/End, deletion and bracketed paste; pasted newlines become spaces rather tha
 ```sh
 ask settings get                       # every setting, defaults marked
 ask settings get model
+ask settings get roles --json
+ask settings set roles '{"fast":"claude:haiku-4.5","deep":"codex:gpt-6.1-sol#high"}'
+ask settings set model fast
 ask settings get --json                # the values that apply
 ask settings set max_cost 2            # shows what changes, then saves
 ask settings set worktrees '~/code/worktrees/ask-{name}' --dry-run
@@ -81,7 +88,8 @@ without the file, ask uses the built-in defaults below.
 
 | Key | What it sets | Built in |
 | --- | --- | --- |
-| `model` | The model when neither `-m`, a batch task, nor a follow-up gives one | none: `-m` is required |
+| `model` | The exact model or configured role when neither `-m`, a batch task, nor a follow-up gives one | none: `-m` is required |
+| `roles` | Your names mapped directly to `agent:id[#effort]` strings; see [Model roles](models.md#model-roles). No built-in roles or automatic routing | `{}` |
 | `timeout` | Seconds a task may run, unless `-t` or the task says otherwise | `900` |
 | `jobs` | Batch tasks at once, unless `-j` says otherwise | `4` |
 | `max_cost` | Dollars a task may spend before ask stops it, unless `--max-cost` or the model's own limit in [models.json](models.md#modelsjson) says otherwise; `0` for none (see [Cost limits](usage.md#cost-limits)) | none |
@@ -98,6 +106,9 @@ Add `.ask/worktrees/` to the repository's `.gitignore`.
 `ask settings set` also takes `hook` (`on` or `off`) and `skills` (`claude-code`, `codex`,
 `opencode`, `cursor`, `pi` or `all`), which live in those apps' own files. An unknown key or a
 value of the wrong kind is an error that names the key, so a typo never silently does nothing.
+`set roles` takes a JSON object and replaces the entire map; `unset roles` removes it. The terminal
+menu edits one role at a time. Both show the usual review before saving. Unknown roles fail when
+used; the default `model` may name a role.
 Existing records keep their values. A new follow-up inherits the recorded model and access,
 and reuses a kept worktree's recorded path and branch even after `worktrees` or `branches` changes.
 When the earlier run kept no worktree, its follow-up creates one using the current settings.

@@ -63,7 +63,7 @@ docs page for that feature.
 | `followups_test.go` | `-c`: which session, model and access a follow-up gets | runs.md |
 | `git_test.go` | What write runs report from git, and `--worktree` | usage.md |
 | `agents_test.go` | The agent contract: stdin, environment, schema files, reports | agents.md |
-| `models_test.go` | `models.json`, models on and off, cost limits | models.md |
+| `models_test.go` | `models.json`, model roles and discovery, models on and off, cost limits | models.md |
 | `hooks_test.go` | Task and result hooks: order, refusals, follow-ups, failing open | hooks.md |
 | `commands_test.go` | Your own `ask NAME` commands and the documented large-diff review example | commands.md |
 | `packages_test.go` | `ask install` (including package updates), `remove`; official agents; refused sources | packages.md |
