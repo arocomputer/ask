@@ -79,14 +79,29 @@ func (p Paths) AgentEnv(name, executable string, vars map[string]string) ([]stri
 		inherit, filtered = v, true
 	}
 	env := p.Env(vars)
-	if filtered {
-		names, err := environmentNames(inherit)
-		if err != nil {
-			return nil, err
-		}
+	if filtered || policy.Has("remove") {
 		keep := map[string]bool{}
-		for _, key := range names {
-			keep[key] = true
+		if filtered {
+			names, err := environmentNames(inherit)
+			if err != nil {
+				return nil, err
+			}
+			for _, key := range names {
+				keep[key] = true
+			}
+		}
+		if extra, exists := policy["add"]; exists {
+			names, _ := environmentNames(extra)
+			for _, key := range names {
+				keep[key] = true
+			}
+		}
+		removed := map[string]bool{}
+		if extra, exists := policy["remove"]; exists {
+			names, _ := environmentNames(extra)
+			for _, key := range names {
+				removed[key] = true
+			}
 		}
 		// Keep freshly supplied contract fields; they cannot be inherited or removed by policy.
 		contract := map[string]bool{"ASK_HOME": true, "ASK_BIN": true, "ASK_CONTRACT": true}
@@ -96,7 +111,7 @@ func (p Paths) AgentEnv(name, executable string, vars map[string]string) ([]stri
 		out := []string{}
 		for _, entry := range env {
 			key, _, _ := strings.Cut(entry, "=")
-			if keep[key] || contract[key] {
+			if contract[key] || (!filtered || keep[key]) && !removed[key] {
 				out = append(out, entry)
 			}
 		}
@@ -151,12 +166,19 @@ func environmentKeys(o Object, allowed ...string) error {
 }
 
 func checkEnvironment(o Object) error {
-	if err := environmentKeys(o, "inherit", "integrations"); err != nil {
+	if err := environmentKeys(o, "inherit", "add", "remove", "integrations"); err != nil {
 		return err
 	}
 	if v, ok := o["inherit"]; ok {
 		if _, err := environmentNames(v); err != nil {
 			return err
+		}
+	}
+	for _, key := range []string{"add", "remove"} {
+		if v, ok := o[key]; ok {
+			if _, err := environmentNames(v); err != nil {
+				return err
+			}
 		}
 	}
 	if v, exists := o["integrations"]; exists {

@@ -16,7 +16,8 @@ by installation or updates. It contains variable **names**, not credentials:
       }
     },
     "my-agent": {
-      "inherit": ["HOME", "PATH", "TMPDIR", "LANG", "MY_PROVIDER_API_KEY"]
+      "add": ["MY_PROVIDER_API_KEY"],
+      "remove": ["UNNEEDED_VARIABLE"]
     }
   }
 }
@@ -26,11 +27,11 @@ by installation or updates. It contains variable **names**, not credentials:
 it **replaces** the adapter's default list; `[]` passes only Ask's contract fields.
 There are no patterns, values, interpolation or shell commands in this file.
 Missing variables stay absent. An omitted `inherit` uses the selected adapter's
-defaults, or the existing full inheritance for adapters without defaults. To add a
-custom auth/helper variable, copy the `inherit` list from the selected adapter's
-installed `packages/ask/packages/NAME/agents/NAME.environment.json` under Ask's home,
-then add its name. Keep the default auth and path variables you need. For example,
-a Codex custom provider's `env_key` may name a variable outside the shipped list.
+defaults, or the existing full inheritance for adapters without defaults. `add` and
+`remove` adjust that list without copying it; when both name the same variable,
+`remove` wins. They cannot remove Ask's freshly supplied contract fields. For example,
+a Codex custom provider's `env_key` may name a variable outside the shipped list;
+add its name with `add`.
 
 The policy applies to tasks, batches, follow-ups, installation readiness and model discovery. Changes take
 effect on the next agent launch; saved sessions do not freeze the policy. Ask always
@@ -49,8 +50,8 @@ Vertex ADC and Foundry/Azure identity. Codex retains `CODEX_HOME`, OpenAI and Az
 endpoints/keys, plus AWS and Google identity settings. OpenCode includes its
 multi-provider keys, GitHub/Copilot tokens and AWS, Google and Azure identity.
 Existing credential files and keychains remain available. Config-defined helpers
-keep their configuration; helpers with custom environment dependencies need an
-`inherit` override. The exact variable names are in each sidecar. Node preloads,
+keep their configuration; helpers with custom environment dependencies may need an
+`add` entry. The exact variable names are in each sidecar. Node preloads,
 terminal integration tokens and unrelated application credentials are excluded.
 
 All four declare preferred defaults of `mcp: false`, `plugins: false`,

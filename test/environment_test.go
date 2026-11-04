@@ -7,6 +7,15 @@ import (
 
 // TestEnvironment exercises policy at the real agent launch boundary, with no vendor CLI.
 func TestEnvironment(t *testing.T) {
+	t.Run("add and remove adjust defaults without exposing contract fields", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("echo", `cat >/dev/null; printf '%s|%s|%s|%s\n' "$KEPT" "$EXTRA" "$REMOVED" "$ASK_ACCESS"`)
+		s.json(filepath.Join(s.home, "agents", "echo.environment.json"), object{"inherit": []string{"PATH", "KEPT", "REMOVED"}})
+		s.json(filepath.Join(s.home, "environment.json"), object{"agents": object{"echo": object{"add": []string{"EXTRA"}, "remove": []string{"REMOVED", "ASK_ACCESS"}}}})
+		r := s.run([]string{"-m", "echo:small", "hi"}, "", map[string]string{"KEPT": "kept", "EXTRA": "extra", "REMOVED": "removed"})
+		eq(t, r.code, 0)
+		eq(t, r.stdout, "kept|extra||read\n")
+	})
 	t.Run("inherit is exact and contract fields win over parent values", func(t *testing.T) {
 		s := fresh(t)
 		s.localAgent("echo", `cat >/dev/null; printf '%s|%s|%s|%s|%s|%s|%s\n' "$KEPT" "$DROPPED" "$ASK_ACCESS" "$ASK_SESSION" "$ASK_ENVIRONMENT" "$ASK_CONTRACT" "$ASK_ENVIRONMENT_REQUESTED"`)

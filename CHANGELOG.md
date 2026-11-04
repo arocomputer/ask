@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Allow per-agent environment variable names to be added or removed without replacing defaults.
 - Extend environment allowlists and explicit integration policy to Claude, Codex and OpenCode.
   Claude probes supported MCP/skill/tool controls without resetting auth, instructions or hooks.
   Unavailable defaults produce visible run notes; explicit unenforceable restrictions fail.
