@@ -48,7 +48,7 @@ commands.
 
 ## Gaps
 
-- **Sessions**: Aider has no session ids, so `ask -c` cannot continue a run.
+- **Sessions**: Aider has no session ids, so conversation follow-ups (`ask continue RUN "prompt"`) are unavailable.
 - **Titles**: Aider has no session title, so `ASK_TITLE` is not used.
 - **Usage**: tokens and cost come from Aider's analytics log once the run ends, summed over every
   response, so they do not show live, and ask can't stop a run at a cost limit mid-run. A run that

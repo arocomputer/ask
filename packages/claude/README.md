@@ -43,7 +43,7 @@ A `--schema` is passed to Claude Code's `--json-schema`, and the answer is its s
 
 ## Follow-ups
 
-Every run starts with its own session id, reported to ask at once, so `ask --continue RUN` resumes it with
+Every run starts with its own session id, reported to ask at once, so `ask continue RUN "prompt"` resumes it with
 `--resume`, even after a run that was stopped. A follow-up's prompt is passed as is.
 
 ## Usage
@@ -60,7 +60,7 @@ that did most of the work (`Opus 5.5`).
 Claude Code reports cost only when it ends, so ask can't stop it on cost itself. The agent passes
 ask's limit (`ASK_MAX_COST`, from `--max-cost`, models.json or the `max_cost` setting) to Claude
 Code as `--max-budget-usd`, which stops after the model call that passes it. The run fails as
-`stopped at the $2.00 cost limit`, keeps its session, and `ask --continue RUN` continues it.
+`stopped at the $2.00 cost limit`, keeps its session, and `ask continue RUN "prompt"` continues it.
 
 ## Environment
 

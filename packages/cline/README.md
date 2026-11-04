@@ -50,7 +50,7 @@ Use another agent for questions.
 
 ## Follow-ups
 
-The session id from `session/new` is reported to ask at once, so `ask -c RUN` continues it with
+The session id from `session/new` is reported to ask at once, so `ask continue RUN "prompt"` continues it with
 `session/load`; the history Cline replays when loading is not part of the answer. A follow-up's
 prompt is passed as is.
 

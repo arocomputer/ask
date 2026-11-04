@@ -51,7 +51,7 @@ the injected one and can change its rules or `default_agent`.
 
 ## Follow-ups
 
-Every event carries Kilo's session id; the agent reports it at once, so `ask -c RUN` continues the
+Every event carries Kilo's session id; the agent reports it at once, so `ask continue RUN "prompt"` continues the
 session with `--session`. A follow-up's prompt is passed as is.
 
 ## Title and usage

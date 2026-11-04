@@ -41,7 +41,7 @@ Copilot enforces no schema, so `ASK_SCHEMA` is ignored; ask still checks JSON an
 ## Follow-ups
 
 Every run starts with its own session id, reported to ask at once and passed as `--session-id`,
-so `ask -c RUN` resumes it, even after a run that was stopped. A follow-up's prompt is passed as is.
+so `ask continue RUN "prompt"` resumes it, even after a run that was stopped. A follow-up's prompt is passed as is.
 
 ## Titles
 

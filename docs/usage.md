@@ -1,7 +1,8 @@
 # Usage
 
 ```sh
-ask --model MODEL [options] PROMPT
+ask [options] "prompt"
+ask run [options] "prompt"
 ```
 
 `ask help` is a compact reference with the models installed here. `ask help batch`,
@@ -32,7 +33,11 @@ prompt, even ones that look like options:
 ask --model claude:sonnet-5.5 "Summarize src/"
 git diff | ask --model codex:gpt-6.1-sol -
 ask --model claude:sonnet-5.5 < task.md
+git diff | ask                                    # uses your configured default model
 ```
+
+With a default model configured in [Settings](settings.md), `ask "prompt"`, `ask run "prompt"`
+and bare piped stdin all use it.
 
 `--title TEXT` replaces the prompt text in the agent's session title, without changing the task:
 
@@ -158,8 +163,10 @@ When a task passes its limit, the agent is stopped. If it has reported a session
 continue the conversation and decide whether it's worth more.
 
 ```text
-ask port-parser-rust · failed · Opus 5.5 · 6:12 · 412.0k in · 9.1k out · $25.31 · stopped at the $25.00 cost limit; ask -c port-parser-rust continues it
+ask port-parser-rust · failed · Opus 5.5 · 6:12 · 412.0k in · 9.1k out · $25.31 · stopped at the $25.00 cost limit
 ```
+
+Use `ask continue port-parser-rust "Finish the port."` to follow up in the saved conversation.
 
 How closely a limit holds depends on what the agent's CLI reports. Opencode reports cost after
 every step, so ask stops it within a step of the limit. Claude Code reports cost only when it
@@ -207,14 +214,18 @@ ask find-bugs-src-parser · failed · Sonnet 5.5 · 12.3s · answer does not mat
 
 ## Follow-ups
 
-Every run gets a name from its prompt. Continue the same agent conversation with `--continue`; see
-[Runs](runs.md). A follow-up keeps the previous access mode unless you change it. Use `--write`
-to implement a read-only investigation, and `--read` to switch back.
+Every run gets a name from its prompt. `ask continue RUN "prompt"` follows up in the same agent
+conversation. A follow-up keeps the previous model and access unless you change them. Use `--write`
+to implement a read-only investigation, and `--read` to switch back; see [Runs](runs.md).
 
 ```sh
 ask --model claude:sonnet-5.5 "Why does the login test fail?"
-ask --continue login-test-fail --write "Fix it."
+ask continue login-test-fail --write "Fix it."
 ```
+
+Without a prompt, `ask continue RUN` reruns a stopped or failed run, or unfinished or failed
+batch tasks, from the beginning and announces the rerun on stderr. `--continue RUN` and `-c RUN`
+remain supported script aliases for conversation follow-ups.
 
 ## Output
 

@@ -39,7 +39,7 @@ answer Amp's permission prompts in a run. Use `ask -w` in a worktree you can thr
 ## Follow-ups
 
 Amp's first message reports its thread id. ask stores an opaque continuation record containing
-the mode and thread id, so `ask -c RUN` continues the correct thread with
+the mode and thread id, so `ask continue RUN "prompt"` continues the correct thread with
 `amp threads continue ID` and validates that the mode has not changed. A follow-up's prompt is
 passed as is.
 

@@ -43,7 +43,7 @@ write or run commands in print mode, from Cursor or from a run against a real ac
 
 ## Follow-ups
 
-The session id of Cursor's first event is reported to ask at once, so `ask -c RUN` continues it
+The session id of Cursor's first event is reported to ask at once, so `ask continue RUN "prompt"` continues it
 with `--resume`.
 
 ## Gaps

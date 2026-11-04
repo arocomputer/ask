@@ -27,6 +27,14 @@ built into the ask binary so `ask install NAME` needs no download:
 Installing these packages connects ask to existing CLIs; it does not install or authenticate
 them. All official agents need Node.js 18 or newer. See each package's README for prerequisites.
 
+Use `ask --model MODEL "prompt"` or `ask run --model MODEL "prompt"`. With a default model
+configured, `ask "prompt"` and `git diff | ask` work too. `ask continue RUN "prompt"` follows
+up in the saved conversation, inheriting model and access; write access may run commands.
+Without a prompt, `ask continue RUN` reruns stopped or failed work from the beginning (only
+unfinished or failed tasks for batches), with a notice on stderr. `ask wait [RUN]` waits for
+a specific run or the first active run to finish. stdout carries only answers.
+See [Runs](../docs/runs.md) for details and supported script aliases.
+
 They get no special treatment: each uses only the agent contract in
 [docs/agents.md](../docs/agents.md), the same one anyone's agent uses. ask's core knows nothing
 about them; `scripts/guard.sh` checks that.

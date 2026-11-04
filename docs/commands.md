@@ -17,8 +17,9 @@ directly and supplies the exit status.
 - The command gets `ASK_BIN`, the path of the running ask binary with symlinks resolved, so it calls the same ask; plus
   `ASK_HOME` and `ASK_CONTRACT` (see [Compatibility](compatibility.md)).
 - A line containing `ask-command: TEXT` near the top of the file is its description in `ask help`.
-- ask's own commands (`batch`, `show`, `runs`, `models`, ...) always win over yours of the same name.
-  To run a prompt that starts with a command's name, put `--` first: `ask --model claude:sonnet-5.5 -- review`.
+- ask's own commands (`run`, `continue`, `wait`, `batch`, `show`, `runs`, `models`, ...) always win over yours of the same name.
+  To run a prompt that starts with a command's name, use `ask run --model claude:sonnet-5.5 "review"`
+  or put `--` first: `ask --model claude:sonnet-5.5 -- review`.
 
 The examples need `jq` and the listed models (choose replacements from `ask models`). Create
 `~/.ask/commands/` first (`mkdir -p ~/.ask/commands`), save each script at the path in its

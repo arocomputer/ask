@@ -18,13 +18,14 @@ A task in a batch is `RUN/TASK`, using the task's id (or its position, from 1):
 
 ## Follow-ups
 
-`--continue RUN` continues that run's agent conversation: the agent remembers what it read, said and did.
+`ask continue RUN "prompt"` continues that run's agent conversation: the agent remembers what it
+read, said and did. `--continue RUN` and `-c RUN` remain supported script aliases.
 
 ```sh
 ask --model claude:sonnet-5.5 "Why does the login test fail?"
 # ask login-test-fail · ok · Sonnet 5.5 · 48.0s · ...
-ask --continue login-test-fail --write "Fix it, then run the test."
-ask --continue login-test-fail --write "Now add a test for the expired-token case."
+ask continue login-test-fail --write "Fix it, then run the test."
+ask continue login-test-fail "Now add a test for the expired-token case."
 ```
 
 A follow-up is a new run that takes over the conversation's name, so the name always reaches the
@@ -39,13 +40,28 @@ A follow-up:
   A kept worktree replaced by another repository or branch is refused.
   `--worktree` can't move a follow-up of a run in your checkout into a worktree; ask refuses it;
 - keeps the model and access (`--read`/`--write`) unless you give new ones. The model may change within
-  the same agent (`--continue login-test-fail --model claude:haiku-4.5`), but not to another agent;
+  the same agent (`ask continue login-test-fail --model claude:haiku-4.5 "Explain the fix."`), but not to another agent;
 - can continue a run that failed or timed out, so the agent can finish what it started;
 
 A batch task can be a follow-up too, with `"continue": "RUN"` (see [Batches](batches.md)).
 
-Continuing needs an agent that reports sessions (see [Agents](agents.md#sessions)) and a run that
-has finished; ask says so when either is missing.
+A conversation follow-up needs an agent that reports sessions (see [Agents](agents.md#sessions))
+and a run that has finished; ask says so when either is missing.
+
+## Rerunning unfinished work
+
+`ask continue RUN` without a prompt reruns a stopped or failed run from the beginning. For a
+batch, it reruns only unfinished or failed tasks, leaving successful results in place. ask tells
+you on stderr that it is rerunning work from the beginning; stdout still carries only answers.
+Supply a prompt to follow up in the saved conversation instead.
+
+```sh
+ask continue login-test-fail # after it stops or fails
+ask continue summarize-public-api-src
+```
+
+`ask batch --resume RUN` remains a supported script alias for rerunning unfinished or failed
+batch tasks; see [Batches](batches.md#resuming).
 
 Only one pending task may use an agent session or kept worktree at a time. ask refuses a conflicting
 follow-up with exit code 2; retry after the other run finishes. This applies across ask processes
@@ -69,14 +85,14 @@ RUN                       ID      STARTED  STATUS   MODEL       TIME   TASK
 login-test-fail           b7x01q  2m ago   ok       Sonnet 5.5  2:31   ↪ login-test-fail Fix it, then run the test.
 login-test-fail           k3f9a2  5m ago   ok       Sonnet 5.5  48.0s  Why does the login test fail?
 summarize-public-api-src  p81c0d  24m ago  2/3 ok   3 tasks            Summarize the public API in src/.
-find-bugs-internal-runs   x7d2e1  Sep 30   stopped  5 tasks            resume: ask batch --resume find-bugs-internal-runs
+find-bugs-internal-runs   x7d2e1  Sep 30   stopped  5 tasks            rerun: ask continue find-bugs-internal-runs
 ```
 
 `running` means ask holds the run's operating system lock; its time is elapsed time since the run
 started. When an agent reports an activity, the task column shows its latest coarse activity; for
 a batch it lists the tasks that reported one. Some agents report no activity. `stopped` means the run
 was interrupted before every task finished. Interrupted tasks keep empty result slots, so they can
-be resumed. Live activity is kept in private temporary run files and ignored when the owner exits.
+be rerun. Live activity is kept in private temporary run files and ignored when the owner exits.
 
 ## Showing a run again
 
@@ -92,9 +108,10 @@ Showing a whole batch prints its outcome count on stderr and exits 1 if any task
 
 ## Waiting for runs
 
-`ask wait` blocks until the first currently running run finishes, then prints its answer the way
-`ask show` does. It takes no names or options and watches only runs active when waiting begins.
-Start runs in the background, keep working, and collect whichever answer arrives first. Wait
+`ask wait RUN` waits for a specific run, then prints its answer the way `ask show` does.
+Without `RUN`, `ask wait` collects the first active run to finish and watches only runs active
+when waiting begins. Answers go to stdout and status to stderr.
+Start runs in the background, keep working, and collect their answers. Wait
 until their started lines appear before calling `ask wait`; shell background jobs may not have
 created their run records yet:
 
@@ -103,6 +120,7 @@ ask --model claude:sonnet-5.5 "Why does the login test fail?" >login.answer 2>lo
 ask --model codex:gpt-6.1-sol "Review the session code for races." >session.answer 2>session.status &
 # Wait for both started lines in the status files before collecting an answer.
 ask wait # prints the first active run to finish
+ask wait login-test-fail # a specific run
 ```
 
 The background commands also write their answers to their own files; redirecting them keeps answers
@@ -119,8 +137,8 @@ started. It waits up to 10 seconds for them to exit, and fails if ask is still r
 ask stop login-test-fail
 ```
 
-A stopped batch can be resumed with `ask batch --resume RUN`, which reruns only the tasks that did
-not finish ok.
+Use `ask continue RUN` without a prompt to rerun a stopped or failed run from the beginning, or
+only unfinished or failed tasks in a batch. ask announces what it will rerun on stderr.
 
 ## Cleaning up
 

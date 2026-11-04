@@ -39,8 +39,11 @@ The public names remain `run` for a recorded invocation, `task` for one unit in 
 `model` for an `agent:id`, and `follow-up` for a continuation. Existing command, option,
 result and record field names remain stable. Status lines now put `started`, `ok` or
 `failed` directly after the run id, followed by the model display name; hook lines use
-`note` or `follow-up`; optional coarse progress uses `activity · CATEGORY`. The start-line `continues` label is now `follow-up`; the `-c`
-option and JSON `continue` field remain. Times are compact clocks above a minute and costs show cents at
+`note` or `follow-up`; optional coarse progress uses `activity · CATEGORY`. The `-c` and
+`--continue` options remain supported script aliases for conversation follow-ups; batch `--resume`
+remains an alias for rerunning unfinished or failed tasks. Use `ask continue RUN "prompt"` for
+follow-ups and `ask continue RUN` for reruns from the beginning. The JSON `continue` field remains.
+Times are compact clocks above a minute and costs show cents at
 or above $0.01. `ask help` is the overview, also available with `ask --help` or `ask -h`.
 `ask help COMMAND` and `ask COMMAND --help` are equivalent for built-in commands; `-h` works
 on built-in commands, and `-V` aliases `--version`. User commands handle their own help

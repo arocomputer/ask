@@ -39,7 +39,7 @@ pretend. Use another agent for read-only questions.
 
 ## Follow-ups
 
-The session id of Qwen Code's first event is reported to ask at once, so `ask -c RUN` continues it
+The session id of Qwen Code's first event is reported to ask at once, so `ask continue RUN "prompt"` continues it
 with `--resume`.
 
 ## Usage and limits

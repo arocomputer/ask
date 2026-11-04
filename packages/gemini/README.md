@@ -52,7 +52,7 @@ Gemini CLI enforces no schema, so `ASK_SCHEMA` is ignored; ask still checks JSON
 ## Follow-ups
 
 Every run starts with its own session id, reported to ask at once and passed as `--session-id`, so
-`ask -c RUN` resumes it with `--resume`, in the same directory. A follow-up's prompt is passed as is.
+`ask continue RUN "prompt"` resumes it with `--resume`, in the same directory. A follow-up's prompt is passed as is.
 
 ## Titles
 

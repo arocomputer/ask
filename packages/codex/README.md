@@ -40,7 +40,7 @@ output requires: every object closed and every property required.
 
 ## Follow-ups
 
-The thread id Codex announces first is reported to ask at once, so `ask -c RUN` runs
+The thread id Codex announces first is reported to ask at once, so `ask continue RUN "prompt"` runs
 `codex exec resume` on it, with the same sandbox. A follow-up's prompt is passed as is.
 
 ## Usage

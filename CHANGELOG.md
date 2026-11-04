@@ -11,6 +11,9 @@
 - Keep the recorded worktree path and branch for read, write and hook follow-ups, including
   prefixed worktree templates. Refuse overlapping continuations of the same agent session or
   kept worktree, within a batch and across ask processes sharing `ASK_HOME`.
+- Update docs, package READMEs and the generated ask skill to teach `ask "prompt"`, `ask run`,
+  `ask continue RUN ["prompt"]` and `ask wait [RUN]`, including reruns from the beginning,
+  default-model stdin, inherited access and supported script aliases. Correct batch usage examples.
 - Prevent old release reruns from replacing the latest Homebrew formula; serialize formula
   updates and guard the release tag and main before pushing.
 - Ignore local agent state and environment files; use Dependabot for Go dependency and Actions updates.

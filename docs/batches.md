@@ -9,7 +9,7 @@ ask batch [-j N] [--model MODEL] [--write] [--worktree] -        # tasks on stdi
 ```
 
 Choose model ids from `ask models`; the ids and run names below illustrate one installation.
-Use the names or ids printed by your own runs for `show`, `--continue` and `--resume`.
+Use the names or ids printed by your own runs for `ask show`, `ask continue` and `ask wait`.
 
 ## Tasks
 
@@ -59,8 +59,8 @@ ask summarize-public-api-src/tests · started · GPT-6.1 Sol · read · ~/code/a
 ask summarize-public-api-src/fix · started · Haiku 4.5 · write · ~/code/app
 ask summarize-public-api-src/api · ok · Haiku 4.5 · 18.1s · 22.4k in · 640 out · $0.07
 ask summarize-public-api-src/fix · ok · Haiku 4.5 · 25.3s · 1 file changed · 30.2k in · 410 out · $0.03
-ask summarize-public-api-src/tests · failed · GPT-6.1 Sol · 15:00 · timed out
-ask summarize-public-api-src · 2/3 ok · 15:00 · 52.6k in · 1.1k out · $0.10
+ask summarize-public-api-src/tests · failed · GPT-6.1 Sol · 15:00 · 12.0k in · 240 out · timed out
+ask summarize-public-api-src · 2/3 ok · 15:00 · 64.6k in · 1.3k out
 ```
 
 ## Results
@@ -91,7 +91,7 @@ stdout gets one JSON array, in task order, whatever order the tasks finished in:
     "ok": false,
     "error": "timed out",
     "seconds": 900,
-    "usage": null,
+    "usage": { "input": 12000, "output": 240 },
     "session": "a21e...",
     "dir": "/home/me/code/app"
   },
@@ -150,12 +150,16 @@ ask show summarize-public-api-src | jq -c '.[] | select(.ok) | {continue: .run, 
 
 ## Resuming
 
-A batch that was stopped, or had failures, can be resumed. Only tasks that did not finish ok run
-again, exactly as recorded:
+A batch that was stopped, or had failures, can be continued without a prompt. Only unfinished
+or failed tasks run again from the beginning, exactly as recorded; successful results stay.
+ask announces the rerun on stderr and prints the result array on stdout:
 
 ```sh
-ask batch --resume summarize-public-api-src
+ask continue summarize-public-api-src
 ```
 
-`--resume` takes only `-j` and `--no-hooks`. Only one ask can run a batch at a time; a second is refused while the
-first is going. See [Runs](runs.md) for listing, showing and stopping runs.
+`ask batch --resume RUN` remains a supported script alias; batch reruns take only `-j` and
+`--no-hooks`. To follow up in one task's saved conversation, use
+`ask continue RUN/TASK "prompt"`; it inherits that task's model and access.
+Only one ask can run a batch at a time; a second is refused while the first is going.
+Use `ask wait RUN` to wait for that batch. See [Runs](runs.md) for listing, showing and stopping runs.

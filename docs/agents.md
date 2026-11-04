@@ -107,14 +107,15 @@ On Linux, agent processes also receive a parent-death signal, so killing ask out
 
 ## Sessions
 
-Follow-ups (`ask -c RUN`) continue the agent's own conversation, so they need the CLI's session
-id. An agent that supports them:
+Follow-ups (`ask continue RUN "prompt"`) continue the agent's own conversation, so they need the
+CLI's session id. An agent that supports them:
 
 1. reports the session in `$ASK_REPORT` as `"session"`, as soon as the CLI says what it is;
 2. when `ASK_SESSION` is set, resumes that session with the prompt instead of starting a new one.
 
 ask runs a follow-up in the same directory as the run it continues, which most CLIs need to find
-the session. An agent that reports no session simply can't be continued; ask says so.
+the session. An agent that reports no session cannot support conversation follow-ups; ask says so.
+Rerunning from the beginning with `ask continue RUN` does not need a saved session.
 
 ## Cost limits
 
@@ -124,7 +125,7 @@ agent as it does on a timeout and records `stopped at the $2.00 cost limit`. So 
 rewrites its report with the cost as it grows gets the limit for free. An agent whose CLI reports
 cost only at the end can pass the limit to the CLI, if it has a budget option, and fail with the
 same words when the CLI stops; the official Claude Code agent does that. Either way, keep the
-session in the report so `ask -c` can continue the work.
+session in the report so `ask continue RUN "prompt"` can continue the work.
 
 ## Read-only
 
@@ -180,19 +181,19 @@ ask -m claude:sonnet-5.5 "What does this project do?"
 ask -m claude:haiku-4.5 -w "Add a .editorconfig with 2-space indents."
 ```
 
-This minimal agent does not report sessions or usage, so it cannot support `ask -c`.
+This minimal agent does not report sessions or usage, so it cannot support `ask continue RUN "prompt"`.
 A read run asked to change something answers that it can't; a write run makes the change.
 
 ## Example: Claude Code with sessions and usage
 
-The same agent in Node, using Claude Code's JSON output to report the session, so `ask -c` can
-follow up in the same conversation, and the tokens and cost for status lines. Save this at
+The same agent in Node reports the session, tokens and cost from Claude Code's JSON output, so
+`ask continue RUN "prompt"` can follow up in the same conversation. Save this at
 `~/.ask/agents/claude` and make it executable as above; it needs Node.js 18 or newer. Unlike the
 official streaming agent, this example reports its session and usage only after the CLI exits:
 
 ```js
 #!/usr/bin/env node
-// ~/.ask/agents/claude: runs Claude Code for ask, with sessions (for ask -c) and usage.
+// ~/.ask/agents/claude: runs Claude Code for ask, with sessions (for ask continue) and usage.
 const { execFileSync } = require('node:child_process');
 const { readFileSync, writeFileSync, renameSync } = require('node:fs');
 
@@ -237,7 +238,7 @@ $ ask -m claude:haiku-4.5 "Which file decides how ask formats its status lines? 
 ask file-decides-ask-formats · ok · Haiku 4.5 · 8.5s · 94.7k in · 439 out · $0.08
 The file `internal/status/status.go` formats ask's status lines, including event lines, completion
 status, and batch summaries.
-$ ask -c file-decides-ask-formats "Which function in it formats the usage part, like '31.0k in · 812 out'?"
+$ ask continue file-decides-ask-formats "Which function in it formats the usage part, like '31.0k in · 812 out'?"
 ask file-decides-ask-formats · ok · Haiku 4.5 · 6.0s · 34.9k in · 362 out · $0.08
 The `Usage` function formats token usage and optional cost in the pattern "input in · output out".
 ```
@@ -256,7 +257,7 @@ The same shape works for any coding agent with a non-interactive mode. The piece
 | Run one prompt from stdin | `codex exec -m MODEL -` | `opencode run -m PROVIDER/MODEL` |
 | Read-only | `--sandbox read-only` (an OS sandbox) | an agent with only read tools allowed |
 | Write | `--sandbox workspace-write` | `--agent build` |
-| Session for `ask -c` | `codex exec resume SESSION -` | `opencode run --session SESSION` |
+| Session for `ask continue RUN "prompt"` | `codex exec resume SESSION -` | `opencode run --session SESSION` |
 | Machine-readable output | `--json` | `--format json` |
 
 ## Testing an agent

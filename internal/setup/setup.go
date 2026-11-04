@@ -91,14 +91,20 @@ Run ` + "`ask help`" + ` for usage, ` + "`ask help COMMAND`" + ` for a command's
 ` + "`ask models`" + ` for the models available here, and
 ` + "`ask docs PAGE`" + ` (or ` + "`ask docs --search TERM`" + `) for the full docs.
 
-- ` + "`ask -m MODEL \"question\"`" + `: a read-only answer from another agent, on stdout.
-- ` + "`ask -m MODEL -w \"task\"`" + `: let it change files; add ` + "`--worktree`" + ` to work on its own branch.
-- ` + "`ask -c RUN \"follow-up\"`" + `: continue that conversation; add ` + "`-w`" + ` to implement a read-only investigation.
+- ` + "`ask \"prompt\"`" + ` or ` + "`ask run \"prompt\"`" + `: a read-only answer, using the configured default model; use ` + "`--model MODEL`" + ` to choose one.
+- ` + "`git diff | ask`" + `: use piped stdin as the prompt, with a configured default model.
+- ` + "`ask run --model MODEL --write \"task\"`" + `: let it edit files and run commands; add ` + "`--worktree`" + ` to work on its own branch.
+- ` + "`ask continue RUN \"follow-up\"`" + `: follow up in that run's conversation, inheriting its model and read/write access unless overridden.
+- ` + "`ask continue RUN`" + ` without a prompt: rerun a stopped/failed run or only unfinished/failed batch tasks from the beginning; ask announces the rerun on stderr.
 - ` + "`ask batch FILE`" + `: many tasks in parallel, one JSON result array.
 
-Run ask in the background when you can. For parallel runs, redirect each run's stdout and stderr
-to separate files so answers and status do not interleave. ` + "`ask wait`" + ` prints the first run
-that was active when waiting began and then finishes; ` + "`ask show RUN`" + ` prints a completed run.
+RUN is the name or id in a status line; use RUN/TASK for a batch task. Script aliases remain supported:
+` + "`--continue RUN`" + ` / ` + "`-c RUN`" + ` for follow-ups, ` + "`ask batch --resume RUN`" + ` for batch reruns.
+
+For parallel background runs, redirect each run's stdout and stderr to separate files so answers
+and status do not interleave. Run ask in the background when you can, then ` + "`ask wait RUN`" + ` for a specific run or
+` + "`ask wait`" + ` for the first active run to finish. ` + "`ask show RUN`" + ` prints a completed run.
+stdout carries only answers; status and rerun notices go to stderr.
 `
 
 // SkillState is "missing", "current", "outdated" (written by an older ask) or "yours".

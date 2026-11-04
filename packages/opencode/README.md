@@ -65,7 +65,7 @@ CLI directly and has no `--standalone` flag.
 
 ## Follow-ups
 
-The session id of Opencode's first event is reported to ask at once, so `ask --continue RUN` continues it
+The session id of Opencode's first event is reported to ask at once, so `ask continue RUN "prompt"` continues it
 with `--session`. A follow-up's prompt is passed as is.
 
 ## Usage
@@ -82,7 +82,7 @@ not counted twice. Exports retry briefly for delayed saves; unavailable usage re
 
 Opencode reports cost after every step, so ask enforces its limit (`--max-cost`, models.json or
 the `max_cost` setting) itself: once the reported cost passes it, ask stops Opencode. The run fails
-as `stopped at the $2.00 cost limit`, keeps its session, and `ask --continue RUN` continues it. Cost is
+as `stopped at the $2.00 cost limit`, keeps its session, and `ask continue RUN "prompt"` continues it. Cost is
 known after each step, so a run can go over the limit by up to one step's cost.
 
 ## Environment

@@ -32,11 +32,14 @@ in Opencode. Install Node.js 18 or newer for the official ask agents. Then, in a
 ask setup                                        # connect the coding agents you have
 ask models                                       # choose an available agent:model id
 ask --model claude:sonnet-5.5 "Why does the login test fail?"
-ask --continue login-test-fail --write "Fix it, then run the test."
+ask continue login-test-fail --write "Fix it, then run the test."
 ```
 
 The examples use Claude Code; choose a model from `ask models` for your installation. Use the
-run name or id printed by the first run for `--continue` (names can have a numeric suffix or be set by a hook).
+run name or id printed by the first run for `ask continue` (names can have a numeric suffix or be set by a hook).
+
+With a default model configured in `ask settings`, use `ask "prompt"`, `ask run "prompt"`, or
+pipe a prompt directly: `git diff | ask`. stdout carries only the answer; status goes to stderr.
 
 `ask setup` finds supported coding CLIs and installs the agents you pick immediately.
 It shows changes to defaults and app integrations before saving them. Each agent keeps its own
@@ -47,8 +50,8 @@ for each harness's tools, access controls and continuation support.
   <tr>
     <td width="33%" valign="top">
       <b>Like a native subagent</b><br>
-      Read-only by default, <code>--write</code> to change files, <code>--worktree</code> for its own
-      branch. <code>ask --continue RUN</code> follows up in the same conversation.
+      Read-only by default, <code>--write</code> to edit files and run commands, <code>--worktree</code> for its own
+      branch. <code>ask continue RUN "prompt"</code> follows up, inheriting model and access.
     </td>
     <td width="33%" valign="top">
       <b>Every model</b><br>
@@ -67,7 +70,9 @@ for each harness's tools, access controls and continuation support.
 
 `ask batch` runs tasks in parallel, on one model or several, each in its own worktree if you
 like, and prints every answer as one JSON array. Start runs in the background and use
-`ask wait` to collect the next one that finishes, or `ask show RUN` for a completed run.
+`ask wait RUN` for a specific run, `ask wait` for the first active run to finish, or `ask show RUN`
+for a completed run. `ask continue RUN` without a prompt reruns a stopped or failed run, or only
+unfinished or failed batch tasks, from the beginning; ask tells you what it is rerunning on stderr.
 
 <p align="center"><img src="assets/screens/dark/batch.svg#gh-dark-mode-only" alt="ask batch running a review on three models at once" width="760">
   <img src="assets/screens/light/batch.svg#gh-light-mode-only" alt="ask batch running a review on three models at once" width="760"></p>
