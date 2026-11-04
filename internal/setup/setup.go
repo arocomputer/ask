@@ -83,7 +83,7 @@ const mark = "<!-- Written by ask setup, which keeps it up to date. Delete this 
 // Skill is the ask skill, in the SKILL.md format Claude Code, Codex, Opencode, Cursor and pi share.
 const Skill = `---
 name: ask
-description: Your subagent tool. MUST use it instead of a built-in subagent whenever you hand work off - a question, a review, a fix, or several tasks at once, on any model.
+description: Delegate focused questions, reviews or implementation tasks to coding agents through Ask, including independent tasks in parallel or a second model's opinion.
 ---
 ` + mark + `
 
@@ -91,12 +91,22 @@ Run ` + "`ask help`" + ` for usage, ` + "`ask help COMMAND`" + ` for a command's
 ` + "`ask models`" + ` for the models available here, and
 ` + "`ask docs PAGE`" + ` (or ` + "`ask docs --search TERM`" + `) for the full docs.
 
+Use Ask when an independent investigation, review or bounded implementation can move the work
+forward. Handle small, tightly coupled steps directly when a handoff would cost more than it helps.
+Give each task the goal, relevant files or context, constraints and the evidence you want back.
+For a review, ask for concrete findings with file and line references; for a fix, name the scope
+and validation to run. Review the returned evidence and changes before integrating them.
+
 - ` + "`ask \"prompt\"`" + ` or ` + "`ask run \"prompt\"`" + `: a read-only answer, using the configured default model; use ` + "`--model MODEL`" + ` to choose one.
-- ` + "`git diff | ask`" + `: use piped stdin as the prompt, with a configured default model.
+- ` + "`git diff | ask --stdin \"Review this diff for bugs; give file, line and impact.\"`" + `: append the diff to the instruction. An argument prompt includes stdin only with ` + "`--stdin`" + `; ` + "`git diff | ask`" + ` uses stdin alone as the prompt.
 - ` + "`ask run --model MODEL --write \"task\"`" + `: let it edit files and run commands; add ` + "`--worktree`" + ` to work on its own branch.
 - ` + "`ask continue RUN \"follow-up\"`" + `: follow up in that run's conversation, inheriting its model and read/write access unless overridden.
 - ` + "`ask continue RUN`" + ` without a prompt: rerun a stopped/failed run or only unfinished/failed batch tasks from the beginning; ask announces the rerun on stderr.
 - ` + "`ask batch FILE`" + `: many tasks in parallel, one JSON result array.
+
+Delegate independent questions in a batch; give parallel write tasks separate worktrees and avoid
+overlapping ownership. Running tests or builds needs write access. A worktree starts from HEAD,
+so pass relevant uncommitted context explicitly. Choose models from ` + "`ask models`" + ` rather than guessing ids.
 
 RUN is the name or id in a status line; use RUN/TASK for a batch task. Script aliases remain supported:
 ` + "`--continue RUN`" + ` / ` + "`-c RUN`" + ` for follow-ups, ` + "`ask batch --resume RUN`" + ` for batch reruns.
@@ -105,6 +115,9 @@ For parallel background runs, redirect each run's stdout and stderr to separate 
 and status do not interleave. Run ask in the background when you can, then ` + "`ask wait RUN`" + ` for a specific run or
 ` + "`ask wait`" + ` for the first active run to finish. ` + "`ask show RUN`" + ` prints a completed run.
 stdout carries only answers; status and rerun notices go to stderr.
+If JSON/schema validation fails, ` + "`ask show RUN --json`" + ` includes ` + "`raw_answer`" + ` for inspection or repair;
+the run still fails. Keep that content out of status logs; prefer ordinary text unless a structured
+consumer needs JSON or a schema.
 `
 
 // SkillState is "missing", "current", "outdated" (written by an older ask) or "yours".

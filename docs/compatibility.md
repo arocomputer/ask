@@ -9,7 +9,7 @@ they may change.
 | --- | --- |
 | The command line: commands, options, exit codes (0 ok, 1 a run failed, 2 a usage error), stdout carrying only answers | `ask help`, [Usage](usage.md) |
 | Plain status lines start with `ask RUN · outcome ·`, where RUN is the run's name, or its id when it has none; terminals may redraw live state | [Runs](runs.md) |
-| Result fields (`run`, `id`, `model`, `write`, `name`, `ok`, `answer`/`error`, `seconds`, `usage`, `session`, `dir`, `changes`, `commits`, `worktree`, `followups`) | [Batches](batches.md) |
+| Result fields (`run`, `id`, `model`, `write`, `name`, `ok`, `answer`/`error`, optional `raw_answer` on JSON/schema validation failure, `seconds`, `usage`, `session`, `dir`, `changes`, `commits`, `worktree`, `followups`) | [Batches](batches.md) |
 | Run records: `tasks.json` (optional task `title`) and `results.json` in `~/.ask/runs/STAMP-ID[-NAME]/` | [Runs](runs.md) |
 | `settings.json` keys and their meaning | [Settings](settings.md) |
 | `models.json`: per agent, a list of ids or ids mapped to `true`, `false` or `{"enabled", "max_cost"}` | [Models](models.md#modelsjson) |

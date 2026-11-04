@@ -17,7 +17,7 @@ import (
 )
 
 var options = map[string][]string{
-	"run":      {"-m", "-r", "-w", "--worktree", "-c", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
+	"run":      {"-m", "-r", "-w", "--worktree", "-c", "--stdin", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "--no-hooks"},
 	"continue": {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "-j", "--max-cost", "--title", "--no-hooks"},
 	"batch":    {"-m", "-r", "-w", "--worktree", "--json", "--schema", "-C", "-t", "--max-cost", "--title", "-j", "--resume", "--no-hooks"},
 	"bench":    {"-m", "-r", "-w", "-C", "-t", "--max-cost", "--title", "-j", "-n", "--json", "--keep", "--yes", "--no-hooks"},

@@ -27,7 +27,9 @@ A hook is any executable. ask calls it with one argument, the event:
 - **`task`** is the task about to run: `id`, `prompt`, `model`, `write`, `json`, `schema`, `dir`,
   `timeout`, and for a follow-up `continues`. A hook may change `prompt`, `model`, `write`, `json`,
   `timeout` and `schema`; ask ignores other changes, and says so.
-- **`result`** is the task's result, as `ask show RUN --json` prints it.
+- **`result`** is the task's result, as `ask show RUN --json` prints it. JSON/schema validation
+  failures include `raw_answer`, the unmodified agent stdout, for inspection or a focused repair
+  follow-up. It is private task content; avoid copying it into hook notes or logs.
 - **`followup`** asks the same agent, in the same conversation and place, to keep working. Its new
   result goes through the result hooks again, up to three follow-ups per task. The task's final
   result combines every round: the last answer, with the time, usage and changes of all of them.

@@ -144,6 +144,7 @@ Options
   -t, --timeout SECONDS  Time limit (default: 900, or your settings)
       --title TEXT       Replace the prompt in the session title
       --max-cost USD     Cost limit; 0 means none
+      --stdin            Append stdin to PROMPT (reads until EOF)
       --json             Require a JSON answer
       --schema FILE      Require JSON matching a schema
       --no-hooks         Skip hooks
@@ -161,9 +162,11 @@ Runs
   after a read run to implement the result, and --read to switch back.
   A positive recorded cost limit is inherited; else model, then settings.
   Pipe a prompt on stdin, or use - in place of PROMPT.
+  With an argument prompt, use --stdin to append piped context.
 
 Examples
   ask --model claude:haiku-4.5 "Where is login checked?"
+  git diff | ask --stdin "Review this diff"
   ask --model codex:gpt-6.1-sol --title "Review login" "Inspect the login flow."
   ask continue login-checked --write "Fix it and run the test."` + "\n\ndocs  ask docs usage"
 	case "continue":

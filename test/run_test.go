@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -59,6 +60,8 @@ func TestRun(t *testing.T) {
 		s := fresh(t)
 		r := s.run([]string{"-m", "fake:big", "--json", "go"}, "", map[string]string{"FAKE_ANSWER": `"hello"`})
 		eq(t, r.stdout, "\"hello\"\n")
+		_, raw := s.runFile("results.json")[0]["raw_answer"]
+		eq(t, raw, false)
 	})
 	t.Run("--json strips a code fence around the answer", func(t *testing.T) {
 		s := fresh(t)
@@ -68,9 +71,27 @@ func TestRun(t *testing.T) {
 	})
 	t.Run("an answer that is not valid JSON fails under --json", func(t *testing.T) {
 		s := fresh(t)
-		r := s.run([]string{"-m", "fake:big", "--json", "go"}, "", map[string]string{"FAKE_ANSWER": "sure thing"})
+		s.hook("capture", []string{"result"}, `printf '%s' "$input" > "$HOME/result-hook.json"`)
+		answer := " \n```json\n{\"private\": \"recovery-only\",}\n```\n "
+		r := s.run([]string{"-m", "fake:big", "--json", "go"}, "", map[string]string{"FAKE_ANSWER": answer})
 		eq(t, r.code, 1)
 		match(t, r.stderr, `not valid JSON`)
+		eq(t, r.stdout, "")
+		noMatch(t, r.stderr, `recovery-only`)
+		saved := s.runFile("results.json")[0]
+		eq(t, saved.b("ok"), false)
+		eq(t, saved.s("raw_answer"), answer+"\n") // The fake appends a newline.
+		_, hasAnswer := saved["answer"]
+		eq(t, hasAnswer, false)
+		hooked := obj(t, s.read(filepath.Join(s.tmp, "result-hook.json")))["result"].(map[string]any)
+		eq(t, hooked["raw_answer"], answer+"\n")
+		shown := s.ask("show", runID(t, r.stderr), "--json")
+		eq(t, shown.code, 1)
+		eq(t, obj(t, shown.stdout).s("raw_answer"), answer+"\n")
+		noMatch(t, shown.stderr, `recovery-only`)
+		plain := s.ask("show", runID(t, r.stderr))
+		eq(t, plain.code, 1)
+		eq(t, plain.stdout, "")
 	})
 	t.Run("-C sets the directory the model works in", func(t *testing.T) {
 		s := fresh(t)
@@ -153,6 +174,8 @@ func TestRun(t *testing.T) {
 		eq(t, r.code, 1)
 		match(t, r.stderr, `(?m) · failed · .*exit 1$`)
 		eq(t, r.stdout, "")
+		_, raw := s.runFile("results.json")[0]["raw_answer"]
+		eq(t, raw, false)
 	})
 	t.Run("--schema answers are checked, then printed as JSON", func(t *testing.T) {
 		s := fresh(t)
@@ -161,10 +184,19 @@ func TestRun(t *testing.T) {
 		good := s.run([]string{"-m", "fake:small", "--schema", path, "go"}, "", map[string]string{"FAKE_ANSWER": `{"a": 1}`})
 		jsonEqual(t, obj(t, good.stdout), object{"a": 1})
 		match(t, s.calls()[0].s("stdin"), `Answer ONLY with JSON matching this JSON Schema`)
-		bad := s.run([]string{"-m", "fake:small", "--schema", path, "go"}, "", map[string]string{"FAKE_ANSWER": `{"a": "one"}`})
+		answer := " \n```json\n{\"a\": \"one\", \"private\": \"schema-only\"}\n```\n "
+		bad := s.run([]string{"-m", "fake:small", "--schema", path, "go"}, "", map[string]string{"FAKE_ANSWER": answer})
 		eq(t, bad.code, 1)
 		match(t, bad.stderr, `does not match the schema: \$\.a: expected number, got string`)
 		eq(t, bad.stdout, "")
+		noMatch(t, bad.stderr, `schema-only`)
+		shown := s.ask("show", runID(t, bad.stderr), "--json")
+		eq(t, shown.code, 1)
+		record := obj(t, shown.stdout)
+		eq(t, record.b("ok"), false)
+		eq(t, record.s("raw_answer"), answer+"\n")
+		_, hasAnswer := record["answer"]
+		eq(t, hasAnswer, false)
 	})
 	t.Run("a relative -C is resolved once, against where ask runs", func(t *testing.T) {
 		s := fresh(t)
@@ -310,6 +342,68 @@ func TestRun(t *testing.T) {
 }
 
 func TestRunCommandAndStdin(t *testing.T) {
+	t.Run("--stdin appends piped context after the explicit prompt", func(t *testing.T) {
+		s := fresh(t)
+		input := "diff --git a/file b/file\n-old\n+new\n"
+		got := s.run([]string{"run", "-m", "fake:small", "--stdin", "Review this diff"}, input, nil)
+		eq(t, got.code, 0)
+		eq(t, s.calls()[0].s("stdin"), "Review this diff\n\n"+input)
+		eq(t, s.runFile("tasks.json")[0].s("prompt"), "Review this diff\n\n"+input)
+	})
+	t.Run("--stdin with an empty stream keeps the argument prompt", func(t *testing.T) {
+		s := fresh(t)
+		eq(t, s.ask("-m", "fake:small", "--stdin", "Review this diff").code, 0)
+		eq(t, s.calls()[0].s("stdin"), "Review this diff")
+	})
+	t.Run("--stdin accepts large redirected context without putting it in arguments", func(t *testing.T) {
+		s := fresh(t)
+		input := strings.Repeat("context line\n", 50000)
+		s.write(filepath.Join(s.tmp, "context.txt"), input)
+		cmd := exec.Command("sh", "-c", `"$ASK_TEST_BIN" -m fake:small --stdin "Review" < context.txt`)
+		cmd.Dir = s.tmp
+		for k, v := range s.env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+		cmd.Env = append(cmd.Env, "ASK_TEST_BIN="+askBin)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatal(err, string(out))
+		}
+		eq(t, s.calls()[0].s("stdin"), "Review\n\n"+input)
+	})
+	t.Run("--stdin without an instruction reads only stdin", func(t *testing.T) {
+		s := fresh(t)
+		got := s.run([]string{"-m", "fake:small", "--stdin", "-"}, "literal input\n", nil)
+		eq(t, got.code, 0)
+		eq(t, s.calls()[0].s("stdin"), "literal input\n")
+	})
+	t.Run("stdin cannot supply both schema and prompt", func(t *testing.T) {
+		s := fresh(t)
+		got := s.run([]string{"-m", "fake:small", "--stdin", "--schema", "-", "Review"}, "{}", nil)
+		eq(t, got.code, 2)
+		match(t, got.stderr, `stdin cannot supply both`)
+		eq(t, len(s.calls()), 0)
+	})
+	t.Run("an argument prompt completes with inherited stdin held open", func(t *testing.T) {
+		s := fresh(t)
+		reader, writer, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer reader.Close()
+		defer writer.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, askBin, "-m", "fake:small", "Review")
+		cmd.Dir, cmd.Stdin = s.tmp, reader
+		for k, v := range s.env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal("argument prompt blocked on inherited stdin or failed:", err)
+		}
+		eq(t, string(out), "fake: Review\n")
+	})
 	t.Run("explicit run does not become part of the prompt", func(t *testing.T) {
 		s := fresh(t)
 		got := s.ask("run", "-m", "fake:small", "inspect")

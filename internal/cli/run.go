@@ -209,14 +209,26 @@ func answerText(t, r home.Object) string {
 // runOne records and executes one prompt, printing only a successful answer.
 func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	prompt := strings.Join(words, " ")
-	if prompt == "" || prompt == "-" {
+	// An inherited pipe looks just like intentional context. Read it alongside an argument
+	// only when requested, so shell loops and callers holding stdin open remain safe.
+	if prompt == "" || prompt == "-" || opts.B("--stdin") {
 		if stdinTerminal() {
+			if opts.B("--stdin") {
+				return 0, home.Usage("--stdin needs piped or redirected input")
+			}
 			return 0, home.Usage("no prompt: give it as an argument, or pipe it in")
 		}
-		var e error
-		prompt, e = home.ReadInput("-", "prompt")
+		if opts.S("--schema") == "-" {
+			return 0, home.Usage("stdin cannot supply both the prompt and --schema; use a schema file")
+		}
+		input, e := home.ReadInput("-", "prompt")
 		if e != nil {
 			return 0, e
+		}
+		if prompt == "" || prompt == "-" {
+			prompt = input
+		} else if input != "" {
+			prompt += "\n\n" + input
 		}
 	}
 	return runPrompt(a, opts, prompt)

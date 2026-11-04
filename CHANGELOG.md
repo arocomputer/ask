@@ -3,6 +3,15 @@
 ## Unreleased
 
 - Keep the caller's foreground or background choice when titling Ask commands in Claude Code.
+- Add `--stdin` to append piped or redirected context to an explicit prompt, as in
+  `git diff | ask --stdin 'Review this diff'`. Argument prompts otherwise leave inherited stdin
+  unread, avoiding hangs and leaving a shell loop's remaining input intact.
+- Preserve the original agent stdout as optional `raw_answer` on JSON/schema validation
+  failures in saved results, JSON output and result hooks, without printing it in status lines.
+  Failed results still omit `answer` and exit 1; the contract remains version 1.
+- Teach useful, focused delegation in the generated Ask skill without requiring Ask for every
+  handoff; cover explicit context, independent parallel work and structured failure recovery.
+
 - Show coarse Codex and Claude Code activity while runs work, including in `ask runs`. The
   optional `ASK_REPORT` activity field updates terminal rows and rate-limited plain status lines
   without exposing commands, paths, reasoning or output; malformed activity cannot hide usage

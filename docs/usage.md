@@ -34,7 +34,20 @@ ask --model claude:sonnet-5.5 "Summarize src/"
 git diff | ask --model codex:gpt-6.1-sol -
 ask --model claude:sonnet-5.5 < task.md
 git diff | ask                                    # uses your configured default model
+git diff | ask --stdin "Review this diff for bugs; give file, line and impact."
+ask --stdin "Summarize this incident report" < incident.md
 ```
+
+With an argument prompt, `--stdin` appends stdin after a blank line and reads until EOF.
+The input is kept as supplied; an empty stream leaves the argument prompt unchanged.
+Without an argument prompt (or with `-`), stdin supplies the whole prompt as before.
+Use a schema file instead of `--schema -` when stdin supplies prompt context.
+
+`git diff | ask 'Review this diff'` leaves stdin unread: an inherited open pipe is
+indistinguishable from deliberate input, and reading it could hang or consume a shell loop's
+remaining input. Add `--stdin` to opt in to reading both. It needs a pipe or redirected input;
+with an open stream, it waits for the writer to close it. The task timeout starts after input
+has been read, so it does not bound this wait.
 
 With a default model configured in [Settings](settings.md), `ask "prompt"`, `ask run "prompt"`
 and bare piped stdin all use it.
@@ -211,6 +224,14 @@ answer that is not JSON, or does not match, fails the run with the reason:
 ```text
 ask find-bugs-src-parser · failed · Sonnet 5.5 · 12.3s · answer does not match the schema: $.bugs[0]: missing "file"
 ```
+
+On JSON/schema validation failure, the result keeps `ok: false` and `error`, omits `answer`,
+and adds `raw_answer`: the agent's original stdout as a string, including fences and whitespace.
+Inspect it with `ask show RUN --json` to recover useful work or prepare a focused repair prompt.
+That command still exits 1. Plain single-task output stays empty on failure; status lines do
+not print the raw answer. Saved results, batch JSON and result hooks carry it, so handle them
+as private task content. This field covers answers rejected by Ask's validation after the agent
+exits successfully; agent errors and timeouts do not acquire it.
 
 ## Follow-ups
 

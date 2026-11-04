@@ -46,6 +46,7 @@ type WorktreeRecord struct {
 
 // ResultRecord is a version 1 result, preserving the documented field order and raw JSON answer.
 // Answer is absent on failures; write records effective access; changes and commits track write runs.
+// RawAnswer retains the unmodified agent stdout only when JSON/schema validation fails.
 type ResultRecord struct {
 	Run       string          `json:"run"`
 	ID        string          `json:"id"`
@@ -56,6 +57,7 @@ type ResultRecord struct {
 	Answer    json.RawMessage `json:"answer,omitempty"`
 	Note      string          `json:"note,omitempty"`
 	Error     string          `json:"error,omitempty"`
+	RawAnswer string          `json:"raw_answer,omitempty"`
 	Seconds   float64         `json:"seconds"`
 	Usage     *UsageRecord    `json:"usage"`
 	Session   *string         `json:"session"`

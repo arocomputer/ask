@@ -52,8 +52,11 @@ ask setup  connects your coding agents; nothing else changes until you review it
   Each agent's page states its feature limits.
 - **Defaults** go to your [settings](settings.md): the model, and where worktrees go.
 - **The ask skill** goes to each app that reads skills and is installed here: Claude Code, Codex,
-  Opencode, Cursor and pi. It tells their agents that ask exists and requires ask instead of a
-  built-in subagent for handoffs.
+  Opencode, Cursor and pi. It teaches focused delegation when useful: provide the goal, context,
+  constraints and expected evidence, use independent tasks for parallel work, and review the
+  results. It leaves small, tightly coupled steps to the host agent and does not require Ask
+  instead of another delegation tool. Examples use existing commands, explicit stdin context,
+  and saved raw answers for structured failure recovery.
 - **Task titles** register `ask title --hook` in Claude Code (see [Hosts](hosts.md)).
 
 Saying no saves nothing but the agents. Once ask is set up, `ask setup` opens your settings.

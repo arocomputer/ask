@@ -120,6 +120,11 @@ something have `worktree: {path, branch}`. The batch exits 1 if any task failed.
 ask batch --model claude:haiku-4.5 tasks.json | jq -r '.[] | select(.ok) | "\(.id): \(.answer)"'
 ```
 
+An answer rejected by JSON/schema validation has `ok: false`, `error` and `raw_answer` (the
+original agent stdout as a string), with no `answer`. The field is also saved and available to
+result hooks for recovery; it does not appear in status lines. Batch JSON can therefore include
+unvalidated private content. Successful results and other failures omit `raw_answer`.
+
 ## Patterns
 
 **The same question to several models:**

@@ -126,6 +126,7 @@ func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started)
 			if problem != "" {
 				r.Set("ok", false)
 				r.Set("note", problem)
+				r.Set("raw_answer", r.S("text"))
 			} else {
 				r.Set("answer", answer)
 			}
@@ -150,6 +151,9 @@ func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started)
 		}
 	} else {
 		out.Set("error", r.Get("note"))
+		if r.Has("raw_answer") {
+			out.Set("raw_answer", r.Get("raw_answer"))
+		}
 	}
 	out.Set("seconds", home.Number(home.Fixed(float64(time.Since(begin).Milliseconds())/1000, 1)))
 	out.Set("usage", r.Get("usage"))

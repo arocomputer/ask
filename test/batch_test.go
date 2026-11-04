@@ -71,6 +71,19 @@ func TestBatch(t *testing.T) {
 		eq(t, result[1].b("ok"), false)
 		eq(t, result[1].s("error"), "fake boom")
 	})
+	t.Run("structured validation failures retain raw answers in batch JSON and saved results", func(t *testing.T) {
+		s := fresh(t)
+		answer := "unstructured private response\n "
+		r := s.run([]string{"batch", "-m", "fake:small"}, `[{"prompt":"go","json":true}]`, map[string]string{"FAKE_ANSWER": answer})
+		eq(t, r.code, 1)
+		result := objects(t, r.stdout)[0]
+		eq(t, result.b("ok"), false)
+		eq(t, result.s("raw_answer"), answer+"\n")
+		_, hasAnswer := result["answer"]
+		eq(t, hasAnswer, false)
+		jsonEqual(t, result, s.runFile("results.json")[0])
+		noMatch(t, r.stderr, `unstructured private response`)
+	})
 	t.Run("batch --resume reruns only the tasks that did not finish", func(t *testing.T) {
 		s := fresh(t)
 		s.run([]string{"batch", "-m", "fake:small"}, `[{"prompt":"fine"},{"prompt":"break"}]`, map[string]string{"FAKE_FAIL": "break"})
