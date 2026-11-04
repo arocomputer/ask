@@ -15,12 +15,47 @@ import (
 	"github.com/arocomputer/ask/internal/tui"
 )
 
-// wait waits for the first active run to finish and prints its result like ask show.
+// wait prints a selected run or task when finished, or waits for any active run without a ref.
 func wait(p home.Paths, words []string) (int, error) {
-	if len(words) != 0 {
-		return 0, home.Usage("ask wait takes no arguments")
+	if len(words) == 0 {
+		return waitAny(p)
 	}
-	return waitAny(p)
+	if len(words) != 1 {
+		return 0, home.Usage("ask wait takes at most one run, like ask wait login-checked")
+	}
+	r, i, e := runs.Open(p, words[0])
+	if e != nil {
+		return 0, e
+	}
+	for {
+		// Check ownership before reloading so a released lock cannot leave us with stale results.
+		owner := runs.Owner(r)
+		// Pin the directory: a follow-up can take over the name while we wait.
+		r, _, e = runs.Open(p, r.Dir)
+		if e != nil {
+			return 0, e
+		}
+		unfinished := -1
+		for at, result := range r.Results {
+			if (i < 0 || at == i) && result == nil {
+				unfinished = at
+				break
+			}
+		}
+		if unfinished < 0 && (i >= 0 || owner == 0) {
+			return showRun(r, home.Object{}, words[0], i)
+		}
+		if owner == 0 {
+			ref := runs.Ref(r, unfinished)
+			resume := "ask -c " + ref
+			if len(r.Tasks) > 1 {
+				resume = "ask batch --resume " + r.Label()
+			}
+			fmt.Fprintf(os.Stderr, "ask %s · stopped · resume: %s\n", ref, resume)
+			return 1, nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 // waitAny returns the first run that was active when waiting began and then finishes.
@@ -181,7 +216,12 @@ func show(p home.Paths, opts home.Object, words []string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	if b, e := os.ReadFile(filepath.Join(r.Dir, "bench.json")); e == nil && !strings.Contains(words[0], "/") {
+	return showRun(r, opts, words[0], i)
+}
+
+// showRun keeps saved answer and status output identical for show and targeted wait.
+func showRun(r *runs.Run, opts home.Object, ref string, i int) (int, error) {
+	if b, e := os.ReadFile(filepath.Join(r.Dir, "bench.json")); e == nil && !strings.Contains(ref, "/") {
 		report, e := home.ParsePayload(string(b))
 		if e != nil {
 			return 0, fmt.Errorf("%s: bench.json is damaged: %v", r.Label(), e)
@@ -206,7 +246,7 @@ func show(p home.Paths, opts home.Object, words []string) (int, error) {
 	}
 	result := r.Results[i]
 	if result == nil {
-		return 0, home.Usage("%s has not finished; see `ask runs`", words[0])
+		return 0, home.Usage("%s has not finished; see `ask runs`", ref)
 	}
 	fmt.Fprintln(os.Stderr, status.StyledLine(status.Done(result), os.Stderr))
 	if opts.B("--json") {

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// TestRuns pins saved runs: show, stop, locks, damaged records and --resume.
+// TestRuns pins saved runs: show, wait, stop, locks, damaged records and --resume.
 func TestRuns(t *testing.T) {
 	t.Run("show prints a run again: its answer, or with --json its whole result", func(t *testing.T) {
 		s := fresh(t)
@@ -179,13 +179,14 @@ func TestRuns(t *testing.T) {
 			eq(t, r.stdout, "fake: slow one\n")
 			slow.wait(t)
 		})
-		t.Run("reports idle normally and rejects args and options", func(t *testing.T) {
+		t.Run("reports idle normally and rejects extra args and options", func(t *testing.T) {
 			s := fresh(t)
 			idle := s.ask("wait")
 			eq(t, idle.code, 0)
 			eq(t, idle.stderr, "ask: no runs are running\n")
-			r := s.ask("wait", "named")
+			r := s.ask("wait", "one", "two")
 			eq(t, r.code, 2)
+			match(t, r.stderr, `takes at most one run`)
 			r = s.ask("wait", "-t", "3")
 			eq(t, r.code, 2)
 		})
@@ -202,6 +203,131 @@ func TestRuns(t *testing.T) {
 			}
 			hang.wait(t)
 			slow.wait(t)
+		})
+		t.Run("returns an already completed run by name or ID exactly like show", func(t *testing.T) {
+			s := fresh(t)
+			first := s.ask("-m", "fake:small", "saved answer")
+			eq(t, first.code, 0)
+			for _, ref := range []string{"saved-answer", runID(t, first.stderr)} {
+				eq(t, s.ask("wait", ref), s.ask("show", ref))
+			}
+			eq(t, len(s.calls()), 1)
+		})
+		t.Run("preserves a saved JSON answer without a result wrapper", func(t *testing.T) {
+			s := fresh(t)
+			first := s.run([]string{"-m", "fake:small", "--json", "structured answer"}, "", map[string]string{"FAKE_ANSWER": `{"answer":[1,true,"ok"]}`})
+			eq(t, first.code, 0)
+			ref := runID(t, first.stderr)
+			waited := s.ask("wait", ref)
+			eq(t, waited, s.ask("show", ref))
+			eq(t, waited.stdout, first.stdout)
+			eq(t, len(s.calls()), 1)
+		})
+		gated := func(t *testing.T) *setup {
+			s := fresh(t)
+			s.localAgent("gate", `prompt=$(cat)
+: > "$HOME/$prompt-ready"
+while [ ! -f "$HOME/$prompt-release" ]; do sleep 0.05; done
+printf 'answer: %s\n' "$prompt"`)
+			return s
+		}
+		t.Run("an explicit run ignores simultaneous runs that finish before or after it", func(t *testing.T) {
+			s := gated(t)
+			other := s.start([]string{"-m", "gate:small", "other"}, "", nil)
+			target := s.start([]string{"-m", "gate:small", "target"}, "", nil)
+			pending := s.start([]string{"-m", "gate:small", "pending"}, "", nil)
+			until(t, func() bool {
+				return exists(filepath.Join(s.tmp, "other-ready")) && exists(filepath.Join(s.tmp, "target-ready")) && exists(filepath.Join(s.tmp, "pending-ready"))
+			})
+			waiter := s.start([]string{"wait", "target"}, "", nil)
+			s.write(filepath.Join(s.tmp, "other-release"), "")
+			eq(t, other.wait(t).code, 0)
+			select {
+			case out := <-waiter.done:
+				t.Fatalf("wait returned before the selected run finished: %+v", out)
+			case <-time.After(350 * time.Millisecond):
+			}
+			s.write(filepath.Join(s.tmp, "target-release"), "")
+			waited := waiter.wait(t)
+			eq(t, target.wait(t).code, 0)
+			eq(t, waited, s.ask("show", "target"))
+			eq(t, waited.stdout, "answer: target\n")
+			s.write(filepath.Join(s.tmp, "pending-release"), "")
+			eq(t, pending.wait(t).code, 0)
+		})
+		t.Run("a task returns while its batch keeps running and the whole run waits for all tasks", func(t *testing.T) {
+			s := gated(t)
+			batch := s.start([]string{"batch", "-m", "gate:small", "-j", "2", "-"}, `[{"id":"chosen","prompt":"selected"},{"id":"other","prompt":"pending"}]`, nil)
+			until(t, func() bool {
+				return exists(filepath.Join(s.tmp, "selected-ready")) && exists(filepath.Join(s.tmp, "pending-ready"))
+			})
+			taskWaiter := s.start([]string{"wait", "selected/chosen"}, "", nil)
+			runWaiter := s.start([]string{"wait", "selected"}, "", nil)
+			s.write(filepath.Join(s.tmp, "selected-release"), "")
+			waited := taskWaiter.wait(t)
+			eq(t, waited, s.ask("show", "selected/chosen"))
+			eq(t, waited.stdout, "answer: selected\n")
+			eq(t, s.ask("wait", "selected/1"), waited)
+			select {
+			case out := <-runWaiter.done:
+				t.Fatalf("wait returned before the whole batch finished: %+v", out)
+			case <-time.After(350 * time.Millisecond):
+			}
+			s.write(filepath.Join(s.tmp, "pending-release"), "")
+			eq(t, batch.wait(t).code, 0)
+			waited = runWaiter.wait(t)
+			eq(t, waited, s.ask("show", "selected"))
+			eq(t, len(objects(t, waited.stdout)), 2)
+		})
+		t.Run("saved failures return the same output and exit status as show", func(t *testing.T) {
+			s := fresh(t)
+			single := s.run([]string{"-m", "fake:small", "fail"}, "", map[string]string{"FAKE_FAIL": "fail"})
+			batch := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"pass"},{"prompt":"fail"}]`, map[string]string{"FAKE_FAIL": "fail"})
+			for _, ref := range []string{runID(t, single.stderr), runID(t, batch.stderr), runID(t, batch.stderr) + "/2"} {
+				waited := s.ask("wait", ref)
+				eq(t, waited.code, 1)
+				eq(t, waited, s.ask("show", ref))
+			}
+		})
+		t.Run("reports a run stopped during or before waiting without printing an answer", func(t *testing.T) {
+			s := fresh(t)
+			run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+			until(t, func() bool { return len(s.calls()) == 1 })
+			waiter := s.start([]string{"wait", "hang"}, "", nil)
+			eq(t, s.ask("stop", "hang").code, 0)
+			eq(t, run.wait(t).code, 130)
+			waited := waiter.wait(t)
+			eq(t, waited.code, 1)
+			eq(t, waited.stdout, "")
+			eq(t, waited.stderr, "ask hang · stopped · resume: ask -c hang\n")
+			eq(t, s.ask("wait", "hang"), waited)
+		})
+		t.Run("a stopped batch reports unfinished tasks while completed tasks remain available", func(t *testing.T) {
+			s := fresh(t)
+			batch := s.start([]string{"batch", "-m", "fake:small", "-j", "1", "-"}, `[{"prompt":"finished"},{"prompt":"hang"}]`, map[string]string{"FAKE_HANG": "hang"})
+			until(t, func() bool { return len(s.calls()) == 2 })
+			eq(t, s.ask("stop", "finished").code, 0)
+			eq(t, batch.wait(t).code, 130)
+			for _, ref := range []string{"finished", "finished/2"} {
+				waited := s.ask("wait", ref)
+				eq(t, waited.code, 1)
+				eq(t, waited.stdout, "")
+				eq(t, waited.stderr, "ask finished/2 · stopped · resume: ask batch --resume finished\n")
+			}
+			eq(t, s.ask("wait", "finished/1"), s.ask("show", "finished/1"))
+		})
+		t.Run("reports missing runs and tasks without waiting for unrelated runs", func(t *testing.T) {
+			s := fresh(t)
+			run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+			until(t, func() bool { return len(s.calls()) == 1 })
+			for _, ref := range []string{"missing", "hang/missing"} {
+				waited := s.ask("wait", ref)
+				eq(t, waited.code, 2)
+				eq(t, waited.stdout, "")
+				match(t, waited.stderr, `no (run|task) missing`)
+			}
+			eq(t, s.ask("stop", "hang").code, 0)
+			eq(t, run.wait(t).code, 130)
 		})
 	})
 	t.Run("setup with an agent name points to settings", func(t *testing.T) {
