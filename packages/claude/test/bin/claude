@@ -9,6 +9,11 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
+if (argv.includes('--help')) {
+  if (process.env.FAKE_HELP_EXIT) process.exit(1);
+  console.log(process.env.FAKE_HELP ?? '--tools <tools...>\n--strict-mcp-config\n--mcp-config <configs...>\n--disable-slash-commands\n--permission-mode (choices: "default", "bypassPermissions")');
+  process.exit(0);
+}
 const stdin = readFileSync(0, 'utf8');
 const { FAKE_LOG, FAKE_ANSWER, FAKE_FAIL, FAKE_HANG, FAKE_SLOW, FAKE_EXIT, FAKE_PAUSE } = process.env;
 if (FAKE_LOG) appendFileSync(FAKE_LOG, JSON.stringify({ pid: process.pid, argv, stdin, cwd: process.cwd() }) + '\n');

@@ -26,6 +26,7 @@ with hand-written environment variables. Failures and unknown package selections
 | --- | --- |
 | Packaged harnesses | Installation, answers, usage, sessions, access/refusal and error propagation for every bundled adapter |
 | Package lifecycle | Shipped resources and executable launchers, stale-package refresh, preservation of user overrides and safe removal |
+| Environment policy | Declared defaults versus explicit restrictions, exact inheritance, provider auth paths, user overrides and visible limitations through installed adapters |
 | Writing | Actual file changes in a disposable project, read/write propagation, follow-ups, batches and worktree isolation using a controlled agent |
 | Shutdown | Timeouts and `ask stop` terminate the controlled agent and its descendants rather than leaving work running |
 | Test plumbing | Bounded subprocesses, isolated environments and report parsing, with helper regression tests |
@@ -61,6 +62,17 @@ It does **not** prove that today's installed vendor CLI, authentication or live 
 or that vendor permission enforcement is correct. That requires separate real-CLI verification.
 Baymax does not download CLIs, call providers or silently turn offline checks into paid tests.
 Existing fixtures remain simulators, not independently captured upstream recordings.
+
+The optional Claude check is separate from Baymax:
+
+```sh
+ASK_TEST_CLAUDE_BIN=/absolute/path/to/claude node --test packages/claude/test/environment-cli.test.mjs
+```
+
+It runs the real executable in a disposable home against local HTTP API/MCP fixtures, using
+only fake credentials. It verifies config-defined auth, project instructions, SessionStart hooks,
+MCP connections and skill discovery. It never calls a real model. It is skipped without that
+explicit executable override, and the Baymax runner does not inherit the override.
 
 For opt-in local startup and complete fake-task timings, see
 [Local latency](../../test/README.md#local-latency-opt-in). Baymax checks behavior;

@@ -9,24 +9,24 @@ import (
 func TestEnvironment(t *testing.T) {
 	t.Run("inherit is exact and contract fields win over parent values", func(t *testing.T) {
 		s := fresh(t)
-		s.localAgent("echo", `cat >/dev/null; printf '%s|%s|%s|%s|%s|%s\n' "$KEPT" "$DROPPED" "$ASK_ACCESS" "$ASK_SESSION" "$ASK_ENVIRONMENT" "$ASK_CONTRACT"`)
+		s.localAgent("echo", `cat >/dev/null; printf '%s|%s|%s|%s|%s|%s|%s\n' "$KEPT" "$DROPPED" "$ASK_ACCESS" "$ASK_SESSION" "$ASK_ENVIRONMENT" "$ASK_CONTRACT" "$ASK_ENVIRONMENT_REQUESTED"`)
 		s.json(filepath.Join(s.home, "environment.json"), object{"agents": object{"echo": object{"inherit": []string{"PATH", "HOME", "KEPT", "ASK_ACCESS", "ASK_ENVIRONMENT"}}}})
-		r := s.run([]string{"-m", "echo:small", "hi"}, "", map[string]string{"KEPT": "kept", "DROPPED": "private-sentinel", "ASK_ACCESS": "write", "ASK_SESSION": "outer", "ASK_ENVIRONMENT": `{"mcp":true}`})
+		r := s.run([]string{"-m", "echo:small", "hi"}, "", map[string]string{"KEPT": "kept", "DROPPED": "private-sentinel", "ASK_ACCESS": "write", "ASK_SESSION": "outer", "ASK_ENVIRONMENT": `{"mcp":true}`, "ASK_ENVIRONMENT_REQUESTED": `{"mcp":true}`})
 		eq(t, r.code, 0)
-		eq(t, r.stdout, "kept||read|||1\n")
+		eq(t, r.stdout, "kept||read|||1|\n")
 		noMatch(t, r.stderr, "private-sentinel")
 	})
 	t.Run("manifest defaults apply to models and tasks and configuration replaces inheritance", func(t *testing.T) {
 		s := fresh(t)
 		s.script("agents", "echo", `if [ "$1" = models ]; then [ -z "$DROPPED" ] || exit 1; echo small; exit; fi
 cat >/dev/null
-printf '%s|%s|%s\n' "$KEPT" "$DROPPED" "$ASK_ENVIRONMENT"`)
+printf '%s|%s|%s|%s\n' "$KEPT" "$DROPPED" "$ASK_ENVIRONMENT" "$ASK_ENVIRONMENT_REQUESTED"`)
 		s.json(filepath.Join(s.home, "agents", "echo.environment.json"), object{"inherit": []string{"PATH", "HOME", "KEPT"}, "integrations": object{"mcp": false}})
 		s.env["KEPT"], s.env["DROPPED"] = "kept", "private-sentinel"
 		eq(t, s.ask("models").code, 0)
-		eq(t, s.ask("-m", "echo:small", "hi").stdout, "kept||{\"mcp\":false}\n")
+		eq(t, s.ask("-m", "echo:small", "hi").stdout, "kept||{\"mcp\":false}|{}\n")
 		s.json(filepath.Join(s.home, "environment.json"), object{"agents": object{"echo": object{"inherit": []string{"PATH", "HOME"}, "integrations": object{"mcp": true}}}})
-		eq(t, s.ask("-m", "echo:small", "hi").stdout, "||{\"mcp\":true}\n")
+		eq(t, s.ask("-m", "echo:small", "hi").stdout, "||{\"mcp\":true}|{\"mcp\":true}\n")
 	})
 	t.Run("a local executable override does not inherit a packaged adapter declaration", func(t *testing.T) {
 		s := fresh(t)
@@ -73,5 +73,21 @@ printf '%s|%s|%s\n' "$KEPT" "$DROPPED" "$ASK_ENVIRONMENT"`)
 		s.env["POLICY_ENV"] = "present"
 		eq(t, s.ask("-m", "echo:small", "hi").code, 0)
 		eq(t, s.read(filepath.Join(s.tmp, "policy-ran")), "present\n")
+	})
+	t.Run("installation readiness uses the selected executable's policy", func(t *testing.T) {
+		s := fresh(t)
+		repo := filepath.Join(s.tmp, "src", "team", "tools")
+		s.mkdir(repo)
+		git := s.gitAt(repo)
+		git("init", "-q", "-b", "main")
+		s.scriptAt(repo, "agents", "echo", `printf '%s|%s|%s' "$KEPT" "$DROPPED" "$ASK_ENVIRONMENT_REQUESTED" > "$HOME/readiness-env"; echo small`)
+		s.json(filepath.Join(repo, "agents", "echo.environment.json"), object{"inherit": []string{"PATH", "HOME", "KEPT"}, "integrations": object{"mcp": false}})
+		git("add", ".")
+		git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture")
+		s.env["KEPT"], s.env["DROPPED"] = "kept", "private-sentinel"
+		r := s.ask("install", repo)
+		eq(t, r.code, 0)
+		eq(t, s.read(filepath.Join(s.tmp, "readiness-env")), "kept||{}")
+		noMatch(t, r.stderr, `echo\.environment\.json`)
 	})
 }

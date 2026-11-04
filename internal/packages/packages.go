@@ -75,11 +75,20 @@ func Locate(p home.Paths, source string) (string, string, error) {
 	return source, filepath.Join(p.Packages, m[1], m[2], m[3]), nil
 }
 
-// Contents describes directory entries, including nonexecutables, just as the existing CLI does.
+// Contents describes directory entries, including nonexecutables but excluding agent sidecars.
 func Contents(dir string) string {
 	parts := []string{}
 	for _, kind := range []string{"agents", "hooks", "commands"} {
 		names := find.List(filepath.Join(dir, kind))
+		if kind == "agents" {
+			agents := []string{}
+			for _, name := range names {
+				if !strings.HasSuffix(name, ".environment.json") {
+					agents = append(agents, name)
+				}
+			}
+			names = agents
+		}
 		if len(names) > 0 {
 			parts = append(parts, kind+": "+strings.Join(names, ", "))
 		}

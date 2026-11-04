@@ -1,7 +1,7 @@
 /*
  * The Claude Code agent: runs `claude -p` with streamed JSON output, reporting tokens as each model
- * call starts and finishes (Claude Code gives cost only at the end). Read runs use the default permission
- * mode with only the Read, Grep and Glob tools: shell commands and edits are denied outright, so
+ * call starts and finishes (Claude Code gives cost only at the end). Read runs use the ordinary permission
+ * mode with Read, Grep and Glob tools (and --tools when supported): model shell commands and edits are denied, so
  * the user's own default mode and allow rules cannot widen them, and git takes no optional locks
  * and runs no fsmonitor (see readEnv); write runs bypass permissions. Models are named family-version,
  * like sonnet-5.5 (Claude Code's claude-sonnet-5-5), or by full Claude Code id; never by Claude
@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { accessSync, constants, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { environmentArgs } from './environment.mjs';
 
 // The current models; ask models also lists any ids added in ~/.ask/models.json.
 const MODELS = ['fable-5.1', 'opus-5.5', 'sonnet-5.5', 'haiku-4.5'];
@@ -149,15 +150,19 @@ await adapter({
       return { ok: false, error: `"${model}" is an alias; name the exact model, like claude:${MODELS.find((m) => m.startsWith(model.toLowerCase())) || MODELS[1]} (see ask models)` };
     const id = session || randomUUID();
     report({ session: id });
-    const args = ['-p', '--model', claudeId(model), '--output-format', 'stream-json', '--verbose', '--include-partial-messages', ...(session ? ['--resume', session] : ['--session-id', id])];
+    let controls;
+    try { controls = environmentArgs(CLI, write); }
+    catch (error) { return { ok: false, error: error.message }; }
+    report({ note: controls.note });
+    const args = ['-p', ...controls.args, '--model', claudeId(model), '--output-format', 'stream-json', '--verbose', '--include-partial-messages', ...(session ? ['--resume', session] : ['--session-id', id])];
     if (title) args.push('--name', title);
     if (effort) args.push('--effort', effort);
     // Claude Code reports cost only when it ends, so it enforces ask's limit itself.
     if (maxCost) args.push('--max-budget-usd', String(maxCost));
     if (schema) args.push('--json-schema', JSON.stringify(schema));
-    // Rules over a command's text cannot follow everything a shell expands, so a read run gets no shell at all.
+    // Rules over a command's text cannot follow shell expansion; deny the model's shell tool.
     if (write) args.push('--permission-mode', 'bypassPermissions');
-    else args.push('--permission-mode', 'default', '--allowedTools', 'Read,Grep,Glob', '--disallowedTools', 'Bash,Edit,Write,NotebookEdit');
+    else args.push('--allowedTools', 'Read,Grep,Glob', '--disallowedTools', 'Bash,Edit,Write,NotebookEdit');
     // Each model call's usage arrives as it starts (message_start) and, with its output, as it
     // finishes (message_delta); the result event closes the run.
     const calls = new Map();
@@ -205,6 +210,6 @@ await adapter({
     if (result.subtype === 'error_max_budget_usd') return { ok: false, error: `stopped at the $${maxCost >= 0.01 ? maxCost.toFixed(2) : maxCost} cost limit`, usage, name };
     if (result.is_error || r.code !== 0) return { ok: false, error: result.is_error ? result.result || result.subtype || 'error' : `exit ${r.code}`, usage, name };
     const text = result.structured_output !== undefined ? JSON.stringify(result.structured_output) : result.result;
-    return text ? { ok: true, text, usage, name } : { ok: false, error: 'no answer', usage, name };
+    return text ? { ok: true, text, usage, name, note: controls.note } : { ok: false, error: 'no answer', usage, name };
   },
 });

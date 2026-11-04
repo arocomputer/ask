@@ -50,8 +50,8 @@ Opencode has no read-only flag, so read runs inject enforceable tool permission 
 allows. Each v1 read run creates a fresh primary agent name so deep-merging a configured `plan`
 agent cannot leave tool-specific allows in place. Follow-ups select a fresh restricted agent too.
 
-- **Read runs** may use only the read, grep and glob tools; the shell is denied, so no command
-  runs, not even `git log`: rules over a command's text cannot follow everything a shell expands.
+- **Read runs** may use only the read, grep and glob tools; the shell tool is denied, including
+  for `git log`: rules over a command's text cannot follow everything a shell expands.
   Delegation, MCP/custom tools, edits and other actions are denied by the catch-all rule.
   Git runs Opencode starts itself take no optional locks and no fsmonitor. The prompt starts with
   an instruction to answer from the files in the working directory and never guess. They stop
@@ -86,6 +86,20 @@ as `stopped at the $2.00 cost limit`, keeps its session, and `ask continue RUN "
 known after each step, so a run can go over the limit by up to one step's cost.
 
 ## Environment
+
+The shipped `opencode.environment.json` allowlist retains config/auth paths, provider keys,
+GitHub/Copilot tokens, AWS/Google/Azure identity and proxy/CA settings. Add custom provider/helper
+variables by copying the shipped `inherit` list into `~/.ask/environment.json` and extending it.
+`OPENCODE_CONFIG_CONTENT` must be a JSON object; injected agent settings retain inline provider,
+plugin and unrelated agent configuration, as well as config loaded from files.
+
+OpenCode 2.2.5's help does not establish independent global controls that disable all MCP,
+plugins and skills while preserving auth, project instructions and plugin policy hooks. Ask
+retains native integration loading for supported v1/v2 releases, with a visible run limitation
+note. Any explicit `false` integration policy is refused before launching the CLI. Setting all
+four integrations to `true` acknowledges normal native loading and removes the note. Tool
+permissions and v2's `--standalone` do not prevent plugin execution or MCP startup. See
+[Agent environments](../../docs/environment.md) for the exact policy and limits.
 
 | Variable | |
 | --- | --- |

@@ -27,7 +27,8 @@ for (const name of names) {
       for (const file of files) {
         const target = join(installed, file);
         assert.deepEqual(readFileSync(target), readFileSync(join(source, file)), `${name}/${file}`);
-        if (file.startsWith('agents/')) assert.ok(statSync(target).mode & 0o111, `${file} is executable`);
+        if (file.endsWith('.environment.json')) assert.equal(statSync(target).mode & 0o111, 0, `${file} is data`);
+        else if (file.startsWith('agents/')) assert.ok(statSync(target).mode & 0o111, `${file} is executable`);
       }
       assert.equal(existsSync(join(installed, 'test')), false, 'simulators are never installed');
     });

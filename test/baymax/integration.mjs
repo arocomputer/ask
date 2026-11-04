@@ -87,7 +87,7 @@ export async function harness(name, ask) {
       const defaults = readJson(manifest);
       // The CLI simulator needs its fixture controls, never the developer's environment.
       writeFileSync(join(s.env.ASK_HOME, 'environment.json'), JSON.stringify({ agents: {
-        [name]: { inherit: [...new Set([...defaults.inherit, ...Object.keys(s.env), ...Object.keys(profile.failure || {})])] },
+        [name]: { inherit: [...new Set([...defaults.inherit, ...Object.keys(s.env), ...Object.keys(profile.failure || { FAKE_FAIL: 'fail' })])] },
       } }));
     }
     return s;

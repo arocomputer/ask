@@ -31,8 +31,9 @@ An effort (`claude:opus-5.5#high`) is passed as `--effort`.
 
 ## Read and write
 
-- **Read runs** use Claude Code's default permission mode with only Read, Grep and Glob. Bash,
-  Edit, Write and NotebookEdit are denied, so no shell command runs, not even `git log`: rules over
+- **Read runs** use Claude Code's ordinary permission mode (`manual` or `default`, from help),
+  limiting built-in tools to Read, Grep and Glob when supported. Bash,
+  Edit, Write and NotebookEdit are denied, so the model gets no shell tool, not even for `git log`: rules over
   a command's text cannot follow everything a shell expands. Git runs Claude Code starts itself
   take no optional locks and no fsmonitor (`GIT_OPTIONAL_LOCKS=0`, `core.fsmonitor=false`), so
   reading git status never rewrites the index. The prompt starts with an instruction to answer from
@@ -64,6 +65,21 @@ Code as `--max-budget-usd`, which stops after the model call that passes it. The
 
 ## Environment
 
+The shipped `claude.environment.json` allowlist preserves config/keychain auth, Anthropic tokens,
+Bedrock, Vertex, Foundry and proxy/CA settings. Add custom helper variables with an `inherit`
+override in `~/.ask/environment.json`; the list replaces the shipped defaults.
+
+When confirmed by installed `--help`, MCP is disabled with strict empty config and skills/commands
+with `--disable-slash-commands`. Older CLIs retain unavailable controls' normal behavior with a
+visible limitation note. Explicit unsupported restrictions fail. Plugins retain normal loading
+because a global reset could suppress policy hooks; explicit `plugins: false` is refused.
+`hooks: false` is also refused. `skills: true` allows discovery; `mcp: true` requires a trusted
+write run. Plugins opt-in requires MCP and skills opt-in too, on write runs only.
+
+Settings, `CLAUDE.md` and hooks retain native discovery/trust. These controls are not a sandbox
+for the executable or installed plugins. The exact controls, opt-in examples and limitations
+are in [Agent environments](../../docs/environment.md).
+
 | Variable | |
 | --- | --- |
 | `ASK_CLAUDE_BIN` | The `claude` executable to run, instead of looking on `PATH` and in the usual places. |
@@ -78,7 +94,15 @@ The agent also reads ask's contract variables: `ASK_MODEL`, `ASK_EFFORT`, `ASK_A
 cd packages/claude && node --test
 ```
 
-The tests drive a fake `claude` in `test/bin`; they need no network or account. To try the real
+The default tests drive a fake `claude` in `test/bin`; they need no network or account. A separate
+optional real-CLI check serves a local fake API and MCP server, verifying config auth, instructions,
+skills and hooks without any real model/account:
+
+```sh
+ASK_TEST_CLAUDE_BIN=/absolute/path/to/claude node --test packages/claude/test/environment-cli.test.mjs
+```
+
+Run that command from the repository root. To try the real
 thing by hand:
 
 ```sh

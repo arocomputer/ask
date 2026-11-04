@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extend environment allowlists and explicit integration policy to Claude, Codex and OpenCode.
+  Claude probes supported MCP/skill/tool controls without resetting auth, instructions or hooks.
+  Unavailable defaults produce visible run notes; explicit unenforceable restrictions fail.
+  Codex and OpenCode retain normal integration loading with documented limitations. Preserve
+  OpenCode inline provider/plugin settings when injecting agent permissions. No integration
+  isolation claim is made for tool permissions; see `ask docs environment`.
 - Keep the caller's foreground or background choice when titling Ask commands in Claude Code.
 - Add `--stdin` to append piped or redirected context to an explicit prompt, as in
   `git diff | ask --stdin 'Review this diff'`. Argument prompts otherwise leave inherited stdin

@@ -114,7 +114,7 @@ test('item events report only coarse activity live, keeping the session and clea
     const r = await running;
     assert.equal(r.code, 0);
     assert.equal(r.stdout, 'codex: hi\n');
-    assert.equal(r.stderr, '');
+    assert.match(r.stderr, /^Codex minimal integrations are unavailable:.*\n$/);
     assert.equal(r.report.activity, '');
     assert.equal(r.report.input, 107);
     assert.ok(!JSON.stringify(r.report).includes(secret));
@@ -132,7 +132,7 @@ test('malformed and unknown item events cannot corrupt activity, sessions or usa
   const r = await run('hi', { extra: { FAKE_EVENTS: events } });
   assert.equal(r.code, 0);
   assert.equal(r.stdout, 'codex: hi\n');
-  assert.equal(r.stderr, '');
+  assert.match(r.stderr, /^Codex minimal integrations are unavailable:.*\n$/);
   assert.equal(r.report.session, 'fake');
   assert.equal(r.report.input, 100);
   assert.equal(r.report.activity, '');
@@ -152,7 +152,7 @@ test('fails a run whose Codex exited nonzero, with the reason last on stderr', a
 test("a failing Codex's own message is the reason", async () => {
   const r = await run('break', { extra: { FAKE_FAIL: 'break' } });
   assert.equal(r.code, 1);
-  assert.equal(r.stderr.trim(), 'codex boom');
+  assert.equal(r.stderr.trim().split('\n').pop(), 'codex boom');
 });
 
 test('gets a strict schema: objects closed, every property required', async () => {
@@ -215,4 +215,35 @@ test('the launcher says how to get Node.js when it finds none', { skip: fixedNod
   const r = await launch(['models'], { PATH: empty, HOME: empty });
   assert.equal(r.code, 1);
   assert.equal(r.stderr, 'codex needs Node.js 18 or newer: install it from https://nodejs.org (or set ASK_NODE)\n');
+});
+
+test('Codex retains config and reports unavailable integration defaults', async () => {
+  const r = await run('task', { extra: { FAKE_HELP: 'old CLI without --ignore-user-config' } });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stderr, /minimal integrations are unavailable/);
+  const { argv } = r.calls[0];
+  for (const flag of ['--ignore-user-config', '--ignore-rules', '--disable']) assert.ok(!argv.includes(flag));
+  assert.ok(!argv.includes('mcp_servers={}'));
+});
+
+test('Codex refuses explicit restrictions before exec, resume, naming or discovery', async (t) => {
+  for (const key of ['mcp', 'plugins', 'skills', 'hooks']) await t.test(key, async () => {
+    const extra = { ASK_ENVIRONMENT: JSON.stringify({ [key]: false }), ASK_TITLE: 'title', FAKE_TITLE_LOG: join(tmp(), 'title.json') };
+    for (const continuation of [{}, { ASK_SESSION: 'existing' }]) {
+      const r = await run('task', { extra: { ...extra, ...continuation } });
+      assert.equal(r.code, 1);
+      assert.equal(r.calls.length, 0);
+      assert.match(r.stderr, /cannot safely enforce/);
+      assert.ok(!existsSync(extra.FAKE_TITLE_LOG));
+    }
+    const listed = await launch(['models'], offlineEnv(extra));
+    assert.equal(listed.code, 1);
+    assert.equal(listed.stdout, '');
+  });
+});
+
+test('Codex full integration opt-in acknowledges normal harness loading', async () => {
+  const r = await run('task', { extra: { ASK_ENVIRONMENT: '{"mcp":true,"plugins":true,"skills":true,"hooks":true}' } });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stderr, '');
 });

@@ -29,7 +29,7 @@ func New() Paths {
 // Env clears inherited contract variables and supplies contract version 1.
 func (p Paths) Env(vars map[string]string) []string {
 	drop := map[string]bool{}
-	for _, k := range []string{"ASK_MODEL", "ASK_EFFORT", "ASK_ACCESS", "ASK_SCHEMA", "ASK_SESSION", "ASK_REPORT", "ASK_MAX_COST", "ASK_TITLE", "ASK_RUN", "ASK_EVENT", "ASK_CONTRACT", "ASK_BIN", "ASK_HOME", "ASK_ENVIRONMENT"} {
+	for _, k := range []string{"ASK_MODEL", "ASK_EFFORT", "ASK_ACCESS", "ASK_SCHEMA", "ASK_SESSION", "ASK_REPORT", "ASK_MAX_COST", "ASK_TITLE", "ASK_RUN", "ASK_EVENT", "ASK_CONTRACT", "ASK_BIN", "ASK_HOME", "ASK_ENVIRONMENT", "ASK_ENVIRONMENT_REQUESTED"} {
 		drop[k] = true
 	}
 	env := []string{}

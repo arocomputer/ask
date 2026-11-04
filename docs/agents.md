@@ -64,7 +64,8 @@ ask runs the agent with no arguments, in the directory the agent should work in 
 | `ASK_SCHEMA` | Set only with `--schema`: a file holding the JSON Schema, for CLIs that enforce one. |
 | `ASK_SESSION` | Set for a follow-up or saved-session recovery: the session to continue (see [Sessions](#sessions)). |
 | `ASK_REPORT` | A file path for the optional report. |
-| `ASK_ENVIRONMENT` | Effective integration booleans for adapters with an environment sidecar; enforce them or refuse. See [Agent environments](environment.md). |
+| `ASK_ENVIRONMENT` | Effective integration booleans for adapters with an environment sidecar. See [Agent environments](environment.md) for enforced controls and unavailable defaults. |
+| `ASK_ENVIRONMENT_REQUESTED` | Explicit user integration booleans, or `{}`. Enforce explicit restrictions or refuse; unavailable defaults must be reported accurately. |
 | `ASK_MAX_COST` | Set only when the task has a cost limit: dollars, like `2` or `0.5`. See [Cost limits](#cost-limits). |
 
 | Output | |

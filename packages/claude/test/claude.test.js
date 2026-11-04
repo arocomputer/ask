@@ -139,7 +139,7 @@ test('fails a run whose Claude Code exited nonzero, with the reason last on stde
 test("a failing Claude Code's own message is the reason", async () => {
   const r = await run('break', { extra: { FAKE_FAIL: 'break' } });
   assert.equal(r.code, 1);
-  assert.equal(r.stderr.trim(), 'claude boom');
+  assert.equal(r.stderr.trim().split('\n').pop(), 'claude boom');
 });
 
 test('passes a schema natively and answers with the structured output', async () => {
@@ -202,4 +202,65 @@ test("passes ask's cost limit to Claude Code, and reports reaching it in ask's w
   assert.equal(r.report.cost, 0.01);
   assert.equal(r.report.input, 35);
   assert.ok(r.report.session);
+});
+
+test('minimal MCP and skills controls apply to read, write and continued launches', async () => {
+  for (const options of [{}, { access: 'write' }, { extra: { ASK_SESSION: 'existing' } }]) {
+    const r = await run('task', options);
+    assert.equal(r.code, 0, r.stderr);
+    const { argv } = r.calls.at(-1);
+    assert.ok(argv.includes('--strict-mcp-config'));
+    assert.deepEqual(JSON.parse(after(argv, '--mcp-config')), { mcpServers: {} });
+    assert.ok(argv.includes('--disable-slash-commands'));
+    if (options.access !== 'write') assert.equal(after(argv, '--tools'), 'Read,Grep,Glob');
+    for (const flag of ['--bare', '--safe-mode', '--restricted', '--setting-sources', '--settings']) assert.ok(!argv.includes(flag), flag);
+    assert.match(r.stderr, /unavailable for plugins.*policy hooks/);
+  }
+});
+
+test('skills and MCP opt-in remove only their own controls', async () => {
+  const skills = await run('task', { extra: { ASK_ENVIRONMENT: '{"skills":true}' } });
+  assert.equal(skills.code, 0, skills.stderr);
+  assert.ok(!skills.calls.at(-1).argv.includes('--disable-slash-commands'));
+  assert.ok(skills.calls.at(-1).argv.includes('--strict-mcp-config'));
+  const mcp = await run('task', { access: 'write', extra: { ASK_ENVIRONMENT: '{"mcp":true}' } });
+  assert.equal(mcp.code, 0, mcp.stderr);
+  assert.ok(!mcp.calls.at(-1).argv.includes('--strict-mcp-config'));
+  assert.ok(mcp.calls.at(-1).argv.includes('--disable-slash-commands'));
+});
+
+test('unavailable explicit Claude restrictions and unsafe opt-ins refuse before a task', async (t) => {
+  for (const [policy, reason] of [
+    [{ hooks: false }, /policy hooks/], [{ plugins: false }, /plugins:false cannot be enforced/],
+    [{ plugins: true }, /trusted write run/], [{ mcp: true }, /trusted write run/],
+  ]) await t.test(JSON.stringify(policy), async () => {
+    const r = await run('task', { extra: { ASK_ENVIRONMENT: JSON.stringify(policy) } });
+    assert.equal(r.code, 1);
+    assert.equal(r.calls.length, 0);
+    assert.match(r.stderr, reason);
+  });
+});
+
+test('older Claude keeps legacy flags with a warning but refuses explicit unsupported controls', async () => {
+  const legacy = { FAKE_HELP: '--allowedTools <tools...>\n--disallowedTools <tools...>' };
+  const r = await run('task', { extra: legacy });
+  assert.equal(r.code, 0, r.stderr);
+  const { argv } = r.calls.at(-1);
+  for (const flag of ['--strict-mcp-config', '--mcp-config', '--tools', '--disable-slash-commands']) assert.ok(!argv.includes(flag));
+  assert.match(r.stderr, /unavailable for mcp, skills, built-in tool selection/);
+  for (const key of ['mcp', 'skills']) {
+    const denied = await run('task', { extra: { ...legacy, ASK_ENVIRONMENT: JSON.stringify({ [key]: false }) } });
+    assert.equal(denied.code, 1);
+    assert.equal(denied.calls.length, 1); // Only the preceding legacy task reached the harness.
+    assert.match(denied.stderr, /help does not confirm controls/);
+  }
+  const failed = await run('task', { extra: { FAKE_HELP_EXIT: '1', ASK_ENVIRONMENT: '{"mcp":false}' } });
+  assert.equal(failed.code, 1);
+  assert.equal(failed.calls.length, 1);
+});
+
+test('Claude uses the ordinary permission mode advertised by newer help', async () => {
+  const r = await run('task', { extra: { FAKE_HELP: '--tools <tools...>\n--permission-mode (choices: "manual", "bypassPermissions")' } });
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(after(r.calls.at(-1).argv, '--permission-mode'), 'manual');
 });

@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { accessSync, constants, mkdtempSync, readFileSync, rmSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { checkEnvironment } from './environment.mjs';
 
 // Put before a new read run's prompt, so the answer comes from the code rather than a guess.
 const GROUNDING = 'Answer from the files in your working directory: search and read them before answering. Never guess file names, functions or facts; if you cannot find something, say so.\n\n';
@@ -185,6 +186,10 @@ if (!CLI) {
   process.exit(1);
 }
 
+let environmentNote;
+try { environmentNote = checkEnvironment(); }
+catch (error) { console.error(error.message); process.exit(1); }
+
 await adapter({
   models: () => cachedModels().map((m) => [m.slug, displayName(m)]),
 
@@ -246,7 +251,7 @@ await adapter({
       try {
         text = readFileSync(out, 'utf8');
       } catch {}
-      if (r.code === 0 && text.trim()) return { ok: true, text, usage, name };
+      if (r.code === 0 && text.trim()) return { ok: true, text, usage, name, note: environmentNote };
       // Codex reports API errors as JSON on either stream; give its message, not a closing brace.
       const messages = [...(r.stderr + '\n' + r.stdout).matchAll(/"message":\s*"((?:[^"\\]|\\.)*)"/g)].map((match) => match[1]);
       const lines = r.stderr.trim().split('\n').filter((line) => /\w/.test(line));

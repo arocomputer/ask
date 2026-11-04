@@ -101,6 +101,7 @@ func TestPackages(t *testing.T) {
 		r := s.ask("install", "claude")
 		match(t, r.stderr, `(?m)^ask: installed ask/packages/claude: agents: claude$`)
 		match(t, r.stderr, `(?m)^ask: claude is (ready|not ready)`)
+		noMatch(t, r.stderr, `claude\.environment\.json`)
 		agent := filepath.Join(s.home, "packages", "ask", "packages", "claude", "agents", "claude")
 		info, e := os.Stat(agent)
 		if e != nil || info.Mode()&0111 == 0 {

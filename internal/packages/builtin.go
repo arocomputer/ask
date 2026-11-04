@@ -62,7 +62,7 @@ func current(p home.Paths, name string) bool {
 }
 
 // writeBuiltin replaces the installed copy of a built-in package with this build's, assembling
-// it beside the old one first; files under agents/ are executable.
+// it beside the old one first; launchers under agents/ are executable, sidecars are data.
 func writeBuiltin(p home.Paths, name string) error {
 	dir := BuiltinDir(p, name)
 	if e := os.MkdirAll(filepath.Dir(dir), 0755); e != nil {
@@ -87,7 +87,7 @@ func writeBuiltin(p home.Paths, name string) error {
 			return err
 		}
 		mode := os.FileMode(0644)
-		if strings.HasPrefix(rel, "agents/") {
+		if strings.HasPrefix(rel, "agents/") && !strings.HasSuffix(rel, ".environment.json") {
 			mode = 0755
 		}
 		return os.WriteFile(target, b, mode)

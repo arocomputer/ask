@@ -134,7 +134,7 @@ test('fails a run whose Opencode exited nonzero, with the reason last on stderr'
 test("a failing Opencode's own message is the reason", async () => {
   const r = await run('break', { extra: { FAKE_FAIL: 'break' } });
   assert.equal(r.code, 1);
-  assert.equal(r.stderr.trim(), 'opencode boom');
+  assert.equal(r.stderr.trim().split('\n').pop(), 'opencode boom');
 });
 
 test('reports its session, and a follow-up continues it', async () => {
@@ -166,7 +166,7 @@ test('refuses a model name it cannot find', async () => {
   const r = await run('hi', { model: 'nope-1.0' });
   assert.equal(r.code, 1);
   assert.equal(r.calls.length, 0);
-  assert.equal(r.stderr, 'no Opencode model named nope-1.0; see opencode models\n');
+  assert.equal(r.stderr.trim().split('\n').pop(), 'no Opencode model named nope-1.0; see opencode models');
 });
 
 test('finds Opencode off PATH through ASK_OPENCODE_BIN', async () => {
@@ -273,4 +273,59 @@ test('unknown, malformed, old and failing versions stop before models or runs', 
     }
   }
   assert.ok(readJsonl(log).every((argv) => argv.length === 1 && argv[0] === '--version'));
+});
+
+test('OpenCode retains version-specific behavior while reporting unavailable defaults', async () => {
+  for (const version of ['1.1.65', '2.2.5']) {
+    const r = await run('task', { extra: { FAKE_VERSION: version } });
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stderr, /minimal integrations are unavailable/);
+    assert.ok(!Object.hasOwn(r.calls.at(-1).config, 'mcp'));
+    assert.ok(!Object.hasOwn(r.calls.at(-1).config, 'plugins'));
+  }
+});
+
+test('OpenCode refuses explicit restrictions before version checks, discovery and follow-ups', async (t) => {
+  for (const key of ['mcp', 'plugins', 'skills', 'hooks']) await t.test(key, async () => {
+    const extra = { ASK_ENVIRONMENT: JSON.stringify({ [key]: false }), FAKE_CONTROL_LOG: join(tmp(), 'controls.jsonl') };
+    for (const args of [[], ['models']]) {
+      const r = await launch(args, offlineEnv({ ASK_MODEL: 'p/m', ASK_ACCESS: 'write', ASK_SESSION: 'existing', ...extra }), 'task');
+      assert.equal(r.code, 1);
+      assert.equal(r.stdout, '');
+      assert.match(r.stderr, /cannot safely enforce/);
+      assert.deepEqual(readJsonl(extra.FAKE_CONTROL_LOG), []);
+    }
+  });
+});
+
+test('OpenCode preserves inline providers and plugin hooks when injecting agent settings', async () => {
+  for (const [version, key] of [['1.1.65', 'agent'], ['2.2.5', 'agents']]) {
+    const configured = { provider: { fixture: { options: { apiKey: 'fixture' } } }, plugins: ['policy-hook'], [key]: { other: { description: 'keep' }, build: { description: 'keep build', steps: 1 } } };
+    const r = await run('task', { access: 'write', extra: {
+      FAKE_VERSION: version, OPENCODE_CONFIG_CONTENT: JSON.stringify(configured),
+      ASK_ENVIRONMENT: '{"mcp":true,"plugins":true,"skills":true,"hooks":true}',
+    } });
+    assert.equal(r.code, 0, r.stderr);
+    const { config } = r.calls.at(-1);
+    assert.deepEqual(config.provider, configured.provider);
+    assert.deepEqual(config.plugins, configured.plugins);
+    assert.deepEqual(config[key].other, configured[key].other);
+    assert.deepEqual(config[key].build, { description: 'keep build', steps: 100 });
+    assert.equal(r.stderr, '');
+  }
+});
+
+test('OpenCode read permissions replace inline allows while retaining instructions', async () => {
+  const configured = { instructions: ['PROJECT_POLICY.md'], agents: {
+    plan: { prompt: 'Keep the project instruction', permissions: [{ action: '*', resource: '*', effect: 'allow' }] },
+  } };
+  const r = await run('task', { extra: { OPENCODE_CONFIG_CONTENT: JSON.stringify(configured) } });
+  assert.equal(r.code, 0, r.stderr);
+  const { config } = r.calls[0];
+  assert.deepEqual(config.instructions, ['PROJECT_POLICY.md']);
+  assert.equal(config.agents.plan.prompt, 'Keep the project instruction');
+  assert.deepEqual(config.agents.plan.permissions, [
+    { action: '*', resource: '*', effect: 'deny' },
+    ...['read', 'grep', 'glob'].map(action => ({ action, resource: '*', effect: 'allow' })),
+  ]);
 });

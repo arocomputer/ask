@@ -29,11 +29,14 @@ Codex once to fill the cache. Ids are Codex's own and match without regard to ca
 
 Both run in Codex's OS sandbox, never asking for approval:
 
-- **Read runs** use the `read-only` sandbox: Codex may run any command, but nothing can write. The
+- **Read runs** use the `read-only` sandbox for model commands. The
   prompt starts with an instruction to answer from the files in the working directory and never
   guess.
 - **Write runs** (`ask -w`) use `workspace-write` with network access, so installing dependencies
   and running tests work.
+
+The sandbox governs model commands. Codex still writes its own sessions and caches, and native
+hooks/plugins retain their own execution behavior; this is not integration isolation.
 
 A `--schema` is passed as `--output-schema`, converted to the strict form OpenAI's structured
 output requires: every object closed and every property required.
@@ -59,6 +62,20 @@ The agent reports no cost, so ask cannot enforce a cost limit for Codex, regardl
 you authenticate it. Use `-t` to bound how long a run may take.
 
 ## Environment
+
+The shipped `codex.environment.json` allowlist retains `CODEX_HOME`, keychain/file auth, OpenAI
+and Azure keys/endpoints, AWS/Google identity and proxy/CA settings. Custom providers' `env_key`
+names and credential-helper variables may need an `inherit` override in `~/.ask/environment.json`;
+copy the shipped list and add the names you need.
+
+Codex 0.166.0 has no confirmed global integration reset preserving provider configuration and
+policy hooks. `--ignore-user-config` keeps auth files but drops settings those workflows need;
+`mcp_servers={}` merges rather than removing configured servers. Ask therefore preserves normal
+MCP/plugins/skills/hooks and reports the limitation in successful run notes. Any explicit `false`
+integration policy is refused before a launch, including follow-ups and model discovery.
+Setting all four integrations to `true` acknowledges normal native loading and removes the note.
+Ask does not remove `AGENTS.md`, execpolicy rules or hook trust. The naming app-server retains
+the same config and environment. See [Agent environments](../../docs/environment.md).
 
 | Variable | |
 | --- | --- |

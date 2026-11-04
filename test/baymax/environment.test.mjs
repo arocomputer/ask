@@ -45,3 +45,71 @@ test('Pi environment fixture preserves auth and instructions while disabling int
   assert.equal(s.calls().length, before);
   assert.match(denied.stderr, /cannot enforce read/);
 });
+
+for (const [name, model, configVar, authNames] of [
+  ['claude', 'haiku-4.5', 'CLAUDE_CONFIG_DIR', ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_FOUNDRY_API_KEY', 'ANTHROPIC_IDENTITY_TOKEN_FILE']],
+  ['codex', 'gpt-x', 'CODEX_HOME', ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'AZURE_OPENAI_API_KEY']],
+  ['opencode', 'p/m', 'OPENCODE_CONFIG_DIR', ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GITHUB_TOKEN', 'OPENCODE_API_KEY', 'AZURE_OPENAI_ENDPOINT', 'AZURE_API_KEY', 'GOOGLE_VERTEX_PROJECT', 'GITHUB_ENTERPRISE_TOKEN']],
+]) test(`${name}: installed policy filters inheritance, preserves auth paths and honors explicit overrides`, {
+  skip: (!process.env.BAYMAX_ASK || !names.includes(name)) && `run via ./x baymax ${name}`,
+}, async (t) => {
+  const s = await harness(name, process.env.BAYMAX_ASK);
+  t.after(s.cleanup);
+  const authDir = join(s.home, 'auth-config');
+  mkdirSync(authDir);
+  writeFileSync(join(authDir, 'auth.json'), '{"fixture":"not-real"}');
+  writeFileSync(join(authDir, 'config.toml'), 'model_provider = "fixture"\n');
+  writeFileSync(join(s.work, 'AGENTS.md'), 'Preserve project policy.');
+  const probe = join(s.bin, 'auth-probe');
+  const log = join(s.dir, 'auth-probe.jsonl');
+  const keys = [...authNames, 'AWS_SESSION_TOKEN', 'AWS_PROFILE', 'AWS_WEB_IDENTITY_TOKEN_FILE', 'GOOGLE_APPLICATION_CREDENTIALS', 'AZURE_FEDERATED_TOKEN_FILE', 'HTTPS_PROXY', 'NODE_EXTRA_CA_CERTS', 'TEST_PROVIDER_KEY', 'UNRELATED_SECRET', 'NODE_OPTIONS'];
+  // A subprocess wrapper observes the exact environment handed to every harness entry point,
+  // including help, model listing and Codex's auxiliary naming server. No values enter its log.
+  writeFileSync(probe, `#!/usr/bin/env node
+import { appendFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+const keys = ${JSON.stringify(keys)};
+appendFileSync(${JSON.stringify(log)}, JSON.stringify({
+  argv: process.argv.slice(2), home: process.env.HOME === ${JSON.stringify(s.home)},
+  file: existsSync((process.env[${JSON.stringify(configVar)}] || '') + '/auth.json'),
+  variables: Object.fromEntries(keys.map(k => [k, k in process.env])),
+}) + '\\n');
+const r = spawnSync(${JSON.stringify(join(root, 'packages', name, 'test', 'bin', name))}, process.argv.slice(2), { stdio: 'inherit' });
+process.exit(r.status ?? 1);
+`, { mode: 0o755 });
+  const env = {
+    [`ASK_${name.toUpperCase()}_BIN`]: probe, [configVar]: authDir,
+    ...Object.fromEntries(keys.filter(k => k !== 'NODE_OPTIONS').map(k => [k, 'fixture-not-real'])),
+    // If this leaked it would break Node before the harness can respond.
+    NODE_OPTIONS: '--require=/does/not/exist',
+  };
+  // A CA path should not provoke a runtime warning in the fixture's Node process.
+  delete env.NODE_EXTRA_CA_CERTS;
+  const path = join(s.env.ASK_HOME, 'environment.json');
+  const policy = JSON.parse(readFileSync(path, 'utf8'));
+  for (const access of ['-r', '-w']) {
+    const out = await s.run(['-m', `${name}:${model}`, access, 'task'], env);
+    assert.equal(out.code, 0, out.stderr);
+    assert.match(out.stderr, /unavailable/, 'successful runs must show the integration limitation');
+    assert.match(s.record(out).result.note, /unavailable/, 'limitation must survive in the saved run');
+    const call = JSON.parse(readFileSync(log, 'utf8').trim().split('\n').at(-1));
+    assert.equal(call.home, true);
+    assert.equal(call.file, true);
+    for (const key of keys.filter(k => !['TEST_PROVIDER_KEY', 'UNRELATED_SECRET', 'NODE_OPTIONS', 'NODE_EXTRA_CA_CERTS'].includes(k))) assert.equal(call.variables[key], true, key);
+    for (const key of ['TEST_PROVIDER_KEY', 'UNRELATED_SECRET', 'NODE_OPTIONS']) assert.equal(call.variables[key], false, key);
+    assert.equal(readFileSync(join(s.work, 'AGENTS.md'), 'utf8'), 'Preserve project policy.');
+    assert.ok(!JSON.stringify(s.record(out)).includes('fixture-not-real'));
+  }
+  policy.agents[name].inherit.push('TEST_PROVIDER_KEY');
+  writeFileSync(path, JSON.stringify(policy));
+  const overridden = await s.run(['-m', `${name}:${model}`, '-w', 'task'], env);
+  assert.equal(overridden.code, 0, overridden.stderr);
+  assert.equal(JSON.parse(readFileSync(log, 'utf8').trim().split('\n').at(-1)).variables.TEST_PROVIDER_KEY, true);
+  const before = readFileSync(log, 'utf8');
+  policy.agents[name].integrations = { plugins: false };
+  writeFileSync(path, JSON.stringify(policy));
+  const denied = await s.run(['-m', `${name}:${model}`, '-w', 'task'], env);
+  assert.equal(denied.code, 1);
+  assert.match(s.record(denied).result.error, /cannot.*enforce/);
+  assert.equal(readFileSync(log, 'utf8'), before);
+});

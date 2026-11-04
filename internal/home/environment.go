@@ -104,6 +104,13 @@ func (p Paths) AgentEnv(name, executable string, vars map[string]string) ([]stri
 	}
 	if len(integrations) != 0 {
 		env = append(env, "ASK_ENVIRONMENT="+JSON(integrations, false))
+		// Adapters may retain legacy behavior when a default cannot be enforced by an
+		// installed CLI. An explicit user policy must instead be enforced or refused.
+		requested, _ := policy["integrations"].(Object)
+		if requested == nil {
+			requested = Object{}
+		}
+		env = append(env, "ASK_ENVIRONMENT_REQUESTED="+JSON(requested, false))
 	}
 	return env, nil
 }
