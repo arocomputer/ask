@@ -133,8 +133,6 @@ so use explicit IDs for handoff. Names move to their latest follow-up; IDs stay 
 Normal runs print only answers on stdout; start and wait --id explicitly print identity.
 Status and errors go to stderr. Private worker logs contain lifecycle messages only.
 
-` + "`ask wait`" + ` for the first active run to finish. ` + "`ask show RUN`" + ` prints a completed run.
-stdout carries only answers; status and recovery notices go to stderr.
 If JSON/schema validation fails, ` + "`ask show RUN --json`" + ` includes ` + "`raw_answer`" + ` for inspection or repair;
 the run still fails. Keep that content out of status logs; prefer ordinary text unless a structured
 consumer needs JSON or a schema.
