@@ -46,23 +46,45 @@ A follow-up:
 A batch task can be a follow-up too, with `"continue": "RUN"` (see [Batches](batches.md)).
 
 A conversation follow-up needs an agent that reports sessions (see [Agents](agents.md#sessions))
-and a run that has finished; ask says so when either is missing.
+and a run that is no longer active. Interrupted runs can be followed up when ask saved usable live session metadata; ask explains when it is missing.
 
-## Rerunning unfinished work
+## Continuing unfinished work
 
-`ask continue RUN` without a prompt reruns a stopped or failed run from the beginning. For a
-batch, it reruns only unfinished or failed tasks, leaving successful results in place. A completed
-run needs a prompt. Use `RUN/TASK` to rerun just one unfinished or failed batch task. ask tells
-you on stderr that it is rerunning work from the beginning; stdout still carries only answers.
-Supply a prompt to follow up in the saved conversation instead.
+`ask continue RUN` without a prompt chooses from the saved state:
+
+- **Running:** ask tells you to use `ask wait RUN`.
+- **Failed or stopped:** ask finishes the original task in the saved conversation when its
+  session and directory are usable. It checks an interrupted worktree's recorded repository,
+  path and branch. If the session or safe location is missing, ask restarts the original task
+  from the beginning. It announces the choice on stderr; stdout carries answers.
+- **Completed:** in a terminal, ask lets you enter a follow-up (and choose a task for a completed
+  batch). Outside a terminal, ask explains that a prompt is needed and exits without waiting
+  for input.
+
+Batches recover only unfinished or failed tasks; successful results stay untouched. Use
+`RUN/TASK` to recover just one task. Recovery keeps recorded options, including access, JSON/schema,
+model, timeout and cost limit. Only `--jobs` and `--no-hooks` apply without a prompt.
+
+Auth, refusal, billing/quota and cost-limit failures are not automatically retried. ask explains
+the blocker and leaves that task untouched while recovering other eligible batch tasks. Resolve
+the blocker, then give an explicit follow-up prompt (and, if needed, change the cost limit).
+Sessionless tasks need a new `ask run` after their blocker is resolved. Blockers are recognized
+from failure text because the agent contract has no standard failure codes; opaque errors may
+not be recognized.
 
 ```sh
 ask continue login-test-fail # after it stops or fails
 ask continue summarize-public-api-src
+ask continue login-test-fail --max-cost 5 "I resolved the blocker; finish the task."
+printf '%s' 'Now add tests.' | ask continue login-test-fail -
 ```
 
-`ask batch --resume RUN` remains a supported script alias for rerunning unfinished or failed
-batch tasks; see [Batches](batches.md#resuming).
+Explicit prompts follow up as usual. Use `-` to read streamed or delayed stdin until EOF.
+Without `-`, stdin is read only when input is already available, then through EOF as usual;
+an open empty pipe cannot hang state-based recovery. For reliable scripting, supply a prompt argument or `-`.
+
+`ask batch --resume RUN` remains a supported script alias for this recovery of unfinished or
+failed batch tasks; see [Batches](batches.md#resuming).
 
 Only one pending task may use an agent session or kept worktree at a time. ask refuses a conflicting
 follow-up with exit code 2; retry after the other run finishes. This applies across ask processes
@@ -86,14 +108,18 @@ RUN                       ID      STARTED  STATUS   MODEL       TIME   TASK
 login-test-fail           b7x01q  2m ago   ok       Sonnet 5.5  2:31   ↪ login-test-fail Fix it, then run the test.
 login-test-fail           k3f9a2  5m ago   ok       Sonnet 5.5  48.0s  Why does the login test fail?
 summarize-public-api-src  p81c0d  24m ago  2/3 ok   3 tasks            Summarize the public API in src/.
-find-bugs-internal-runs   x7d2e1  Sep 30   stopped  5 tasks            rerun: ask continue find-bugs-internal-runs
+find-bugs-internal-runs   x7d2e1  Sep 30   stopped  5 tasks            continue: ask continue find-bugs-internal-runs
 ```
 
 `running` means ask holds the run's operating system lock; its time is elapsed time since the run
 started. When an agent reports an activity, the task column shows its latest coarse activity; for
 a batch it lists the tasks that reported one. Some agents report no activity. `stopped` means the run
-was interrupted before every task finished. Interrupted tasks keep empty result slots, so they can
-be rerun. Live activity is kept in private temporary run files and ignored when the owner exits.
+was interrupted before every task finished. Interrupted attempts keep empty result slots. ask saves live reported sessions and the actual
+working directory/worktree in private recovery files, including before a final result exists.
+A rerun clears the previous attempt’s result and recovery metadata before starting, so recovery
+never falls back to an older session in the original task record. Live activity is ignored when
+the owner exits. An agent must report its session before interruption for recovery to use it;
+sudden termination before the next metadata poll (every 500ms) may require a restart.
 
 ## Showing a run again
 
@@ -127,7 +153,7 @@ ask wait login-test-fail # a specific run
 The background commands also write their answers to their own files; redirecting them keeps answers
 and terminal status displays from interleaving. `ask wait` watches runs active when it starts, not
 a completion queue: use `ask show RUN` for a run that already finished. If none is active, it
-prints `ask: no runs are running` and exits 0. A stopped run exits 1 with a command to rerun it.
+prints `ask: no runs are running` and exits 0. A stopped run exits 1 with a command to continue it.
 
 ## Stopping a run
 
@@ -138,8 +164,8 @@ started. It waits up to 10 seconds for them to exit, and fails if ask is still r
 ask stop login-test-fail
 ```
 
-Use `ask continue RUN` without a prompt to rerun a stopped or failed run from the beginning, or
-only unfinished or failed tasks in a batch. ask announces what it will rerun on stderr.
+Use `ask continue RUN` without a prompt to finish a stopped or failed run, or only unfinished
+or failed batch tasks. ask announces whether it uses the saved conversation or restarts.
 
 ## Cleaning up
 
@@ -175,6 +201,7 @@ name (runs from before names have none):
 ~/.ask/runs/20261001T140912345-k3f9a2-login-test-fail/
 ├── tasks.json     prepared tasks, including optional kept_worktree {path, branch} for follow-ups
 ├── results.json   the results so far, rewritten whole after each task
+├── recovery-N.json  live session, effective task and location for an unfinished attempt (when reported)
 └── lock           held with an operating system lock while ask runs the run; the kernel names its pid
 ```
 

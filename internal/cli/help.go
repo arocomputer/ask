@@ -74,7 +74,7 @@ Usage
 
 Tasks
   run        Start a task explicitly
-  continue   Follow up or rerun unfinished work
+  continue   Follow up or finish unfinished work
   batch      Run tasks in parallel
   bench      Compare models
 
@@ -170,26 +170,33 @@ Examples
   ask --model codex:gpt-6.1-sol --title "Review login" "Inspect the login flow."
   ask continue login-checked --write "Fix it and run the test."` + "\n\ndocs  ask docs usage"
 	case "continue":
-		return `ask continue · follow up or rerun unfinished work
+		return `ask continue · follow up or finish unfinished work
 
 Usage
   ask continue RUN [options] PROMPT
   ask continue RUN [--jobs N] [--no-hooks]
 
-A prompt continues the agent's conversation. With no prompt, ask reruns
-interrupted or failed tasks from the beginning using their saved settings.
-Use RUN/TASK to follow up on or rerun one batch task. A completed run needs a prompt.
+A prompt continues the agent's conversation. Without one:
+  running         Use ask wait RUN
+  stopped/failed  Finish in the saved session if usable; otherwise restart
+  completed       Enter a follow-up in a terminal; scripts must give a prompt
+
+Batches recover only unfinished/failed tasks; successes stay untouched.
+Use RUN/TASK for one task. Auth, refusal and cost blockers need an explicit
+prompt after resolving the blocker; ask never retries them automatically.
 
 Options
   -w, --write          Allow edits and commands
   -r, --read           Use read-only access
   -m, --model MODEL    Choose a model from the same agent
-  -j, --jobs N         Parallel tasks when rerunning a batch
+  -j, --jobs N         Parallel tasks when recovering a batch
       --no-hooks       Skip hooks
 
 Follow-ups keep their directory and inherit model and access; --model, --read
-and --write can change the latter. A rerun uses its saved settings. Piped
-stdin can provide a prompt; see ask help run for other task options.
+and --write can change the latter. Recovery uses its saved settings and announces
+whether it continues a conversation or restarts from the beginning on stderr.
+Use - for streamed stdin prompts; immediately available piped input also works.
+See ask help run for other task options.
 
 Examples
   ask continue login-bug "What did you find?"
@@ -242,6 +249,9 @@ Examples
 Usage
   ask batch [options] FILE|-
   ask batch --resume RUN [-j N] [--no-hooks]
+
+--resume recovers only unfinished/failed tasks, using usable saved sessions
+or announcing a restart. Successes and auth/refusal/cost blockers stay untouched.
 
 Tasks · a JSON array, or one object per line
   prompt     The task (required)

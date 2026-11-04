@@ -348,9 +348,19 @@ func Prepare(p home.Paths, items []any, defaults home.Object, label string, sing
 			if at < 0 {
 				return nil, home.Usage("run %s has %d tasks; continue one of them, like %s/%s", prev.Label(), len(prev.Tasks), prev.Label(), prev.Tasks[0].S("id"))
 			}
+			if Owner(prev) != 0 {
+				return nil, home.Usage("%s is still running; use ask wait %s", t.S("continue"), t.S("continue"))
+			}
 			old, result := prev.Tasks[at], prev.Results[at]
 			if result == nil {
-				return nil, home.Usage("%s cannot be continued: it has not finished", t.S("continue"))
+				resumed, _, usable := recoverTask(prev, at, false)
+				if !usable {
+					return nil, home.Usage("%s cannot be continued: it has not finished and has no usable saved session", t.S("continue"))
+				}
+				result = home.O("model", resumed.Get("model"), "write", resumed.Get("write"), "session", resumed.Get("session"))
+				if kept := resumed.Get("kept_worktree"); kept != nil {
+					result.Set("worktree", kept)
+				}
 			}
 			if !result.B("session") {
 				return nil, home.Usage("%s cannot be continued: its agent reported no session", t.S("continue"))
@@ -565,6 +575,7 @@ type Event struct {
 	Started  task.Started
 	Note     hooks.Note
 	Result   home.Object
+	Progress agent.Progress
 }
 
 // withHooks applies refusal and result decisions, allowing at most three session follow-ups.
@@ -574,7 +585,7 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 		if worktree == nil {
 			return
 		}
-		if git.Unchanged(worktree) && git.Remove(worktree) {
+		if !process.Stopping() && git.Unchanged(worktree) && git.Remove(worktree) {
 			final.Delete("worktree")
 		} else if final != nil {
 			final.Set("worktree", home.O("path", worktree.Path, "branch", worktree.Branch))
@@ -594,6 +605,7 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 	var earlier any // usage of finished rounds, so live usage keeps counting through follow-ups
 	following := false
 	progress := func(p agent.Progress) {
+		report(Event{Kind: "metadata", Progress: p})
 		if p.Usage != nil {
 			var usage any = p.Usage
 			if following {
@@ -665,6 +677,16 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 // Execute runs unfinished tasks up to jobs at once and atomically saves each completed result.
 // A nil result slice with an error means no task started; callers may discard a newly created run.
 func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event), selected ...int) ([]home.Object, error) {
+	return execute(a, r, jobs, enabled, false, report, selected...)
+}
+
+// Continue finishes unfinished tasks using saved conversations when safe, restarting otherwise.
+// Blocked tasks and successful results stay untouched. Planning and reservations hold the run lock.
+func Continue(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Event), selected ...int) ([]home.Object, error) {
+	return execute(a, r, jobs, enabled, true, report, selected...)
+}
+
+func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report func(Event), selected ...int) ([]home.Object, error) {
 	owner, e := lock(r)
 	if e != nil {
 		return nil, e
@@ -682,12 +704,23 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 	}
 	ordered := !enabled || len(find.Find(a.Paths, "hooks")) == 0
 	todo := []int{}
+	tasks := append([]home.Object(nil), r.Tasks...)
 	for i, x := range r.Results {
 		if !x.B("ok") && (len(selected) == 0 || selected[0] == i) {
+			if smart {
+				var why string
+				tasks[i], why, _ = recoverTask(r, i, true)
+				report(Event{Kind: "recovery", Index: i, Note: hooks.Note{Text: why}})
+				if tasks[i] == nil {
+					continue
+				}
+			}
 			todo = append(todo, i)
 		}
 	}
-	release, e := lockContinuations(a.Paths, r, todo)
+	planned := *r
+	planned.Tasks = tasks
+	release, e := lockContinuations(a.Paths, &planned, todo)
 	if e != nil {
 		return nil, e
 	}
@@ -744,11 +777,55 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 				if ordered {
 					<-starts[position]
 				}
+				// Clear only the attempt about to start, preserving recovery metadata for
+				// queued tasks if this execution is interrupted before reaching them.
+				mu.Lock()
+				err := os.Remove(recoveryPath(r, i))
+				if err == nil || os.IsNotExist(err) {
+					r.Results[i] = nil
+					err = home.WriteJSON(filepath.Join(r.Dir, "results.json"), home.ResultRecords(r.Results))
+				}
+				if err != nil {
+					failure = err
+				}
+				mu.Unlock()
+				if err != nil {
+					release()
+					return
+				}
 				path := progressPath(r, i)
 				_ = os.Remove(path)
 				activity := ""
-				result := withHooks(a, h, r.Tasks[i], Ref(r, i), func(e Event) {
+				saved := recoveryRecord{}
+				var saveError error
+				result := withHooks(a, h, tasks[i], Ref(r, i), func(e Event) {
 					e.Index = i
+					changed := e.Kind == "start"
+					if e.Kind == "start" {
+						saved = recoveryRecord{Task: &home.TaskRecords([]home.Object{e.Started.Task})[0], Dir: e.Started.Dir, Session: e.Started.Task.S("session")}
+						if w := e.Started.Worktree; w != nil {
+							saved.Worktree = &home.WorktreeRecord{Path: w.Path, Branch: w.Branch}
+						}
+					} else if e.Kind == "metadata" {
+						if e.Progress.Session != "" && e.Progress.Session != saved.Session {
+							changed = true
+							saved.Session = e.Progress.Session
+						}
+						if blocker := automaticBlocker(e.Progress.Blocker); blocker != "" && blocker != saved.Blocker {
+							changed = true
+							saved.Blocker = blocker
+						}
+					}
+					if changed && saveError == nil {
+						saveError = home.WriteJSON(recoveryPath(r, i), saved)
+						if saveError != nil {
+							_ = os.Remove(recoveryPath(r, i))
+							report(Event{Kind: "recovery", Index: i, Note: hooks.Note{Text: "could not save live session metadata; interrupted recovery may need a restart"}})
+						}
+					}
+					if e.Kind == "metadata" {
+						return
+					}
 					if e.Kind == "start" {
 						activity = ""
 						_ = os.Remove(path)
@@ -783,6 +860,7 @@ func Execute(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Even
 				if e != nil {
 					failure = e
 				} else {
+					_ = os.Remove(recoveryPath(r, i))
 					delete(pending, i)
 					savePending()
 				}

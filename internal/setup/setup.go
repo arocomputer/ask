@@ -101,7 +101,7 @@ and validation to run. Review the returned evidence and changes before integrati
 - ` + "`git diff | ask --stdin \"Review this diff for bugs; give file, line and impact.\"`" + `: append the diff to the instruction. An argument prompt includes stdin only with ` + "`--stdin`" + `; ` + "`git diff | ask`" + ` uses stdin alone as the prompt.
 - ` + "`ask run --model MODEL --write \"task\"`" + `: let it edit files and run commands; add ` + "`--worktree`" + ` to work on its own branch.
 - ` + "`ask continue RUN \"follow-up\"`" + `: follow up in that run's conversation, inheriting its model and read/write access unless overridden.
-- ` + "`ask continue RUN`" + ` without a prompt: rerun a stopped/failed run or only unfinished/failed batch tasks from the beginning; ask announces the rerun on stderr.
+- ` + "`ask continue RUN`" + ` without a prompt: finish stopped/failed work in a usable saved session, otherwise restart and announce it; leave successful batch tasks alone. Running work gets wait guidance; completed work asks for a follow-up in a terminal. Auth/refusal/cost blockers require an explicit prompt after resolution.
 - ` + "`ask batch FILE`" + `: many tasks in parallel, one JSON result array.
 
 Delegate independent questions in a batch; give parallel write tasks separate worktrees and avoid
@@ -113,12 +113,12 @@ batches and benches. Respect the user's role choices; ask does not route tasks a
 Follow-ups inherit the recorded model even if the role changes later.
 
 RUN is the name or id in a status line; use RUN/TASK for a batch task. Script aliases remain supported:
-` + "`--continue RUN`" + ` / ` + "`-c RUN`" + ` for follow-ups, ` + "`ask batch --resume RUN`" + ` for batch reruns.
+` + "`--continue RUN`" + ` / ` + "`-c RUN`" + ` for follow-ups, ` + "`ask batch --resume RUN`" + ` for batch recovery.
 
 For parallel background runs, redirect each run's stdout and stderr to separate files so answers
 and status do not interleave. Run ask in the background when you can, then ` + "`ask wait RUN`" + ` for a specific run or
 ` + "`ask wait`" + ` for the first active run to finish. ` + "`ask show RUN`" + ` prints a completed run.
-stdout carries only answers; status and rerun notices go to stderr.
+stdout carries only answers; status and recovery notices go to stderr.
 If JSON/schema validation fails, ` + "`ask show RUN --json`" + ` includes ` + "`raw_answer`" + ` for inspection or repair;
 the run still fails. Keep that content out of status logs; prefer ordinary text unless a structured
 consumer needs JSON or a schema.

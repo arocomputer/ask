@@ -241,11 +241,8 @@ func Add(p home.Paths, dir, name string, kept *home.WorktreeRecord) (*Worktree, 
 		return nil, e
 	} else {
 		// Never treat an arbitrary existing directory (or a replacement worktree) as ours.
-		top, ok := git(path, []string{"rev-parse", "--show-toplevel"}, "")
-		actual, _ := git(path, []string{"symbolic-ref", "--quiet", "--short", "HEAD"}, "")
-		real, err := filepath.EvalSymlinks(path)
-		if !ok || err != nil || home.Trim(top) != real || Root(path) != main || home.Trim(actual) != branch {
-			return nil, fmt.Errorf("kept worktree %s is no longer on branch %s in %s", path, branch, main)
+		if err := CheckWorktree(dir, &home.WorktreeRecord{Path: path, Branch: branch}); err != nil {
+			return nil, err
 		}
 	}
 	prefix, ok := git(dir, []string{"rev-parse", "--show-prefix"}, "")
@@ -367,4 +364,15 @@ func Landed(path, branch string) (bool, string) {
 		return false, "no main branch to compare with"
 	}
 	return false, "not merged into " + targets[0]
+}
+
+// CheckWorktree verifies an existing worktree's repository and branch without recreating it.
+func CheckWorktree(dir string, kept *home.WorktreeRecord) error {
+	top, ok := git(kept.Path, []string{"rev-parse", "--show-toplevel"}, "")
+	actual, _ := git(kept.Path, []string{"symbolic-ref", "--quiet", "--short", "HEAD"}, "")
+	real, err := filepath.EvalSymlinks(kept.Path)
+	if !ok || err != nil || home.Trim(top) != real || Root(kept.Path) != Root(dir) || home.Trim(actual) != kept.Branch {
+		return fmt.Errorf("kept worktree %s is no longer on branch %s in %s", kept.Path, kept.Branch, Root(dir))
+	}
+	return nil
 }

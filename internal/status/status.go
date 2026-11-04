@@ -146,6 +146,9 @@ func EventLine(r *runs.Run, e runs.Event) string {
 		}
 		return text
 	}
+	if e.Kind == "recovery" {
+		return line(ref, SafeText(e.Note.Text))
+	}
 	first, _, _ := strings.Cut(e.Note.Text, "\n")
 	first = SafeText(first)
 	if length(first) > 100 {
@@ -354,7 +357,7 @@ func Table(list []*runs.Run, now time.Time, color bool) string {
 			}
 		}
 		if state == "stopped" {
-			about = "rerun: ask continue " + r.Label()
+			about = "continue: ask continue " + r.Label()
 		}
 		id := "" // a named run's ID reaches it after a follow-up takes over the name
 		if r.Name != "" {

@@ -270,6 +270,7 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Prog
 	done, stop := make(chan struct{}), make(chan struct{})
 	watched := make(chan struct{})
 	overLimit := false
+	session := t.S("session")
 	go func() {
 		defer close(watched)
 		if progress == nil && limit <= 0 {
@@ -286,6 +287,9 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Prog
 			if b, err := os.ReadFile(vars["ASK_REPORT"]); err == nil {
 				var report Report
 				if json.Unmarshal(b, &report) == nil {
+					if reported := home.Trim(report.Session); reported != "" {
+						session = reported
+					}
 					usage := report.usage()
 					if limit > 0 && usage != nil && usage.Has("cost") && usage.N("cost") > limit && !overLimit {
 						overLimit = true
@@ -294,7 +298,7 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Prog
 					if progress != nil {
 						// Repeat snapshots so a rate-limited display can show a suppressed category
 						// even when the agent has no new events during a long operation.
-						progress(Progress{Usage: usage, Activity: report.activity()})
+						progress(Progress{Usage: usage, Activity: report.activity(), Session: home.Trim(report.Session), Blocker: costBlocker(overLimit, limit)})
 					}
 				}
 			}
@@ -310,7 +314,7 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Prog
 	}
 	meta := home.O("usage", nil, "name", home.Trim(report.Name), "session", home.Trim(report.Session))
 	if !meta.B("session") {
-		meta.Set("session", t.Get("session"))
+		meta.Set("session", session)
 	}
 	if usage := report.usage(); usage != nil {
 		meta.Set("usage", usage)
@@ -343,6 +347,13 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Prog
 			meta.Set("note", strings.TrimPrefix(home.Trim(report.Note)+"; "+over, "; "))
 		}
 	}
+	if progress != nil {
+		failure := ""
+		if !meta.B("ok") {
+			failure = meta.S("note")
+		}
+		progress(Progress{Usage: report.usage(), Session: home.Trim(report.Session), Blocker: failure})
+	}
 	return meta
 }
 
@@ -374,10 +385,13 @@ func (report Report) usage() home.Object {
 	return usage
 }
 
-// Progress is a transient snapshot, never part of the saved result or answer.
+// Progress carries live metadata. Session and Blocker may be saved for interrupted recovery;
+// activity and usage are presentation snapshots.
 type Progress struct {
 	Usage    home.Object
 	Activity string
+	Session  string
+	Blocker  string
 }
 
 // activity accepts only fixed, non-sensitive categories, never agent-supplied display text.
@@ -389,6 +403,13 @@ func (report Report) activity() string {
 	switch value {
 	case "thinking", "running commands", "editing files", "searching", "using tools", "answering":
 		return value
+	}
+	return ""
+}
+
+func costBlocker(over bool, limit float64) string {
+	if over {
+		return "stopped at the $" + home.Dollars(limit) + " cost limit"
 	}
 	return ""
 }

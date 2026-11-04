@@ -61,7 +61,7 @@ func wait(p home.Paths, words []string) (int, error) {
 			if i >= 0 && len(r.Tasks) > 1 {
 				rerun = ref
 			}
-			fmt.Fprintf(os.Stderr, "ask %s · stopped · rerun: ask continue %s\n", ref, rerun)
+			fmt.Fprintf(os.Stderr, "ask %s · stopped · continue: ask continue %s\n", ref, rerun)
 			return 1, nil
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -91,7 +91,7 @@ func waitAny(p home.Paths) (int, error) {
 					continue
 				}
 				ref := runs.Ref(r, i)
-				fmt.Fprintf(os.Stderr, "ask %s · stopped · rerun: ask continue %s\n", ref, r.Label())
+				fmt.Fprintf(os.Stderr, "ask %s · stopped · continue: ask continue %s\n", ref, r.Label())
 				return 1, nil
 			}
 			return show(p, home.Object{}, []string{r.ID})
@@ -113,10 +113,14 @@ func cleanPlan(p home.Paths, days float64) ([]kept, []*runs.Run) {
 	cutoff := time.Now().Add(-time.Duration(days * 24 * float64(time.Hour)))
 	for _, r := range runs.All(p) {
 		holds := false
-		for _, x := range r.Results {
+		for i, x := range r.Results {
 			w, ok := x.Get("worktree").(home.Object)
 			if !ok {
-				continue
+				if kept := runs.InterruptedWorktree(r, i); kept != nil {
+					w = home.O("path", kept.Path, "branch", kept.Branch)
+				} else {
+					continue
+				}
 			}
 			path := w.S("path")
 			if info, e := os.Stat(path); e != nil || !info.IsDir() {

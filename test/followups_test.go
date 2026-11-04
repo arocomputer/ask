@@ -1,13 +1,16 @@
 package test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // TestFollowups pins -c: which session, model and access a follow-up gets, and what it refuses.
@@ -244,7 +247,7 @@ func TestContinueCommand(t *testing.T) {
 		eq(t, got.code, 2)
 		match(t, got.stderr, `no prompt on stdin`)
 	})
-	t.Run("a stopped run is rerun from the beginning", func(t *testing.T) {
+	t.Run("a stopped run continues its reported session", func(t *testing.T) {
 		s := fresh(t)
 		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
 		until(t, func() bool { return len(s.calls()) == 1 })
@@ -254,7 +257,9 @@ func TestContinueCommand(t *testing.T) {
 		got := s.ask("continue", id)
 		eq(t, got.code, 0)
 		eq(t, got.stdout, "fake: hang\n")
-		match(t, got.stderr, `rerunning 1 task from the beginning`)
+		match(t, got.stderr, `continuing saved conversation to finish the original task`)
+		eq(t, s.calls()[1].s("session"), fmt.Sprintf("s-%.0f", s.calls()[0].n("pid")))
+		match(t, s.calls()[1].s("stdin"), `finish the original task`)
 	})
 	t.Run("a rerun retains saved JSON output and rejects changed settings", func(t *testing.T) {
 		s := fresh(t)
@@ -269,14 +274,14 @@ func TestContinueCommand(t *testing.T) {
 		eq(t, got.code, 0)
 		jsonEqual(t, obj(t, got.stdout), object{"fixed": true})
 	})
-	t.Run("a batch reruns only failed tasks", func(t *testing.T) {
+	t.Run("a batch continues only failed tasks", func(t *testing.T) {
 		s := fresh(t)
 		first := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"prompt":"ok"},{"prompt":"bad"}]`, map[string]string{"FAKE_FAIL": "bad"})
 		eq(t, first.code, 1)
 		got := s.ask("continue", runID(t, first.stderr))
 		eq(t, got.code, 0)
 		eq(t, len(s.calls()), 3)
-		match(t, got.stderr, `rerunning 1 task from the beginning`)
+		match(t, got.stderr, `continuing saved conversation to finish the original task`)
 	})
 	t.Run("a selected batch task reruns alone", func(t *testing.T) {
 		s := fresh(t)
@@ -289,6 +294,175 @@ func TestContinueCommand(t *testing.T) {
 		eq(t, len(s.calls()), 4)
 		eq(t, s.ask("show", id+"/two").code, 1)
 	})
+	t.Run("live reports preserve an interrupted write worktree and its session", func(t *testing.T) {
+		s := fresh(t)
+		dir, _ := s.repo()
+		run := s.start([]string{"-m", "fake:small", "-w", "--worktree", "-C", dir, "hang"}, "", map[string]string{"FAKE_HANG": "hang", "FAKE_WRITE": "kept.txt=unfinished"})
+		until(t, func() bool { return len(s.calls()) == 1 })
+		runDir := filepath.Join(s.home, "runs", s.latest())
+		live := filepath.Join(runDir, "recovery-0.json")
+		until(t, func() bool {
+			data, _ := os.ReadFile(live)
+			var record object
+			return json.Unmarshal(data, &record) == nil && record.s("session") != ""
+		})
+		info, err := os.Stat(live)
+		if err != nil {
+			t.Fatal(err)
+		}
+		eq(t, info.Mode().Perm(), os.FileMode(0600))
+		eq(t, s.ask("stop", filepath.Base(runDir)).code, 0)
+		run.wait(t)
+		clean := s.ask("clean", "--dry-run", "--days", "0.000001")
+		eq(t, clean.code, 0)
+		match(t, clean.stdout, `uncommitted changes`)
+		if strings.Contains(clean.stdout, "Runs") {
+			t.Fatal("cleanup would discard interrupted worktree identity")
+		}
+		s.json(filepath.Join(s.home, "settings.json"), object{"worktrees": filepath.Join(s.tmp, "different", "{name}")})
+		got := s.ask("continue", runDir)
+		eq(t, got.code, 0)
+		eq(t, s.calls()[1].s("cwd"), s.calls()[0].s("cwd"))
+		eq(t, s.calls()[1].s("session"), fmt.Sprintf("s-%.0f", s.calls()[0].n("pid")))
+		eq(t, s.read(filepath.Join(s.calls()[1].s("cwd"), "kept.txt")), "unfinished")
+	})
+	t.Run("a live reported session survives a missing final report", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("reported", `cat >/dev/null
+if [ -z "$ASK_SESSION" ]; then
+  echo '{"session":"saved-live"}' > "$ASK_REPORT"
+  sleep 1
+  rm "$ASK_REPORT"
+  echo transient >&2
+  exit 1
+fi
+printf '%s\n' "$ASK_SESSION"`)
+		first := s.ask("-m", "reported:small", "finish")
+		eq(t, first.code, 1)
+		got := s.ask("continue", runID(t, first.stderr))
+		eq(t, got.code, 0)
+		eq(t, got.stdout, "saved-live\n")
+	})
+
+	t.Run("a missing interrupted worktree restarts without claiming resumption", func(t *testing.T) {
+		s := fresh(t)
+		dir, git := s.repo()
+		run := s.start([]string{"-m", "fake:small", "-w", "--worktree", "-C", dir, "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		until(t, func() bool { return len(s.calls()) == 1 })
+		ref := filepath.Join(s.home, "runs", s.latest())
+		eq(t, s.ask("stop", ref).code, 0)
+		run.wait(t)
+		git("worktree", "remove", "--force", s.calls()[0].s("cwd"))
+		got := s.ask("continue", ref)
+		eq(t, got.code, 0)
+		match(t, got.stderr, `saved worktree is missing or changed; rerunning`)
+		eq(t, s.calls()[1].s("session"), "")
+		eq(t, s.calls()[1].s("stdin"), "hang")
+	})
+	t.Run("an interrupted rerun never falls back to the immutable task session", func(t *testing.T) {
+		s := fresh(t)
+		ref := filepath.Join(s.home, "runs", "20260101T000000000-abc123-stopped")
+		s.json(filepath.Join(ref, "tasks.json"), []object{{"id": "1", "prompt": "unfinished", "model": "fake:small", "session": "stale-before-rerun", "dir": s.tmp, "timeout": 900}})
+		got := s.ask("continue", ref)
+		eq(t, got.code, 0)
+		match(t, got.stderr, `no usable saved session; rerunning`)
+		eq(t, s.calls()[0].s("session"), "")
+		eq(t, s.calls()[0].s("stdin"), "unfinished")
+	})
+	t.Run("a rerun saves its new session instead of exposing its previous failed result", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("turn", `cat >/dev/null
+if [ ! -e "$HOME/again" ]; then
+  echo '{"session":"old"}' > "$ASK_REPORT"
+  echo boom >&2
+  exit 1
+fi
+echo '{"session":"new"}' > "$ASK_REPORT"
+while [ -e "$HOME/hold" ]; do sleep 0.05; done
+printf '%s\n' "$ASK_SESSION"`)
+		first := s.ask("-m", "turn:small", "finish")
+		eq(t, first.code, 1)
+		ref := filepath.Join(s.home, "runs", s.latest())
+		s.write(filepath.Join(s.tmp, "again"), "")
+		s.write(filepath.Join(s.tmp, "hold"), "")
+		run := s.start([]string{"continue", ref}, "", nil)
+		until(t, func() bool {
+			data, _ := os.ReadFile(filepath.Join(ref, "recovery-0.json"))
+			var record object
+			return json.Unmarshal(data, &record) == nil && record.s("session") == "new"
+		})
+		if s.runFile("results.json")[0] != nil {
+			t.Fatal("rerun exposed the previous result")
+		}
+		eq(t, s.ask("stop", ref).code, 0)
+		run.wait(t)
+		if err := os.Remove(filepath.Join(s.tmp, "hold")); err != nil {
+			t.Fatal(err)
+		}
+		got := s.ask("continue", ref)
+		eq(t, got.code, 0)
+		eq(t, got.stdout, "new\n")
+	})
+	t.Run("automatic recovery explains blockers while leaving them and successes untouched", func(t *testing.T) {
+		for _, reason := range []string{"authentication required", "refused by hook policy", "stopped at the $1 cost limit"} {
+			t.Run(reason, func(t *testing.T) {
+				s := fresh(t)
+				first := s.run([]string{"batch", "-m", "fake:small", "-"}, `[{"id":"ok","prompt":"ok"},{"id":"blocked","prompt":"bad"},{"id":"retry","prompt":"retry"}]`, map[string]string{"FAKE_FAIL": "bad"})
+				ref := filepath.Join(s.home, "runs", s.latest())
+				results := s.runFile("results.json")
+				results[1]["error"] = reason
+				results[2]["ok"] = false
+				results[2]["error"] = "transient failure"
+				s.json(filepath.Join(ref, "results.json"), results)
+				got := s.ask("continue", runID(t, first.stderr))
+				eq(t, got.code, 1)
+				match(t, got.stderr, `blocked: .*resolve it and give an explicit follow-up prompt`)
+				eq(t, len(s.calls()), 4)
+				match(t, s.calls()[3].s("stdin"), `retry$`)
+				after := s.runFile("results.json")
+				jsonEqual(t, after[0], results[0])
+				jsonEqual(t, after[1], results[1])
+				eq(t, s.ask("continue", runID(t, first.stderr)+"/blocked", "I resolved the blocker; finish").code, 0)
+			})
+		}
+	})
+	t.Run("an active run and a completed run do not wait on an open empty pipe", func(t *testing.T) {
+		s := fresh(t)
+		run := s.start([]string{"-m", "fake:small", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		until(t, func() bool { return len(s.calls()) == 1 })
+		active := filepath.Join(s.home, "runs", s.latest())
+		finished := s.ask("-m", "fake:small", "done")
+		for _, c := range []struct{ ref, want string }{{active, "still running; use ask wait"}, {runID(t, finished.stderr), "is complete; give a prompt"}} {
+			reader, writer, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command(askBin, "continue", c.ref)
+			cmd.Dir, cmd.Stdin = s.tmp, reader
+			for k, v := range s.env {
+				cmd.Env = append(cmd.Env, k+"="+v)
+			}
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- cmd.Wait() }()
+			select {
+			case <-done:
+				match(t, stderr.String(), c.want)
+			case <-time.After(2 * time.Second):
+				_ = cmd.Process.Kill()
+				t.Error("continue waited on empty stdin")
+			}
+			reader.Close()
+			writer.Close()
+		}
+		eq(t, s.ask("stop", active).code, 0)
+		run.wait(t)
+	})
+
 	t.Run("a completed run needs a prompt", func(t *testing.T) {
 		s := fresh(t)
 		first := s.ask("-m", "fake:small", "done")

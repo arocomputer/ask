@@ -156,14 +156,16 @@ ask show summarize-public-api-src | jq -c '.[] | select(.ok) | {continue: .run, 
 ## Resuming
 
 A batch that was stopped, or had failures, can be continued without a prompt. Only unfinished
-or failed tasks run again from the beginning, exactly as recorded; successful results stay.
-ask announces the rerun on stderr and prints the result array on stdout:
+or failed tasks run again; successful results stay. ask finishes the original task in each
+usable saved conversation, otherwise restarts from the beginning and announces it on stderr.
+Auth, refusal and cost blockers stay untouched with guidance to resolve them and give an explicit
+prompt; other eligible tasks still recover. The result array goes to stdout:
 
 ```sh
 ask continue summarize-public-api-src
 ```
 
-`ask batch --resume RUN` remains a supported script alias; batch reruns take only `-j` and
+`ask batch --resume RUN` remains a supported script alias for this recovery; it takes only `-j` and
 `--no-hooks`. To follow up in one task's saved conversation, use
 `ask continue RUN/TASK "prompt"`; it inherits that task's model and access.
 Only one ask can run a batch at a time; a second is refused while the first is going.

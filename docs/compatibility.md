@@ -42,8 +42,9 @@ result and record field names remain stable. Status lines now put `started`, `ok
 `failed` directly after the run id, followed by the model display name; hook lines use
 `note` or `follow-up`; optional coarse progress uses `activity · CATEGORY`. The `-c` and
 `--continue` options remain supported script aliases for conversation follow-ups; batch `--resume`
-remains an alias for rerunning unfinished or failed tasks. Use `ask continue RUN "prompt"` for
-follow-ups and `ask continue RUN` for reruns from the beginning. The JSON `continue` field remains.
+remains an alias for recovering unfinished or failed tasks. Use `ask continue RUN "prompt"` for
+follow-ups and `ask continue RUN` for state-based recovery: usable sessions continue the original
+task, otherwise ask announces a restart. Blockers require an explicit prompt after resolution. The JSON `continue` field remains.
 `run` and `continue` are now built-in command names; an existing prompt or custom command beginning with one is shadowed. Use `ask -- run ...` or
 `ask -- continue ...` for a literal prompt.
 Times are compact clocks above a minute and costs show cents at

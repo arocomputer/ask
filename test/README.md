@@ -60,7 +60,7 @@ docs page for that feature.
 | `latency_test.go` | Opt-in local startup and fake-task end-to-end timings | this page |
 | `runs_test.go` | Saved runs: `runs`, `show`, `wait`, `stop`, `clean`, locks, private state | runs.md |
 | `names_test.go` | Run names: from the prompt, taken over by follow-ups, name hooks | runs.md |
-| `followups_test.go` | `-c`: which session, model and access a follow-up gets | runs.md |
+| `followups_test.go` | `continue`, `-c`: follow-ups, state-based recovery, blockers and live session persistence | runs.md |
 | `git_test.go` | What write runs report from git, and `--worktree` | usage.md |
 | `environment_test.go` | Agent inheritance, adapter declarations, integration refusals and hook preservation | environment.md |
 | `agents_test.go` | The agent contract: stdin, environment, schema files, reports | agents.md |

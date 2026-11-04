@@ -62,7 +62,7 @@ ask runs the agent with no arguments, in the directory the agent should work in 
 | `ASK_ACCESS` | `read` or `write`. |
 | `ASK_TITLE` | One-line title for the agent's session/thread, e.g. `GPT-6.1 Sol · Fix tests · write`; `--title` or a task's `title` field replaces the prompt text. |
 | `ASK_SCHEMA` | Set only with `--schema`: a file holding the JSON Schema, for CLIs that enforce one. |
-| `ASK_SESSION` | Set only for a follow-up: the session to continue (see [Sessions](#sessions)). |
+| `ASK_SESSION` | Set for a follow-up or saved-session recovery: the session to continue (see [Sessions](#sessions)). |
 | `ASK_REPORT` | A file path for the optional report. |
 | `ASK_ENVIRONMENT` | Effective integration booleans for adapters with an environment sidecar; enforce them or refuse. See [Agent environments](environment.md). |
 | `ASK_MAX_COST` | Set only when the task has a cost limit: dollars, like `2` or `0.5`. See [Cost limits](#cost-limits). |
@@ -118,7 +118,11 @@ CLI's session id. An agent that supports them:
 
 ask runs a follow-up in the same directory as the run it continues, which most CLIs need to find
 the session. An agent that reports no session cannot support conversation follow-ups; ask says so.
-Rerunning from the beginning with `ask continue RUN` does not need a saved session.
+Without a prompt, `ask continue RUN` uses a usable saved session to finish the original task,
+or announces a restart from the beginning when none is available. ask polls live reports every
+500ms and atomically saves session metadata and the actual location in private run records,
+so reporting a session early can make interrupted runs recoverable before a final result.
+Metadata not reported or saved before interruption cannot be recovered.
 
 ## Cost limits
 

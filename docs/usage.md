@@ -245,9 +245,11 @@ ask --model claude:sonnet-5.5 "Why does the login test fail?"
 ask continue login-test-fail --write "Fix it."
 ```
 
-Without a prompt, `ask continue RUN` reruns a stopped or failed run, or unfinished or failed
-batch tasks, from the beginning and announces the rerun on stderr. `--continue RUN` and `-c RUN`
-remain supported script aliases for conversation follow-ups.
+Without a prompt, `ask continue RUN` finishes stopped or failed work in a usable saved session,
+otherwise restarts and announces it. Successful batch tasks stay untouched. Active runs get wait
+guidance; completed runs accept a follow-up in a terminal or require an explicit prompt in scripts.
+Auth, refusal and cost blockers need resolution and an explicit prompt; see [Runs](runs.md).
+`--continue RUN` and `-c RUN` remain supported script aliases for conversation follow-ups.
 
 ## Output
 
