@@ -28,7 +28,19 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - run: ./x check
+      # The black-box harness builds subprocesses without race instrumentation.
+      - run: ./x test -race ./src/...
+      - name: Verify release artifacts and generated formula offline
+        env:
+          GOPROXY: 'off'
+          GOSUMDB: 'off'
+        run: |
+          .github/release/package.sh v0.0.0 "$RUNNER_TEMP/ask-release"
+          .github/release/formula.sh v0.0.0 "$RUNNER_TEMP/ask-release/checksums.txt" > "$RUNNER_TEMP/ask.rb"
+          ruby -c "$RUNNER_TEMP/ask.rb"
       - run: ./x audit
       # The installer people run, against the latest release.
       - run: sh install.sh --dir "$RUNNER_TEMP/ask" && "$RUNNER_TEMP/ask/ask" --version
@@ -46,8 +58,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      # The platform-specific parts; formatting, shellcheck and the guard don't change by system.
+      # The platform-specific parts; source and workflow checks run on Linux.
       - run: ./x lint
       - run: ./x test
-      - run: ./x baymax
+      - run: ./x integration
       - run: sh install.sh --dir "$RUNNER_TEMP/ask" && "$RUNNER_TEMP/ask/ask" --version

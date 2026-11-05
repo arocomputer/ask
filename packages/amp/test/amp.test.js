@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { offline, readJson, readJsonl } from '../../../test/baymax/helper.mjs';
+import { offline, readJson, readJsonl } from '../../../src/test/baymax/helper.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const AGENT = join(HERE, '..', 'agents', 'amp');

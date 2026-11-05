@@ -99,7 +99,7 @@ gives them the ask skill, and Claude Code names each ask run in its task list.
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh            # macOS and Linux
 brew tap arocomputer/ask https://github.com/arocomputer/ask && brew install ask
-go install github.com/arocomputer/ask/cmd/ask@latest             # Go 1.26 or newer
+go install github.com/arocomputer/ask@latest             # Go 1.26 or newer
 ```
 
 One binary, no additional UI runtime to install. `ask update` keeps a curl install current. Each agent needs its CLI

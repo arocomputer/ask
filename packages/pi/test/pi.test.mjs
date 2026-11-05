@@ -4,7 +4,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { offline, pollJson, readJson, readJsonl } from '../../../test/baymax/helper.mjs';
+import { offline, pollJson, readJson, readJsonl } from '../../../src/test/baymax/helper.mjs';
 const agent = fileURLToPath(new URL('../agents/pi', import.meta.url));
 const fake = fileURLToPath(new URL('./bin/pi', import.meta.url));
 const { tmp, env: offlineEnv, launch } = offline(agent);

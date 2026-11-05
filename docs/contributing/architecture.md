@@ -10,7 +10,7 @@ agents in [`packages/`](../../packages/), which use the same contract as anyone'
 ## How a task runs
 
 ```text
-cmd/ask ──► cli          parse options, pick the command, print answers and status
+main.go ──► cli          parse options, pick the command, print answers and status
              │
              ▼
             runs         name the run, write tasks.json, take the lock, run tasks in parallel
@@ -31,8 +31,8 @@ worktrees, `status` draws the status lines and live rows, and `schema` checks `-
 
 ## Packages
 
-Each folder in `internal/` is one Go package with a `// Package` comment saying what it is for;
-`go doc ./internal/NAME` prints it.
+Each folder in `src/` is one Go package with a `// Package` comment saying what it is for;
+`go doc ./src/NAME` prints it.
 
 | Package | Purpose |
 | --- | --- |
@@ -54,7 +54,7 @@ Each folder in `internal/` is one Go package with a `// Package` comment saying 
 
 ## Rules the layout keeps
 
-[`scripts/guard.sh`](../../scripts/guard.sh) checks each of these on every change:
+[`.github/checks/guard.sh`](../../.github/checks/guard.sh) checks each of these on every change:
 
 - **Leaves.** `home`, `tui` and `update` import no other ask package. Everything may build on
   them.
@@ -68,7 +68,7 @@ Each folder in `internal/` is one Go package with a `// Package` comment saying 
 Two more are kept by tests and review, not grep:
 
 - **Contracts change only as [compatibility.md](../compatibility.md) says.** Additions are free; a
-  breaking change bumps `ASK_CONTRACT`. Released run records in `test/fixtures/` stay readable.
+  breaking change bumps `ASK_CONTRACT`. Released run records in `src/test/fixtures/` stay readable.
 - **Grow by need.** A new hook event, contract field or setting arrives with the use that needs it.
 
 ## Other folders
@@ -77,7 +77,8 @@ Two more are kept by tests and review, not grep:
 | --- | --- |
 | [`docs/`](../) | User docs, built into ask for `ask docs` (only the top level; this folder is not) |
 | [`packages/`](../../packages/) | The official agents |
-| [`test/`](../../test/) | Black-box tests of the binary, one file per feature |
-| `scripts/` | `guard.sh`, and the release scripts in [releases.md](releases.md) |
+| [`src/test/`](../../src/test/) | Black-box tests of the binary, one file per feature |
+| `.github/checks/` | Architectural checks |
+| `.github/release/` | Release tooling, described in [releases.md](releases.md) |
 | `assets/` | The logo, wordmark and README screens |
 | `x` | The one entry point for checks: `./x check` is what CI runs |

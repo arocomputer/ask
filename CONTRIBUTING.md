@@ -15,7 +15,7 @@ shellcheck for `./x shell`.
 `./x` defaults to `check`: Go formatting and vet, Go tests, offline Baymax integration
 checks, shellcheck and architectural guards. It does not rewrite sources. Network dependency
 audits stay separate in `./x audit`. `./x --help` lists targets; `./x test` and `./x build`
-forward Go arguments, for example `./x test ./test -run TestRuns`.
+forward Go arguments, for example `./x test ./src/test -run TestRuns`.
 
 - [AGENTS.md](AGENTS.md): commands, where things live, conventions.
 - [docs/contributing/architecture.md](docs/contributing/architecture.md): how a task runs, the

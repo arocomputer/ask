@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Organize source under `src/` and release tooling under `.github/release/`; `go install` now uses the module root.
+
 - Prevent old release reruns from replacing the latest Homebrew formula; serialize formula
   updates and guard the release tag and main before pushing.
 - Ignore local agent state and environment files; use Dependabot for Go dependency and Actions updates.
