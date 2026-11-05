@@ -7,6 +7,7 @@
  * The first event reports the session for follow-ups; unfinished usage comes from the version's
  * export command. Started by agents/opencode; ASK_OPENCODE_BIN overrides executable discovery.
  */
+import { activity } from './activity.mjs';
 import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 import { accessSync, constants, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
@@ -166,7 +167,10 @@ function exec(command, args, { input = '', env, onLine } = {}) {
     child.stderr.on('data', (d) => (stderr += d));
     child.on('error', (error) => (stderr += `${error.message}\n`));
     child.stdin.on('error', () => {});
-    child.on('close', (code) => resolve({ code, stdout, stderr }));
+    child.on('close', (code) => {
+      if (onLine && seen < stdout.length) onLine(stdout.slice(seen));
+      resolve({ code, stdout, stderr });
+    });
     child.stdin.end(input);
   });
 }
@@ -257,12 +261,14 @@ await adapter({
     const usage = {};
     const unfinished = new Set();
     const finished = new Set();
-    const add = ({ tokens: t = {}, cost }) => {
+    const add = ({ tokens, cost }) => {
+      const t = tokens || {};
       usage.input = (usage.input || 0) + (t.input || 0);
       usage.output = (usage.output || 0) + (t.output || 0) + (t.reasoning || 0);
       usage.cached = (usage.cached || 0) + (t.cache?.read || 0);
       if (typeof cost === 'number') usage.cost = (usage.cost || 0) + cost;
     };
+    const onActivity = activity();
     const onLine = (line) => {
       const id = !sessionId && /"sessionID":"([^"]+)"/.exec(line)?.[1];
       if (id) report({ session: (sessionId = id) });
@@ -272,6 +278,8 @@ await adapter({
       } catch {
         return;
       }
+      if (!event || typeof event !== 'object' || Array.isArray(event)) return;
+      try { onActivity(event); } catch {} // Optional activity must never fail the turn.
       if (event.type === 'error') failure ??= event.error?.message || 'error';
       if (event.type === 'step_start') steps++;
       // Every step's events carry its message id; Opencode 2.0 sometimes prints only an answer's text.

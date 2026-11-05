@@ -1,4 +1,5 @@
 /* Pi's ask adapter: one JSON-mode turn, controlled integrations, saved sessions and usage. */
+import { activity } from './activity.mjs';
 import { spawn } from 'node:child_process';
 import { environmentArgs } from './environment.mjs';
 import { accessSync, constants, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
@@ -60,6 +61,7 @@ async function main() {
   if (title) args.push('--name', title);
   const report = reporter();
   const totals = {};
+  const onActivity = activity();
   let text = '';
   let failure;
   let terminal = false;
@@ -78,6 +80,8 @@ async function main() {
   for await (const line of lines) {
     let event;
     try { event = JSON.parse(line); } catch { continue; }
+    if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
+    try { onActivity(event); } catch {} // Optional activity must never fail the turn.
     if (event.type === 'session' && typeof event.id === 'string') report({ session: event.id });
     if (event.type === 'message_update' && event.usage) {
       const current = usage(event.usage);
@@ -93,7 +97,7 @@ async function main() {
       report({ ...totals, name: message.model });
       failure = ['error', 'aborted'].includes(message.stopReason) ? message.errorMessage || `Pi request ${message.stopReason}` : undefined;
       terminal = message.stopReason === 'stop' || message.stopReason === 'length';
-      text = (message.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('');
+      text = (Array.isArray(message.content) ? message.content : []).filter((part) => part?.type === 'text' && typeof part.text === 'string').map((part) => part.text).join('');
       if (message.stopReason === 'length') report({ note: 'hit output limit; answer may be partial' });
     }
   }

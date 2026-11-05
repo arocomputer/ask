@@ -18,8 +18,21 @@ appendFileSync(process.env.FAKE_LOG, JSON.stringify({ argv, stdin, cwd: process.
   } }) + '\n');
 const emit = (event) => process.stdout.write(JSON.stringify(event) + (process.env.FAKE_NO_NEWLINE && event.type === 'message_end' && event.message.model ? '' : '\n'));
 const usage = { input: 20, output: 5, cacheRead: 3, cacheWrite: 2, cost: { total: 0.01 } };
-emit({ type: 'session', id: 'pi-session' });
-if (!process.env.FAKE_EMPTY) {
+if (!process.env.FAKE_EVENTS) emit({ type: 'session', id: 'pi-session' });
+// Replay native JSONL in wire order; an optional barrier proves delivery before CLI exit.
+if (process.env.FAKE_EVENTS) {
+  const bytes = readFileSync(process.env.FAKE_EVENTS);
+  let barrier = -1;
+  for (let i = 0; i < Number(process.env.FAKE_PAUSE_AFTER || 0); i++) barrier = bytes.indexOf(10, barrier + 1);
+  const write = (data) => {
+    for (let i = 0; i < data.length; i += 37) process.stdout.write(data.subarray(i, i + 37));
+  };
+  if (barrier >= 0) {
+    write(bytes.subarray(0, barrier + 1));
+    setTimeout(() => write(bytes.subarray(barrier + 1)), Number(process.env.FAKE_PAUSE || 1200));
+  } else write(bytes);
+  // Do not mix default events into the native fixture stream.
+} else if (!process.env.FAKE_EMPTY) {
   emit({ type: 'message_end', message: { role: 'user', content: [{ type: 'text', text: 'user' }] } });
   if (!process.env.FAKE_NO_USAGE) emit({ type: 'message_update', usage });
   emit({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'intermediate' }, { type: 'toolCall', name: 'read' }], ...(process.env.FAKE_NO_USAGE ? {} : { usage }), stopReason: 'toolUse' } });

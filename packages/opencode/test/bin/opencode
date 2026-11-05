@@ -49,7 +49,20 @@ if (FAKE_LOG) {
 const matches = (needle) => needle && stdin.includes(needle);
 const emit = (event) => console.log(JSON.stringify({ sessionID: 'ses_fake', ...event }));
 
-if (matches(FAKE_HANG)) setInterval(() => {}, 1000);
+// Replay native JSONL in wire order; an optional barrier proves delivery before CLI exit.
+if (process.env.FAKE_EVENTS) {
+  const bytes = readFileSync(process.env.FAKE_EVENTS);
+  let barrier = -1;
+  for (let i = 0; i < Number(process.env.FAKE_PAUSE_AFTER || 0); i++) barrier = bytes.indexOf(10, barrier + 1);
+  const write = (data) => {
+    for (let i = 0; i < data.length; i += 37) process.stdout.write(data.subarray(i, i + 37));
+  };
+  if (barrier >= 0) {
+    write(bytes.subarray(0, barrier + 1));
+    setTimeout(() => write(bytes.subarray(barrier + 1)), Number(process.env.FAKE_PAUSE || 1200));
+  } else write(bytes);
+  // Do not mix default events into the native fixture stream.
+} else if (matches(FAKE_HANG)) setInterval(() => {}, 1000);
 else {
   if (matches(FAKE_SLOW)) await new Promise((resolve) => setTimeout(resolve, 300));
   if (matches(FAKE_FAIL)) {
