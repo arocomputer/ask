@@ -84,12 +84,10 @@ variants, not by argument.
 2. **Sessions, requests and the human CLI.** Session folders, a detached worker per turn; the
    request protocol as a baseline; settings, doctor and the viewing commands. Still to port: worktrees (a `worktree`
    task field), and running turns in the host's process for the library.
-3. **Interface experiments.** Two or three variants of the request protocol, driven by Claude Code
-   (Sonnet) and Codex on this server, with `experiments/fake2.py` as the subagent model.
-   - Waiting: block per call, return the first finished, or start and collect in one call.
-   - Referring: random ids, names the caller picks, or no reference needed.
-   - Measured: correct answer, seconds over the critical path, driver tokens, calls, failed
-     calls. Three reps per cell.
+3. **Interface experiments.** Done (`.handoff/experiments/phase3/results.md`). Ids stay; names
+   showed no benefit. `start` keeps its optional `wait`. Codex ends every background process
+   when a command ends, so turns resume from their transcript, collect waits for every task
+   once that is seen, and the response says to wait longer.
 4. **Lock.** Write the winner's protocol, docs and changelog. Port the Go black-box tests' intent.
 5. **Real providers and sign-ins**, alongside 3.
    - First real call per protocol, with an OpenCode Go API key in `~/.ask/auth.json`. (Solved:
