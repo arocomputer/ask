@@ -21,6 +21,7 @@ import { randomUUID } from "node:crypto"
 import { isAbsolute, join, relative } from "node:path"
 import { before, environment, execute, failure, home, locate, tidy, which, type Harness, type Outcome, type Run, type Settings } from "./harness.ts"
 import type { Message, Usage } from "../providers/stream.ts"
+import { framing } from "../agent/system.ts"
 
 const install = "https://code.claude.com/docs/en/setup"
 const signIn = "run claude, sign in with /login, then try again"
@@ -63,6 +64,8 @@ export function invocation(r: Run, session: string, resume: boolean, sandbox = s
     "none",
     "--settings",
     JSON.stringify(settings),
+    "--append-system-prompt",
+    framing(),
   ]
   if (r.write) args.push("--tools", "Read,Grep,Glob,WebSearch,Edit,Write,Bash", "--allowedTools", "Bash,WebSearch", "--permission-mode", "acceptEdits")
   else args.push("--tools", "Read,Grep,Glob,WebSearch", "--allowedTools", "Read,Grep,Glob,WebSearch", "--permission-mode", "dontAsk")

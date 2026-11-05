@@ -28,6 +28,9 @@ export function describe(name: string, args: string): string {
     case "fetch":
       text = `fetch ${s("url")}`
       break
+    case "git":
+      text = `git ${Array.isArray(a.args) ? a.args.join(" ") : ""}`
+      break
     case "search":
       text = `search ${s("query")}`
       break

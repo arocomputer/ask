@@ -225,7 +225,7 @@ describe("chatgpt", () => {
     const r = await run({ provider: connect(m, credential(h, "chatgpt", [])!.key), model: m.id, dir: join(h.root, "work"), prompt: "List" })
     assert.equal(r.answer, "done")
     const tools = o.seen.responses[0].tools
-    assert.deepEqual([tools.length, tools[0].type, tools[0].name, tools[0].tools.map((t: any) => t.name)], [1, "namespace", "ask", ["read", "list", "grep", "fetch"]])
+    assert.deepEqual([tools.length, tools[0].type, tools[0].name, tools[0].tools.map((t: any) => t.name)], [1, "namespace", "ask", ["read", "list", "grep", "git", "fetch"]])
     assert.equal(o.seen.responses[0].store, false)
     assert.equal((r.messages[2] as { name: string }).name, "list")
   })

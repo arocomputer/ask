@@ -17,6 +17,7 @@ import { tmpdir } from "node:os"
 import { basename, delimiter, dirname, isAbsolute, join, relative, sep } from "node:path"
 import { before, environment, execute, failure, home, locate, tidy, type Harness, type Outcome, type Run, type Settings } from "./harness.ts"
 import type { Message, Usage } from "../providers/stream.ts"
+import { framing } from "../agent/system.ts"
 
 const install = "https://developers.openai.com/codex/cli"
 const signIn = "run codex login, then try again"
@@ -88,7 +89,7 @@ export function filesystem(r: Run, readable: string[]): string {
 
 /** The arguments for one run; the prompt comes on stdin. */
 export function invocation(r: Run, readable: string[], schemaFile?: string): string[] {
-  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "-c", 'approval_policy="never"']
+  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "-c", 'approval_policy="never"', "-c", `developer_instructions=${JSON.stringify(framing())}`]
   common.push("-c", 'default_permissions="ask"', "-c", `permissions.ask.filesystem=${filesystem(r, readable)}`, "-c", 'web_search="cached"')
   if (r.model !== "default") common.push("-m", r.model)
   if (r.effort) common.push("-c", `model_reasoning_effort=${JSON.stringify(r.effort)}`)

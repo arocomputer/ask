@@ -112,7 +112,7 @@ describe("loop", () => {
     const fake = await serve("chat", [{ text: "ok" }])
     try {
       await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Look" })
-      assert.deepEqual(fake.requests[0].tools.map((t: any) => t.function.name), ["read", "list", "grep", "fetch"])
+      assert.deepEqual(fake.requests[0].tools.map((t: any) => t.function.name), ["read", "list", "grep", "git", "fetch"])
     } finally {
       await fake.close()
     }
@@ -180,7 +180,7 @@ describe("loop", () => {
     try {
       const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Go" })
       assert.equal(r.answer, "ok")
-      assert.match(fake.requests[1].messages.at(-1).content, /^error: no tool named delete_everything; the tools are read, list, grep, fetch$/)
+      assert.match(fake.requests[1].messages.at(-1).content, /^error: no tool named delete_everything; the tools are read, list, grep, git, fetch$/)
     } finally {
       await fake.close()
     }

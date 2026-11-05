@@ -1,10 +1,12 @@
 import assert from "node:assert/strict"
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
 import { fetch, text } from "../../src/agent/fetch.ts"
 import { lite, mwmbl, results, search, wikipedia } from "../../src/agent/search.ts"
+import { git } from "../../src/agent/git.ts"
 import { tools } from "../../src/agent/tools.ts"
 
 const all = Object.fromEntries(tools(true).map((t) => [t.name, t]))
@@ -124,5 +126,30 @@ describe("environment files", () => {
     await assert.rejects(read.run({ path: ".env" }, { dir }), /environment file/)
     assert.match(await read.run({ path: ".env.example" }, { dir }), /TOKEN=example/)
     assert.doesNotMatch(await grep.run({ pattern: "TOKEN" }, { dir }), /real/)
+  })
+})
+
+describe("git", () => {
+  test("shows uncommitted changes, and a repository's config can't make it run anything", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "ask-git-"))
+    const run = (...args: string[]) => execFileSync("git", args, { cwd: dir, env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } })
+    run("init", "-q")
+    writeFileSync(join(dir, "a.txt"), "one\n")
+    writeFileSync(join(dir, ".gitattributes"), "*.txt diff=evil\n")
+    run("add", ".")
+    run("commit", "-qm", "start")
+    run("config", "diff.evil.textconv", `touch ${join(dir, "pwned")}; cat`)
+    run("config", "core.fsmonitor", `touch ${join(dir, "pwned")}`)
+    writeFileSync(join(dir, "a.txt"), "two\n")
+    assert.match(await git.run({ args: ["diff"] }, { dir }), /-one\n\+two/)
+    await git.run({ args: ["status"] }, { dir })
+    await git.run({ args: ["log", "-p", "-1"] }, { dir })
+    assert.ok(!existsSync(join(dir, "pwned")))
+  })
+
+  test("takes only read-only commands, and nothing that reads outside the repository or writes a file", async () => {
+    await assert.rejects(git.run({ args: ["push"] }, { dir: "." }), /git takes one of/)
+    await assert.rejects(git.run({ args: ["diff", "--no-index", "/etc/passwd", "/dev/null"] }, { dir: "." }), /isn't allowed/)
+    await assert.rejects(git.run({ args: ["log", "--output=/tmp/x"] }, { dir: "." }), /isn't allowed/)
   })
 })

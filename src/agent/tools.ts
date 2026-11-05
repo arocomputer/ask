@@ -1,5 +1,5 @@
-// The subagent's tools: read, list, grep and fetch (fetch.ts), plus write, edit and shell in a
-// write turn. A read turn has no way to change a file or start a process; that is how ask
+// The subagent's tools: read, list, grep, git (git.ts) and fetch (fetch.ts), plus write, edit
+// and shell in a write turn. A read turn has no way to change a file or start a process; that is how ask
 // enforces read-only. Paths are confined to the working directory, symlinks included. Every result is
 // bounded, and says how to get more when it was cut.
 
@@ -9,6 +9,7 @@ import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path"
 import type { ToolSpec } from "../providers/stream.ts"
 import type { Sandbox } from "../sandbox/confine.ts"
 import { fetch } from "./fetch.ts"
+import { git } from "./git.ts"
 
 /**
  * What a tool runs with: the task's folder, the turn's stop signal, and in a write turn the
@@ -33,7 +34,7 @@ const fileLimit = 20_000
 
 /** The tools for a turn: read-only, or with write, edit and shell too. */
 export function tools(write: boolean): Tool[] {
-  return write ? [read, list, grep, fetch, writeTool, edit, shell] : [read, list, grep, fetch]
+  return write ? [read, list, grep, git, fetch, writeTool, edit, shell] : [read, list, grep, git, fetch]
 }
 
 function schema(properties: object, required: string[] = []): object {
@@ -111,7 +112,7 @@ const list: Tool = {
 
 const grep: Tool = {
   name: "grep",
-  description: `Search file contents with a JavaScript regular expression, recursively from path (default: the working directory). Returns matching lines as path:line:text, at most ${matchLimit}. ${patternNote}`,
+  description: `Search file contents with a JavaScript regular expression, recursively from path (default: the working directory): the quickest way to find where something is defined or used. Returns matching lines as path:line:text, at most ${matchLimit}; several narrow searches beat one broad one. ${patternNote}`,
   parameters: schema(
     {
       pattern: { type: "string", description: "Regular expression" },
@@ -152,7 +153,7 @@ const grep: Tool = {
         out.push(`${shown}:${i + 1}:${line}`)
       }
     }
-    return out.length ? out.join("\n") : "(no matches)"
+    return out.length ? out.join("\n") : "(no matches; try a shorter pattern, another spelling, or a wider path)"
   },
 }
 
@@ -191,7 +192,7 @@ const edit: Tool = {
 
 const shell: Tool = {
   name: "shell",
-  description: "Run a shell command in the working directory, with no input, and return its exit status and output. Long output keeps its start and end. Default timeout 120 seconds, at most 600.",
+  description: "Run a shell command in the working directory, with no input, and return its exit status and output: for building, testing and running things. To look at files, read, list and grep are faster. Long output keeps its start and end. Default timeout 120 seconds, at most 600.",
   parameters: schema(
     { command: { type: "string" }, timeout: { type: "integer", description: "Seconds before the command is stopped" } },
     ["command"],
