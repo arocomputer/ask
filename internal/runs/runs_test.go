@@ -60,6 +60,26 @@ func TestExecuteReloadsResultsAfterLock(t *testing.T) {
 	}
 }
 
+func TestOpenPrefersRunNameToUnrelatedDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	p := home.Paths{Home: root, Runs: filepath.Join(root, "runs")}
+	r, err := Create(p, "abc123", "login", []home.Object{home.O("id", "1", "prompt", "real run")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir("login", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := home.WriteJSON(filepath.Join("login", "tasks.json"), home.TaskRecords([]home.Object{home.O("id", "1", "prompt", "unrelated")})); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := Open(p, "login")
+	if err != nil || got.ID != r.ID {
+		t.Fatalf("run name resolved to %v, error %v", got, err)
+	}
+}
+
 func TestCreate(t *testing.T) {
 	t.Run("concurrent claims cannot share a human name", func(t *testing.T) {
 		root := t.TempDir()

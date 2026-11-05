@@ -186,7 +186,7 @@ func Open(p home.Paths, ref string) (*Run, int, error) {
 	// A bare relative path must look like a run, rather than shadowing a readable
 	// handle just because an unrelated directory with that name exists in cwd.
 	info, statErr := os.Stat(filepath.Join(ref, "tasks.json"))
-	if statErr == nil && !info.IsDir() || strings.HasPrefix(ref, ".") || filepath.IsAbs(ref) || strings.HasPrefix(ref, "~") {
+	if strings.ContainsRune(ref, filepath.Separator) && statErr == nil && !info.IsDir() || strings.HasPrefix(ref, ".") || filepath.IsAbs(ref) || strings.HasPrefix(ref, "~") {
 		info, e := os.Stat(ref)
 		if e != nil || !info.IsDir() {
 			return nil, -1, home.Usage("no run at %s; see `ask runs`", ref)
