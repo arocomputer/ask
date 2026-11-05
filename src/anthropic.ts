@@ -4,7 +4,7 @@
 // every turn. Effort maps to a thinking budget. Anthropic has no response schema, so a
 // requested schema is stated in the system prompt instead.
 
-import { events, identity, post, ProviderError, type Call, type Endpoint, type Message, type Provider, type Response } from "./provider.ts"
+import { events, identity, post, ProviderError, type Call, type Endpoint, type Message, type Provider, type Response, type Usage } from "./provider.ts"
 
 const budgets: Record<string, number> = { minimal: 1024, low: 4096, medium: 16384, high: 32768 }
 
@@ -68,6 +68,17 @@ function parse(args: string): unknown {
   }
 }
 
+/**
+ * Reads Anthropic usage into ask's counts. Anthropic sends input at the start and output at the
+ * end, but gateways may send either at the end, so any field present replaces the old value.
+ */
+function count(u: any, prev: Usage): Usage {
+  if (!u) return prev
+  const cached = u.cache_read_input_tokens ?? prev.cached
+  const input = u.input_tokens != null ? u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) : prev.input
+  return { input, output: u.output_tokens ?? prev.output, cached }
+}
+
 async function decode(res: globalThis.Response): Promise<Response> {
   const blocks: any[] = []
   const json: string[] = []
@@ -75,12 +86,9 @@ async function decode(res: globalThis.Response): Promise<Response> {
   let stop = ""
   for await (const { data } of events(res)) {
     switch (data.type) {
-      case "message_start": {
-        const u = data.message?.usage ?? {}
-        const cached = u.cache_read_input_tokens ?? 0
-        usage = { input: (u.input_tokens ?? 0) + cached + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens ?? 0, cached }
+      case "message_start":
+        usage = count(data.message?.usage, usage)
         break
-      }
       case "content_block_start":
         blocks[data.index] = { ...data.content_block }
         json[data.index] = ""
@@ -102,7 +110,7 @@ async function decode(res: globalThis.Response): Promise<Response> {
       }
       case "message_delta":
         if (data.delta?.stop_reason) stop = data.delta.stop_reason
-        if (data.usage?.output_tokens != null) usage.output = data.usage.output_tokens
+        usage = count(data.usage, usage)
         break
       case "error":
         throw new ProviderError(data.error?.message || "the provider reported an error", 200, data.error?.type ?? "")
