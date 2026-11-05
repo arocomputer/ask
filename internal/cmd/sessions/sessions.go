@@ -73,7 +73,7 @@ func Run(p config.Paths, args []string) (int, error) {
 		if !st.On {
 			updated = s.Updated()
 		}
-		rows = append(rows, []string{s.ID, updated, state, strconv.Itoa(len(s.Turns)), access, term.ModelName(t.Model), elapsed, term.Safe(cmdutil.FirstLine(s.Turns[0].Prompt))})
+		rows = append(rows, []string{s.ID, updated, state, strconv.Itoa(len(s.Turns)), access, term.TurnModel(t), elapsed, term.Safe(cmdutil.FirstLine(s.Turns[0].Prompt))})
 	}
 	fmt.Fprint(os.Stdout, term.Table(st, []string{"id", "updated", "state", "turns", "access", "model", "time", "task"}, rows, func(column int, text string) string {
 		switch column {

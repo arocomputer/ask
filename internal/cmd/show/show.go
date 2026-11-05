@@ -75,7 +75,10 @@ func Run(p config.Paths, args []string) (int, error) {
 			fmt.Fprintln(os.Stderr, "ask: activity unavailable: "+err.Error())
 		} else {
 			for _, e := range page.Events {
-				printEvent(s, e)
+				// Status events are bookkeeping for scripts; the status line says the same.
+				if e.Type != "status" {
+					printEvent(s, e)
+				}
 			}
 			cursor = page.NextCursor
 			if page.HasMore {

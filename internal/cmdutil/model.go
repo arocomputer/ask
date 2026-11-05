@@ -10,10 +10,11 @@ import (
 
 // Model is a resolved model specification: PROVIDER/MODEL for ask's own harness,
 // HARNESS:MODEL for an installed external harness, either plus #effort. Spec is the form
-// records keep.
+// records keep, Name its display name when the model list has one. Picked says ask chose it
+// because neither -m nor config named one.
 type Model struct {
-	Spec, Provider, ID, Effort string
-	Native                     bool
+	Spec, Provider, ID, Effort, Name string
+	Native, Picked                   bool
 }
 
 // Split reads a recorded spec: native (provider, id) for provider/id, external for harness:id.
@@ -43,14 +44,19 @@ func Provider(auth config.Object, name string) (provider.Spec, bool) {
 }
 
 // Resolve parses a specification and checks its provider or harness. An empty spec uses the
-// model key of config.json.
+// model key of config.json, and without one ask picks a model itself (see Pick).
 func Resolve(p config.Paths, cfg config.Object, spec string) (Model, error) {
 	spec = config.Trim(spec)
 	if spec == "" {
 		spec = cfg.S("model")
 	}
+	picked := false
 	if spec == "" {
-		return Model{}, config.Usage("choose a model with -m (see ask models) or set a default: ask config model provider/model")
+		var err error
+		if spec, err = Pick(p); err != nil {
+			return Model{}, err
+		}
+		picked = true
 	}
 	body, effort, _ := strings.Cut(spec, "#")
 	effort = config.Trim(effort)
@@ -70,12 +76,15 @@ func Resolve(p config.Paths, cfg config.Object, spec string) (Model, error) {
 	}
 	name, id, qualified := strings.Cut(body, "/")
 	name, id = strings.ToLower(config.Trim(name)), config.Trim(id)
-	if !qualified || name == "" || id == "" || strings.ContainsAny(id, " \t:") {
-		return Model{}, config.Usage("a model is provider/model for ask's own harness, like opencode-go/glm-5.3, or harness:model for an external one, like claude:sonnet-5.5, optionally #effort; see ask models")
-	}
 	auth, err := p.ReadAuth()
 	if err != nil {
 		return Model{}, err
+	}
+	if !qualified && name != "" && !strings.ContainsAny(name, " \t") {
+		return Model{}, config.Usage("models are named provider/model; did you mean %s?", guess(p, auth, body))
+	}
+	if !qualified || name == "" || id == "" || strings.ContainsAny(id, " \t:") {
+		return Model{}, config.Usage("models are named provider/model, like opencode-go/glm-5.3, or harness:model, like claude:sonnet-5.5; see ask models")
 	}
 	if _, ok := Provider(auth, name); !ok {
 		return Model{}, config.Usage("%q is not a provider (%s); for an external harness write %s:%s", name, strings.Join(Providers(auth), ", "), name, id)
@@ -83,7 +92,61 @@ func Resolve(p config.Paths, cfg config.Object, spec string) (Model, error) {
 	if config.Credential(auth, name) == "" {
 		return Model{}, config.Usage("no credential for %s: set %s or run ask setup", name, config.KeyVar(name))
 	}
-	return Model{Spec: join(name+"/"+id, effort), Provider: name, ID: id, Effort: effort, Native: true}, nil
+	m := Model{Spec: join(name+"/"+id, effort), Provider: name, ID: id, Effort: effort, Native: true, Picked: picked}
+	if catalog, err := Catalog(p); err == nil {
+		if listed, ok := catalog.Find(name, id); ok {
+			m.Name = listed.Name
+		}
+	}
+	return m, nil
+}
+
+// Pick chooses a model when none is named: for the first provider with a credential, its
+// default, else the first model declared for it in models.json. It fails when no provider is
+// set up.
+func Pick(p config.Paths) (string, error) {
+	auth, err := p.ReadAuth()
+	if err != nil {
+		return "", err
+	}
+	declared, _ := provider.LoadDeclared(p.Models)
+	for _, name := range Providers(auth) {
+		if config.Credential(auth, name) == "" {
+			continue
+		}
+		if spec, ok := Provider(auth, name); ok && spec.Default != "" {
+			return name + "/" + spec.Default, nil
+		}
+		if list := declared[name]; len(list) > 0 {
+			return name + "/" + list[0].ID, nil
+		}
+	}
+	return "", config.Usage("no model provider is set up yet; run ask setup")
+}
+
+// guess completes a model named without its provider: the credentialed provider that lists
+// it, else the first credentialed provider.
+func guess(p config.Paths, auth config.Object, id string) string {
+	catalog, _ := Catalog(p)
+	first := ""
+	for _, name := range Providers(auth) {
+		if config.Credential(auth, name) == "" {
+			continue
+		}
+		if first == "" {
+			first = name
+		}
+		if _, ok := catalog.Find(name, id); ok {
+			return name + "/" + id
+		}
+		if spec, ok := Provider(auth, name); ok && strings.EqualFold(spec.Default, id) {
+			return name + "/" + id
+		}
+	}
+	if first == "" {
+		first = "opencode-go"
+	}
+	return first + "/" + id
 }
 
 func join(spec, effort string) string {

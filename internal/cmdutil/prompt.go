@@ -67,15 +67,18 @@ func ReadPrompt(words []string, stdin bool) (string, error) {
 	return prompt, nil
 }
 
-// ReadSchema reads and checks a JSON Schema file (- for stdin).
+// ReadSchema reads and checks a JSON Schema: inline JSON, a file, or - for stdin.
 func ReadSchema(path string) (json.RawMessage, error) {
-	text, err := config.ReadInput(path, "schema")
-	if err != nil {
-		return nil, err
+	text := path
+	if !strings.HasPrefix(config.Trim(path), "{") {
+		var err error
+		if text, err = config.ReadInput(path, "schema"); err != nil {
+			return nil, err
+		}
 	}
 	v, err := config.ParseJSON(text)
 	if _, ok := v.(config.Object); err != nil || !ok {
-		return nil, config.Usage("--schema %s must hold a JSON Schema object", path)
+		return nil, config.Usage("the schema must be a JSON Schema object")
 	}
 	return json.RawMessage(config.JSON(v, false)), nil
 }

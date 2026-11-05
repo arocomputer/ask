@@ -171,7 +171,9 @@ func TestExtensions(t *testing.T) {
 		eq(t, out.code, 2)
 		match(t, out.stderr, "is your own extension")
 		eq(t, s.ask("remove", "mine").code, 0)
-		eq(t, s.ask("hello").code, 2)
+		if s.ask("hello").stdout == "hello from mine\n" {
+			t.Fatal("a removed extension's command still runs")
+		}
 		eq(t, s.ask("remove", "mine").code, 2)
 		eq(t, s.ask("install", "pi-nonexistent-folder").code, 2)
 	})

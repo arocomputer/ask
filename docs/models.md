@@ -19,6 +19,12 @@ claude:sonnet-5.5
 - **effort** is passed on: as the reasoning effort for a native session, as `ASK_EFFORT` to a harness.
 
 `-m` chooses the model for one session; `model` in [config.json](config.md) is the default.
+Without either, ask picks one for the first provider you have a credential for: its default
+(`glm-5.3` on OpenCode Go, `gpt-5.5` on OpenAI and OpenCode Console), or for a provider of your
+own, the first model you declare for it in models.json. A launch on a terminal says which model it picked.
+
+A model named without its provider fails with a suggestion, like `did you mean
+opencode-go/glm-5.3?`.
 
 ## The model list
 

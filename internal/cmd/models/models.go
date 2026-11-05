@@ -10,6 +10,7 @@ import (
 	"github.com/arocomputer/ask/internal/config"
 	"github.com/arocomputer/ask/internal/extension"
 	"github.com/arocomputer/ask/internal/provider"
+	"github.com/arocomputer/ask/internal/term"
 )
 
 // Help is the command's page.
@@ -68,11 +69,17 @@ func Run(p config.Paths, args []string) (int, error) {
 			add(name+"/"+m.ID, m.Name)
 		}
 	}
+	hint := ""
 	if configured == 0 {
-		fmt.Fprintln(os.Stderr, "ask: no provider credential yet; run ask setup")
+		hint = "no provider is set up yet; run ask setup"
 	} else if _, err := os.Stat(cmdutil.CachePath(p)); err != nil {
-		fmt.Fprintln(os.Stderr, "ask: no models.dev listing yet; ask models --refresh downloads one (any model id works regardless)")
+		hint = "ask models --refresh downloads the full models.dev listing"
 	}
+	defer func() {
+		if st := term.Styled(os.Stderr); hint != "" && (st.On || len(out) == 0) {
+			fmt.Fprintln(os.Stderr, st.Dim(hint))
+		}
+	}()
 	for _, prefix := range extension.Harnesses(p) {
 		for _, m := range catalog[prefix] {
 			add(prefix+":"+m.ID, m.Name)

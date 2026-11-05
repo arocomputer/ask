@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -114,10 +115,8 @@ func Line(ses *sessions.Session, s Style) string {
 	state := ses.State()
 	t := ses.Turn()
 	parts := []string{}
-	if t.Name != "" {
-		parts = append(parts, t.Name)
-	} else if t.Model != "" {
-		parts = append(parts, ModelName(t.Model))
+	if name := TurnModel(t); name != "" {
+		parts = append(parts, name)
 	}
 	if n := len(ses.Turns); n > 1 {
 		parts = append(parts, fmt.Sprintf("turn %d", n))
@@ -184,6 +183,14 @@ func Line(ses *sessions.Session, s Style) string {
 	return line
 }
 
+// TurnModel is a turn's model for people: its recorded display name, else its spec rendered.
+func TurnModel(t *sessions.Turn) string {
+	if t.Name != "" || t.Model == "" {
+		return t.Name
+	}
+	return ModelName(t.Model)
+}
+
 // ModelName renders a model spec for people: the id after the provider, title-cased.
 func ModelName(spec string) string {
 	_, id, _ := strings.Cut(spec, ":")
@@ -241,26 +248,48 @@ func Table(s Style, header []string, rows [][]string, cell func(column int, text
 		}
 		return b.String()
 	}
-	widths := make([]int, len(header))
-	for _, row := range append([][]string{header}, rows...) {
+	drawn := [][]string{}
+	head := []string{}
+	for _, c := range header {
+		head = append(head, s.Dim(strings.ToUpper(c)))
+	}
+	drawn = append(drawn, head)
+	for _, row := range rows {
+		cells := []string{}
 		for i, c := range row {
-			widths[i] = max(widths[i], len([]rune(c)))
+			cells = append(cells, cell(i, c))
+		}
+		drawn = append(drawn, cells)
+	}
+	widths := make([]int, len(header))
+	for _, row := range drawn {
+		for i, c := range row {
+			widths[i] = max(widths[i], Width(c))
 		}
 	}
-	line := func(row []string, style func(int, string) string) {
+	for _, row := range drawn {
 		parts := []string{}
 		for i, c := range row {
-			pad := strings.Repeat(" ", widths[i]-len([]rune(c)))
-			if i == len(row)-1 {
-				pad = ""
+			pad := ""
+			if i < len(row)-1 {
+				pad = strings.Repeat(" ", widths[i]-Width(c))
 			}
-			parts = append(parts, style(i, c)+pad)
+			parts = append(parts, c+pad)
 		}
 		b.WriteString(strings.TrimRight(strings.Join(parts, "  "), " ") + "\n")
 	}
-	line(header, func(_ int, c string) string { return s.Dim(strings.ToUpper(c)) })
-	for _, row := range rows {
-		line(row, cell)
-	}
 	return b.String()
+}
+
+var escape = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// Width is how many columns text takes on a terminal: its characters without color codes.
+func Width(text string) int { return len([]rune(escape.ReplaceAllString(text, ""))) }
+
+// Success is a confirmation line, as gh prints one: a green check, then what happened.
+func (s Style) Success(text string) string {
+	if !s.On {
+		return text
+	}
+	return s.Green("✓") + " " + text
 }

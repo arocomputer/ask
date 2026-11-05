@@ -46,7 +46,7 @@ func Launch(p config.Paths, s *sessions.Session, wait, asJSON bool, undo func())
 	}
 	fmt.Fprintln(os.Stdout, s.ID)
 	if st := term.Styled(os.Stderr); st.On {
-		fmt.Fprintf(os.Stderr, "%s %s started · %s%s\n", st.Yellow("!"), st.Bold(s.ID), term.ModelName(s.Turn().Model), st.Dim(" · ask wait "+s.ID))
+		fmt.Fprintf(os.Stderr, "%s %s started · %s%s\n", st.Yellow("!"), st.Bold(s.ID), term.TurnModel(s.Turn()), st.Dim(" · ask wait "+s.ID))
 	}
 	return 0, nil
 }

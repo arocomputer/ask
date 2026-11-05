@@ -7,18 +7,19 @@ import (
 
 // Spec is a native provider: an endpoint that speaks the OpenAI Responses protocol. Reasoning
 // says the endpoint returns encrypted reasoning items for replay, which OpenAI's own does and
-// translating gateways do not.
+// translating gateways do not. Default is the model ask uses when none is chosen.
 type Spec struct {
 	Name, BaseURL string
 	Reasoning     bool
+	Default       string
 }
 
 // Known are the endpoints ask ships. Any other name with a base_url in auth.json is a
 // provider too, so a compatible endpoint or proxy needs no code.
 var Known = []Spec{
-	{"openai", "https://api.openai.com/v1", true},
-	{"opencode", "https://opencode.ai/inference/openai/v1", false},
-	{"opencode-go", "https://opencode.ai/inference/go/openai/v1", false},
+	{"openai", "https://api.openai.com/v1", true, "gpt-5.5"},
+	{"opencode", "https://opencode.ai/inference/openai/v1", false, "gpt-5.5"},
+	{"opencode-go", "https://opencode.ai/inference/go/openai/v1", false, "glm-5.3"},
 }
 
 // EnvName is a provider's name as an environment variable prefix: OPENCODE_GO for opencode-go.

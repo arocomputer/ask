@@ -23,7 +23,8 @@ Write the ask skill for Codex? [Y/n]
   permits it.
 - **The model list** is a snapshot of [models.dev](https://models.dev) with display names and
   prices, for `ask models` and the cost shown on each session. Any model id works without it.
-- **The default model** goes to `config.json`, so `ask "task"` needs no `-m`.
+- **The default model** goes to `config.json`, so `ask "task"` needs no `-m`. Without one, ask
+  picks a model itself and says which; see [Models](models.md).
 - **External harnesses** for Claude Code and Codex are offered when those CLIs are installed, and
   written to `~/.ask/agent/extensions/NAME/`; see [Extensions](extensions.md). They use the CLI's own login.
 - **The ask skill** goes to each agent that reads skills and is installed here: Claude Code,

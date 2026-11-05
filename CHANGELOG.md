@@ -25,9 +25,16 @@ ask 2 is a rewrite around its own harness. It does not read ask 1's runs; see
 - Lay out `~/.ask` as `config.json`, `auth.json`, `models.json`, `cache/` and `agent/` (sessions,
   worktrees, extensions), creating nothing until it is used. `ask config` replaces `ask settings`.
 - Print one result record with `--json` from `wait`, `show`, `sessions` and `--wait` launches.
+- Accept a launch as one JSON object on stdin: `echo '{"prompt": "...", "write": true}' | ask
+  --json`, or `{"session": ID, "prompt": "..."}` to add a turn. `--schema` also takes the schema
+  inline.
+- Pick a model when none is chosen: the default of the first provider with a credential, or the
+  first model declared for a provider of your own. A model named without its provider gets a suggestion, like `did you mean
+  opencode-go/glm-5.3?`.
 - Render status, tables and help the way gh does: colored states with `✓ ✗ ! -` symbols, bold
   IDs, dimmed details and uppercase sections on a terminal; plain stable lines and
-  tab-separated lists when piped.
+  tab-separated lists when piped. Help pages split common flags from advanced ones, and
+  `ask config KEY VALUE` confirms the change.
 - Add `ask setup` as plain prompts, offering the keys OpenCode already holds.
 - Keep Claude Code and Codex as built-in extensions under contract 4, without their environment
   policy; the Claude harness no longer refuses the `opusplan` alias.

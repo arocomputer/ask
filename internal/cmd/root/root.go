@@ -6,6 +6,7 @@ package root
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"syscall"
 
@@ -77,6 +78,9 @@ func dispatch(p config.Paths, args []string, version string) (int, error) {
 	if len(args) == 0 {
 		return run.Run(p, args)
 	}
+	if opts, words, err := cmdutil.Parse(args, run.Flags); err == nil && opts.B("json") && len(words) == 0 && !opts.B("stdin") {
+		return request(p, args)
+	}
 	switch args[0] {
 	case "help", "--help", "-h":
 		return help(p, args[1:])
@@ -93,6 +97,27 @@ func dispatch(p config.Paths, args []string, version string) (int, error) {
 		return exec(p, path, args[1:])
 	}
 	return run.Run(p, args)
+}
+
+// request handles ask --json with no prompt: stdin holds either the prompt or a JSON request,
+// which becomes the flags it stands for and goes to run, or to continue when it names a session.
+func request(p config.Paths, args []string) (int, error) {
+	b, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return 0, config.Usage("cannot read stdin: %s", err)
+	}
+	text := config.Trim(config.UTF8(b))
+	extra, session, ok, err := cmdutil.Request(text)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return run.Run(p, append(args, "--", text))
+	}
+	if session != "" {
+		return cont.Run(p, append(append([]string{session}, args...), extra...))
+	}
+	return run.Run(p, append(args, extra...))
 }
 
 // exec replaces ask with an extension's command, which gets the terminal, the signals and the

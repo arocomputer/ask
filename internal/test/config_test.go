@@ -25,7 +25,7 @@ func TestConfig(t *testing.T) {
 		eq(t, s.ask("config", "timeout", "soon").code, 2)
 		out = s.ask("config", "model", "no-provider")
 		eq(t, out.code, 2)
-		match(t, out.stderr, "a model is provider/model")
+		match(t, out.stderr, "models are named provider/model")
 		s.write(filepath.Join(s.home, "config.json"), `{"nope": 1}`)
 		out = s.ask("-m", "openai/test-model", "hi")
 		eq(t, out.code, 2)

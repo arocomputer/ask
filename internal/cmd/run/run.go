@@ -2,6 +2,7 @@
 package run
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/arocomputer/ask/internal/cmd/worker"
@@ -9,34 +10,39 @@ import (
 	"github.com/arocomputer/ask/internal/config"
 	"github.com/arocomputer/ask/internal/git"
 	"github.com/arocomputer/ask/internal/sessions"
+	"github.com/arocomputer/ask/internal/term"
 )
 
 // Help is the command's page.
 var Help = cmdutil.Page{Summary: "Start a session and print its ID.", Sections: []cmdutil.Section{
 	{Title: "USAGE", Body: "ask [run] [flags] <prompt>"},
 	{Title: "ARGUMENTS", Body: "The prompt is the words after the flags, or stdin when there are none or the prompt is -."},
-	{Title: "FLAGS", Body: `-m, --model <model>         provider/model for ask's own harness, harness:model for an external
-                            one, either plus #effort (ask models); default: the model in config
+	{Title: "FLAGS", Body: `-m, --model <model>         provider/model, or harness:model (ask models); default: config, else ask picks
 -w, --write                 Allow editing files and running commands (default: read-only)
-    --worktree              Work in a fresh git worktree and branch (implies --write)
+    --wait                  Wait and print the answer instead of the ID; exit 1 if it fails
+    --json                  JSON output; with no prompt, also a JSON request on stdin`},
+	{Title: "ADVANCED FLAGS", Body: `    --worktree              Work in a fresh git worktree and branch (implies --write)
 -C, --directory <dir>       Where to work (default: the current directory)
 -t, --timeout <seconds>     Stop the turn after this long (default: 900, or timeout in config)
     --max-cost <usd>        Stop when the cost passes this (default: max_cost in config)
-    --schema <file>         The answer must be JSON matching this JSON Schema (- for stdin)
-    --stdin                 Append stdin to the argument prompt, after a blank line
-    --wait                  Wait and print the answer instead of the ID; exit 1 if it fails
-    --json                  {"session_id","turn","state"} at launch, or the result with --wait`},
+    --schema <file>         The answer must be JSON matching this JSON Schema (a file, - or inline)
+    --stdin                 Append stdin to the argument prompt, after a blank line`},
+	{Title: "JSON REQUESTS", Body: `With --json and no prompt, stdin may hold one request object instead of flags:
+{"prompt", "model", "write", "worktree", "dir", "timeout", "max_cost", "schema", "wait"}
+and {"session": ID, "prompt"} adds a turn. Every key but prompt is optional.`},
 	{Title: "EXAMPLES", Body: `$ ask "Where is the retry logic?"
 $ ask -w --worktree "Add rate limiting to the login route."
 $ ask --wait -m opencode-go/glm-5.3#high "Summarize src/."
-$ ask -m claude:sonnet-5.5 "Second opinion on the design."`},
+$ ask -m claude:sonnet-5.5 "Second opinion on the design."
+$ echo '{"prompt": "Fix the parser.", "write": true, "wait": true}' | ask --json`},
 }}
 
-var flags = append([]cmdutil.Flag{{Long: "worktree"}, {Long: "directory", Short: "C", Value: true}}, cmdutil.LaunchFlags...)
+// Flags are run's options; the root command reads them to spot a JSON request.
+var Flags = append([]cmdutil.Flag{{Long: "worktree"}, {Long: "directory", Short: "C", Value: true}}, cmdutil.LaunchFlags...)
 
 // Run creates a session from the command line and launches its first turn.
 func Run(p config.Paths, args []string) (int, error) {
-	opts, words, err := cmdutil.Parse(args, flags)
+	opts, words, err := cmdutil.Parse(args, Flags)
 	if err != nil {
 		return 0, err
 	}
@@ -52,7 +58,10 @@ func Run(p config.Paths, args []string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	t := sessions.Turn{Prompt: prompt, Model: m.Spec, Effort: m.Effort, Write: opts.B("write") || opts.B("worktree")}
+	if st := term.Styled(os.Stderr); m.Picked && st.On {
+		fmt.Fprintln(os.Stderr, st.Dim("using "+m.Spec+"; ask config model sets your default"))
+	}
+	t := sessions.Turn{Prompt: prompt, Model: m.Spec, Name: m.Name, Effort: m.Effort, Write: opts.B("write") || opts.B("worktree")}
 	if err := cmdutil.Limits(&t, opts, cfg); err != nil {
 		return 0, err
 	}

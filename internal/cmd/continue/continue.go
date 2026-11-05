@@ -20,12 +20,12 @@ did. Without one, it is asked to finish the task, which is how an interrupted tu
 session keeps its ID, directory and worktree; -m may change the model within the same provider.`},
 	{Title: "FLAGS", Body: `-m, --model <model>         Another model from the same provider or harness
 -w, --write                 Add write access
--t, --timeout <seconds>     As for run
-    --max-cost <usd>        As for run
-    --schema <file>         As for run
-    --stdin                 Append stdin to the prompt
     --wait                  Wait and print the answer
     --json                  JSON output`},
+	{Title: "ADVANCED FLAGS", Body: `-t, --timeout <seconds>     As for run
+    --max-cost <usd>        As for run
+    --schema <file>         As for run
+    --stdin                 Append stdin to the prompt`},
 	{Title: "EXAMPLES", Body: `$ ask continue k3f9a2 "Now add a test for the expired-token case."
 $ ask continue k3f9a2 --wait -w "Fix it."
 $ ask continue k3f9a2`},
@@ -80,7 +80,7 @@ func Run(p config.Paths, args []string) (int, error) {
 	if !m.Native && s.HarnessSession == "" {
 		return 0, config.Usage("%s reported no session of its own, so %s cannot continue it; start a new session", s.ID, lastProvider)
 	}
-	t := sessions.Turn{Prompt: prompt, Model: m.Spec, Effort: m.Effort, Write: last.Write || opts.B("write"), Schema: last.Schema}
+	t := sessions.Turn{Prompt: prompt, Model: m.Spec, Name: m.Name, Effort: m.Effort, Write: last.Write || opts.B("write"), Schema: last.Schema}
 	if err := cmdutil.Limits(&t, opts, cfg); err != nil {
 		return 0, err
 	}

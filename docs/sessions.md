@@ -69,7 +69,6 @@ latest answer on stdout once finished. Activity is what the subagent did, across
 its messages, each tool call with a one-line summary of its input, and each result, clipped.
 
 ```text
-status: turn 2 running
 tool grep: expiry in auth
 tool_result grep: auth/token.go:42:    if exp < now {
 message: The expiry check compares seconds with milliseconds.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/arocomputer/ask/internal/cmdutil"
 	cfg "github.com/arocomputer/ask/internal/config"
+	"github.com/arocomputer/ask/internal/term"
 )
 
 // Help is the command's page.
@@ -58,9 +59,16 @@ func Run(p cfg.Paths, args []string) (int, error) {
 	if !known {
 		return 0, cfg.Usage("unknown key %q; keys: %s", key, strings.Join(cfg.Keys, ", "))
 	}
+	st := term.Styled(os.Stderr)
 	if value == "" {
 		delete(current, key)
-		return 0, p.WriteConfig(current)
+		if err := p.WriteConfig(current); err != nil {
+			return 0, err
+		}
+		if st.On {
+			fmt.Fprintln(os.Stderr, st.Success("Removed "+key))
+		}
+		return 0, nil
 	}
 	switch key {
 	case "timeout", "max_cost":
@@ -86,5 +94,11 @@ func Run(p cfg.Paths, args []string) (int, error) {
 	default:
 		current[key] = value
 	}
-	return 0, p.WriteConfig(current)
+	if err := p.WriteConfig(current); err != nil {
+		return 0, err
+	}
+	if st.On {
+		fmt.Fprintln(os.Stderr, st.Success("Set "+key+" to "+cfg.JSON(current[key], false)))
+	}
+	return 0, nil
 }

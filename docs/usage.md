@@ -90,13 +90,29 @@ context. Each is a clear failure, never a silent retry.
 
 ## JSON answers
 
-`--schema FILE` (or `--schema -`) makes the answer JSON matching that JSON Schema. Native sessions
+`--schema FILE` (or `-` for stdin, or the schema itself inline) makes the answer JSON matching
+that JSON Schema. Native sessions
 pass the schema to the provider as the required output format; external harnesses pass it to
 their CLI.
 
 ```sh
 ask --wait --schema shape.json "List the public functions in src/api.go." | jq '.functions[]'
 ```
+
+## JSON requests
+
+An agent can describe a launch as one JSON object on stdin instead of flags. With `--json` and no
+prompt, stdin holding an object with a `prompt` or `session` key is a request:
+
+```sh
+echo '{"prompt": "Fix the parser.", "model": "opencode-go/glm-5.3", "write": true, "wait": true}' | ask --json
+echo '{"session": "k3f9a2", "prompt": "Now add a test.", "wait": true}' | ask --json
+```
+
+The keys are `prompt`, `session`, `model`, `write`, `worktree`, `dir`, `timeout`, `max_cost`,
+`schema` (the schema object itself) and `wait`. Each means what its flag means, and `session`
+adds a turn as `ask continue` does. An unknown key is a usage error. Any other stdin is the prompt,
+as without `--json`.
 
 ## Output
 
