@@ -6,22 +6,36 @@ import type { AddressInfo } from "node:net"
 import type { Protocol } from "../src/provider.ts"
 
 /**
- * One model turn to play back: text, tool calls, or an HTTP error. A reply with `when` answers
- * only requests whose body mentions it; the others are played in order.
+ * One model turn to play back: text, tool calls, or an HTTP error. A reply with `when` answers a
+ * request whose latest message is the user's and contains it (a turn's first model call); the
+ * others are played in order.
  */
-export type Reply = { text?: string; calls?: { name: string; args: object }[]; status?: number; error?: string; delay?: number; when?: string }
+export type Reply = {
+  text?: string
+  calls?: { name: string; args: object }[]
+  /** A reasoning item first, sealed when `encrypted` is set (Responses only). */
+  reasoning?: { encrypted?: string }
+  status?: number
+  error?: string
+  delay?: number
+  when?: string
+}
 
-export type Fake = { url: string; requests: any[]; close(): Promise<void> }
+/** `requests` holds each request's body; `headers` the matching request headers. */
+export type Fake = { url: string; requests: any[]; headers: Record<string, string | string[] | undefined>[]; close(): Promise<void> }
 
 export async function serve(protocol: Protocol, replies: Reply[]): Promise<Fake> {
   const requests: any[] = []
+  const headers: Fake["headers"] = []
   let n = 0
   const server = createServer(async (req, res) => {
     let body = ""
     for await (const chunk of req) body += chunk
     requests.push(JSON.parse(body))
+    headers.push(req.headers)
     const plain = replies.filter((x) => !x.when)
-    const r = replies.find((x) => x.when && body.includes(x.when)) ?? plain[Math.min(n++, plain.length - 1)]
+    const said = asked(protocol, requests.at(-1))
+    const r = replies.find((x) => x.when && said?.includes(x.when)) ?? plain[Math.min(n++, plain.length - 1)]
     if (r.delay) await new Promise((ok) => setTimeout(ok, r.delay))
     if (r.status) {
       res.writeHead(r.status, { "content-type": "application/json" })
@@ -33,7 +47,16 @@ export async function serve(protocol: Protocol, replies: Reply[]): Promise<Fake>
   })
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok))
   const { port } = server.address() as AddressInfo
-  return { url: `http://127.0.0.1:${port}/v1`, requests, close: () => new Promise((ok) => (server.closeAllConnections(), server.close(() => ok()))) }
+  return { url: `http://127.0.0.1:${port}/v1`, requests, headers, close: () => new Promise((ok) => (server.closeAllConnections(), server.close(() => ok()))) }
+}
+
+/** The latest message's text when it is the user's, in any protocol's request body. */
+function asked(protocol: Protocol, body: any): string | undefined {
+  const last = protocol === "responses" ? body.input?.at(-1) : body.messages?.at(-1)
+  if (last?.role !== "user") return undefined
+  if (typeof last.content === "string") return last.content
+  const parts = (last.content ?? []).filter((c: any) => c.type === "text" || c.type === "input_text")
+  return parts.length === last.content.length ? parts.map((c: any) => c.text).join("") : undefined
 }
 
 function encode(protocol: Protocol, r: Reply, turn: number): [string, object][] {
@@ -41,6 +64,7 @@ function encode(protocol: Protocol, r: Reply, turn: number): [string, object][] 
   switch (protocol) {
     case "responses":
       return [
+        ...(r.reasoning ? [["response.output_item.done", { type: "response.output_item.done", item: { type: "reasoning", id: `rs_${turn}`, summary: [], ...(r.reasoning.encrypted ? { encrypted_content: r.reasoning.encrypted } : {}) } }] as [string, object]] : []),
         ...(r.text ? [["response.output_item.done", { type: "response.output_item.done", item: { type: "message", role: "assistant", content: [{ type: "output_text", text: r.text }] } }] as [string, object]] : []),
         ...calls.map((c): [string, object] => ["response.output_item.done", { type: "response.output_item.done", item: { type: "function_call", call_id: c.id, name: c.name, arguments: c.args } }]),
         ["response.completed", { type: "response.completed", response: { status: "completed", usage: { input_tokens: 100, output_tokens: 10 } } }],

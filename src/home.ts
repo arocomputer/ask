@@ -74,6 +74,6 @@ export async function resolve(h: Home, name?: string): Promise<{ model: Model; k
   if (!chosen) throw new Error("no model chosen; run ask settings, or give the task a model")
   const model = find(await catalog(h), chosen)
   const cred = credential(h, model.provider, model.env)
-  if (!cred) throw new Error(`no key for ${model.provider}; run ask auth login ${model.provider}`)
+  if (!cred) throw new Error(`no key for ${model.provider}; add one with ask settings, or set ${model.env[0] ?? "its key variable"}`)
   return { model, key: cred.key, baseURL: readJSON<Auth>(h.auth, {})[model.provider]?.base_url }
 }

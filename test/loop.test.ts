@@ -6,6 +6,7 @@ import { describe, test } from "node:test"
 import { connect, type Model } from "../src/catalog.ts"
 import { interrupted, run } from "../src/loop.ts"
 import type { Protocol } from "../src/provider.ts"
+import { responses } from "../src/responses.ts"
 import { serve } from "./fake.ts"
 
 function project(): string {
@@ -67,6 +68,103 @@ describe("loop", () => {
     } finally {
       await fake.close()
     }
+  })
+
+  test("a read-only task is offered no way to write or run commands", async () => {
+    const fake = await serve("chat", [{ text: "ok" }])
+    try {
+      await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Look" })
+      assert.deepEqual(fake.requests[0].tools.map((t: any) => t.function.name), ["read", "list", "grep"])
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("the project's instructions reach the model", async () => {
+    const dir = project()
+    writeFileSync(join(dir, "AGENTS.md"), "Indent with tabs.\n")
+    const fake = await serve("chat", [{ text: "ok" }])
+    try {
+      await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir, prompt: "Look" })
+      assert.match(fake.requests[0].messages[0].content, /# Project instructions\n\nIndent with tabs\.$/)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("requests store nothing upstream, and sealed reasoning replays on the next step", async () => {
+    const fake = await serve("responses", [{ reasoning: { encrypted: "sealed" }, calls: [{ name: "list", args: {} }] }, { text: "done" }])
+    try {
+      await run({ provider: responses({ baseURL: fake.url, key: "k" }, true), model: "m", dir: project(), prompt: "Look" })
+      assert.equal(fake.requests[0].store, false)
+      assert.deepEqual(fake.requests[0].include, ["reasoning.encrypted_content"])
+      assert.ok(fake.requests[1].input.some((i: any) => i.type === "reasoning" && i.encrypted_content === "sealed"))
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("a gateway's unsealed reasoning is not sent back", async () => {
+    const fake = await serve("responses", [{ reasoning: {}, calls: [{ name: "list", args: {} }] }, { text: "done" }])
+    try {
+      await run({ provider: connect(model("responses", fake.url), "k"), model: "m", dir: project(), prompt: "Look" })
+      assert.equal(fake.requests[0].include, undefined)
+      assert.ok(!fake.requests[1].input.some((i: any) => i.type === "reasoning"))
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("providers hear who is calling and which conversation it is", async () => {
+    const fake = await serve("anthropic", [{ text: "ok" }])
+    try {
+      await run({ provider: connect(model("anthropic", fake.url), "k"), model: "m", dir: project(), prompt: "Look", session: "k3f9a2" })
+      assert.match(String(fake.headers[0]["user-agent"]), /^ask\//)
+      assert.equal(fake.headers[0]["x-opencode-session"], "k3f9a2")
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("a schema reaches the provider as the answer's format", async () => {
+    const schema = { type: "object", properties: { port: { type: "integer" } } }
+    const fake = await serve("chat", [{ text: '{"port": 7341}' }])
+    try {
+      await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Port?", schema })
+      assert.deepEqual(fake.requests[0].response_format, { type: "json_schema", json_schema: { name: "answer", schema } })
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("a call to a missing tool, or with arguments that aren't JSON, goes back to the model as an error", async () => {
+    const fake = await serve("chat", [{ calls: [{ name: "delete_everything", args: {} }] }, { text: "ok" }])
+    try {
+      const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Go" })
+      assert.equal(r.answer, "ok")
+      assert.match(fake.requests[1].messages.at(-1).content, /^error: no tool named delete_everything; the tools are read, list, grep$/)
+    } finally {
+      await fake.close()
+    }
+    const bad = await run({
+      provider: { complete: async () => ({ message: { role: "assistant", text: "", calls: [{ id: "c", name: "read", arguments: "{not json" }] }, usage: { input: 0, output: 0, cached: 0 } }) },
+      model: "m",
+      dir: project(),
+      prompt: "Go",
+      maxSteps: 1,
+    })
+    assert.equal((bad.messages.at(-1) as { output: string }).output, "error: arguments must be a JSON object")
+  })
+
+  test("a reply cut off at the output limit is a failure, not an answer", async () => {
+    const r = await run({
+      provider: { complete: async () => ({ message: { role: "assistant", text: "The port is 73", calls: [] }, usage: { input: 0, output: 0, cached: 0 }, incomplete: "max_output_tokens" }) },
+      model: "m",
+      dir: project(),
+      prompt: "Port?",
+    })
+    assert.equal(r.answer, undefined)
+    assert.equal(r.error!.message, "the model stopped early (max_output_tokens)")
   })
 
   test("a call cut off by a stopped worker reaches the resumed model as interrupted", () => {

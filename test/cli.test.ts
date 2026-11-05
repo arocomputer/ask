@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFile, execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, describe, test } from "node:test"
@@ -131,6 +131,44 @@ describe("cli", () => {
     assert.deepEqual(r.tasks[0].changes, [{ path: "new.txt", change: "added" }])
   })
 
+  test("looking around creates nothing in the home folder", async () => {
+    const { run, home } = await setup([{ text: "unused" }])
+    rmSync(home, { recursive: true })
+    for (const args of [["help"], ["help", "requests"], ["sessions"], ["show", "--help"], ["--version"]]) await run(args)
+    assert.throws(() => readdirSync(home))
+  })
+
+  test("a task without a key for its provider fails before it starts", async () => {
+    const { ask, home } = await setup([{ text: "unused" }])
+    writeFileSync(join(home, "auth.json"), "{}")
+    const r = await ask({ start: [{ prompt: "Task" }] })
+    assert.equal(r.error.message, "no key for fake; add one with ask settings, or set FAKE_API_KEY")
+  })
+
+  test("a task past its timeout fails as timed out", async () => {
+    const { ask } = await setup([{ text: "late", delay: 10_000 }])
+    const r = await ask({ start: [{ prompt: "Slow", timeout: 1 }], wait: 20 })
+    assert.equal(r.tasks[0].state, "failed")
+    assert.equal(r.tasks[0].error.message, "timed out after 1 seconds")
+  })
+
+  test("dir sets where a task works", async () => {
+    const { ask, fake, project } = await setup([{ calls: [{ name: "read", args: { path: "other.txt" } }] }, { text: "ok" }])
+    mkdirSync(join(project, "elsewhere"))
+    writeFileSync(join(project, "elsewhere", "other.txt"), "found it\n")
+    await ask({ start: [{ prompt: "Read it", dir: join(project, "elsewhere") }], wait: 30 })
+    assert.match(JSON.stringify(fake.requests[1]), /1\\tfound it/)
+  })
+
+  test("piped, sessions prints one tab-separated line per session with an exact time", async () => {
+    const { ask, run } = await setup([{ text: "ok" }])
+    const { tasks } = await ask({ start: [{ prompt: "First line\nsecond line" }], wait: 30 })
+    const [line] = (await run(["sessions"])).stdout.trim().split("\n")
+    const [state, task, id, started] = line.split("\t")
+    assert.deepEqual([state, task, id], ["succeeded", "First line", tasks[0].id])
+    assert.ok(!Number.isNaN(Date.parse(started)))
+  })
+
   test("a word ask doesn't know is an error, never a prompt", async () => {
     const { run, home } = await setup([{ text: "unused" }])
     const r = await run(["settings-typo"])
@@ -172,6 +210,20 @@ describe("cli", () => {
     assert.deepEqual(t.changes, [{ path: "new.txt", change: "added" }])
     assert.equal(readFileSync(join(t.worktree.path, "new.txt"), "utf8"), "hi")
     assert.throws(() => readFileSync(join(project, "new.txt")))
+  })
+
+  test("a later turn works in the session's worktree", async () => {
+    const { ask, project, fake } = await setup([
+      { when: "Second", calls: [{ name: "write", args: { path: "second.txt", content: "2" } }] },
+      { text: "Done." },
+    ])
+    for (const args of [["init", "-q"], ["add", "."], ["-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-qm", "start"]])
+      execFileSync("git", ["-C", project, ...args], { stdio: "ignore" })
+    const first = await ask({ start: [{ prompt: "First look", worktree: true }], wait: 30 })
+    await ask({ continue: first.tasks[0].id, prompt: "Second step", write: true, wait: 30 })
+    assert.equal(readFileSync(join(first.tasks[0].worktree.path, "second.txt"), "utf8"), "2")
+    assert.equal(fake.requests.length, 3)
+    assert.throws(() => readFileSync(join(project, "second.txt")))
   })
 
   test("continue refuses a session whose worktree is gone", async () => {

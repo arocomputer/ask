@@ -27,6 +27,21 @@ describe("tools", () => {
     await assert.rejects(all.read.run({ path: "out/x" }, { dir: d }), /outside the working directory/)
   })
 
+  test("a write can't land outside the working directory", async () => {
+    const d = dir()
+    await assert.rejects(all.write.run({ path: "../escaped.txt", content: "x" }, { dir: d }), /outside the working directory/)
+    await assert.rejects(all.write.run({ path: "/tmp/escaped.txt", content: "x" }, { dir: d }), /outside the working directory/)
+  })
+
+  test("shell commands can't see provider keys", async () => {
+    process.env.SOME_PROVIDER_API_KEY = "secret"
+    try {
+      assert.equal(await all.shell.run({ command: "echo \"[$SOME_PROVIDER_API_KEY]\"" }, { dir: dir() }), "exit 0\n[]\n")
+    } finally {
+      delete process.env.SOME_PROVIDER_API_KEY
+    }
+  })
+
   test("list with a pattern finds files at any depth", async () => {
     assert.equal(await all.list.run({ pattern: "src/**/*.ts" }, { dir: dir() }), "src/a.ts\nsrc/deep/b.ts")
   })
