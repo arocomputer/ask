@@ -48,7 +48,9 @@ restart with an atomic folder create.
 | `system` | The system prompt |
 | `steps` | A turn's steps in a few words each |
 | `git` | Changes a write turn made, worktrees |
-| `home` | `~/.ask`, config.json, auth.json, credentials |
+| `home` | `~/.ask`, config.json, auth.json, credentials, the catalog with ChatGPT's models |
+| `claude` | Running a `claude/` turn with the user's Claude Code: finding it, its controls, reading its stream into steps |
+| `chatgpt` | Signing in with a ChatGPT plan: the sign-in, checking the ID token, renewing under a shared lock, signing out, the account's models |
 | `term`, `input` | Terminal output and interactive prompts |
 | `version` | The version, from package.json |
 | `cmd/*` | `settings`, `doctor`, `models`, `sessions`, `show` |
@@ -60,7 +62,8 @@ restart with an atomic folder create.
 - **No runtime dependencies.** `package.json` lists only development tools.
 - **Only Node's built-ins.** The engine imports `node:` modules and its own files, and nothing
   that is particular to Bun, so it runs on both.
-- **No particular coding agent in the engine.** ask works for any agent that can run a command.
+- **One coding agent, in one place.** The only coding agent ask runs is Claude Code, for
+  `claude/` models, and how it runs it lives in `claude.ts` alone; no other is named.
 - **Every module says what it is for.**
 
 Two more are kept by tests and review:

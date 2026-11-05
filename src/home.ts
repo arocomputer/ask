@@ -5,7 +5,10 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { find, load, type Catalog, type Model } from "./catalog.ts"
+import { claudeCode, find, load, type Catalog, type Model } from "./catalog.ts"
+import { aliases, binary } from "./claude.ts"
+import { access, api, models, signedIn } from "./chatgpt.ts"
+import type { Key } from "./provider.ts"
 
 export type Home = { root: string; config: string; auth: string; catalog: string; sessions: string; worktrees: string }
 
@@ -27,8 +30,11 @@ export function home(root = process.env.ASK_HOME || join(homedir(), ".ask")): Ho
  */
 export type Config = { model?: string; models?: string[]; timeout?: number }
 
-/** auth.json: a pasted key per provider, and optionally an endpoint replacing the catalog's. */
-export type Auth = Record<string, { api_key?: string; base_url?: string }>
+/**
+ * auth.json: a pasted key per provider, and optionally an endpoint replacing the catalog's; and
+ * under "chatgpt", the ChatGPT sign-in (see chatgpt.ts).
+ */
+export type Auth = Record<string, { api_key?: string; base_url?: string; [field: string]: unknown }>
 
 export function readJSON<T>(path: string, fallback: T): T {
   let text: string
@@ -52,24 +58,43 @@ export function writeJSON(path: string, value: unknown, mode = 0o600) {
   renameSync(tmp, path)
 }
 
-/** A provider's credential: a pasted key, else the first of its catalog environment variables. */
-export function credential(h: Home, provider: string, env: string[]): { key: string; source: string } | undefined {
+/**
+ * A provider's credential: for ChatGPT, its sign-in's renewable token; for Claude Code, none, as
+ * it signs in itself; otherwise a pasted key, else the first of the provider's catalog
+ * environment variables.
+ */
+export function credential(h: Home, provider: string, env: string[]): { key: Key; source: string } | undefined {
+  if (provider === "chatgpt") return signedIn(h) ? { key: (renew) => access(h, renew), source: "ChatGPT sign-in" } : undefined
+  if (provider === "claude") return binary() ? { key: "", source: "Claude Code's own sign-in" } : undefined
   const pasted = readJSON<Auth>(h.auth, {})[provider]?.api_key
   if (pasted) return { key: pasted, source: "pasted key" }
   for (const name of env) if (process.env[name]) return { key: process.env[name]!, source: `$${name}` }
   return undefined
 }
 
-/** The catalog, loaded from the cache in this home. */
-export function catalog(h: Home, refresh = false): Promise<Catalog> {
-  return load(h.catalog, { refresh, url: process.env.ASK_CATALOG_URL })
+/**
+ * The catalog, loaded from the cache in this home, with two providers of ask's own: "claude"
+ * when Claude Code is installed (its aliases, then Anthropic's models), and "chatgpt" when
+ * signed in to ChatGPT (the models the account may use, through OpenAI's Responses API).
+ */
+export async function catalog(h: Home, refresh = false): Promise<Catalog> {
+  let c = await load(h.catalog, { refresh, url: process.env.ASK_CATALOG_URL })
+  if (binary()) {
+    const models = Object.fromEntries([...aliases.map((a) => [a.id, { id: a.id, name: a.name }]), ...Object.values(c.anthropic?.models ?? {}).map((m) => [m.id, { id: m.id, name: m.name }])])
+    c = { ...c, claude: { id: "claude", name: "Claude Code", env: [], npm: claudeCode, models } }
+  }
+  if (!signedIn(h)) return c
+  const list = await models(h, refresh).catch(() => [])
+  if (!list.length) return c
+  const entries = Object.fromEntries(list.map((m) => [m.slug, { id: m.slug, name: m.name, tool_call: true, reasoning: true }]))
+  return { ...c, chatgpt: { id: "chatgpt", name: "ChatGPT", env: [], npm: "@ai-sdk/openai", api: api(), models: entries } }
 }
 
 /**
  * Resolves the model to use: the name given, else config.json's, with its credential and any
  * endpoint override. Throws what to do when it can't.
  */
-export async function resolve(h: Home, name?: string): Promise<{ model: Model; key: string; baseURL?: string }> {
+export async function resolve(h: Home, name?: string): Promise<{ model: Model; key: Key; baseURL?: string }> {
   const chosen = name || readJSON<Config>(h.config, {}).model
   if (!chosen) throw new Error("no model chosen; run ask settings, or give the task a model")
   const model = find(await catalog(h), chosen)

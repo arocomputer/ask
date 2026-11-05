@@ -32,6 +32,17 @@ earlier versions.
 - Add `ask settings`, which adds providers with a pasted, checked key, chooses your models and
   the default, and sets the timeout; `ask doctor`, which checks everything a task needs; and
   `ask models`, `ask sessions` and `ask show`.
+- Sign in with ChatGPT in `ask settings` to use a Plus or Pro plan instead of an API key, as
+  OpenAI documents for open-source tools. It works from another device too: open the link
+  anywhere and paste back the address the browser lands on. The models are the account's own,
+  `chatgpt/MODEL`; the sign-in renews itself and signing out ends the session with OpenAI.
+- Run tasks with your own installed Claude Code as `claude/MODEL` (an alias like `sonnet`, or a
+  full id), signed in its own way; `anthropic/MODEL` stays ask's own loop with an API key. Each
+  run has no hooks, MCP servers, slash commands, repository settings, auto memory or background
+  tasks; a read-only task gets only Read, Grep and Glob. Its steps show like any task's, and
+  later turns resume the same Claude session.
+- Don't offer OpenCode's free models, which answer 403 outside OpenCode, and say where to make an
+  OpenCode key.
 - Install with the installer, Homebrew, or `npm install -g @arocomputer/ask` on Node 24 or newer.
 - Remove the flag commands (`ask PROMPT`, `wait`, `continue`, `stop`, `setup`, `config`), the
   extensions and their contract, prices and cost limits, `models.json`, `ask clean`, and the

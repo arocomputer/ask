@@ -20,7 +20,8 @@ export type Call = { id: string; name: string; arguments: string }
  */
 export type Native = { protocol: Protocol; items: unknown[] }
 
-export type Protocol = "responses" | "chat" | "anthropic"
+/** How ask reaches a model: one of three HTTP protocols, or by running the user's Claude Code. */
+export type Protocol = "responses" | "chat" | "anthropic" | "claude"
 
 /** A function the model may call, with a JSON Schema for its arguments. */
 export type ToolSpec = { name: string; description: string; parameters: object }
@@ -67,8 +68,32 @@ export class ProviderError extends Error {
   }
 }
 
+/**
+ * A credential: a fixed key, or a function that returns a current token, asked to renew it
+ * when the provider has refused the last one.
+ */
+export type Key = string | ((renew: boolean) => Promise<string>)
+
 /** Where a protocol client sends its requests and with what credential. */
-export type Endpoint = { baseURL: string; key: string; headers?: Record<string, string> }
+export type Endpoint = { baseURL: string; key: Key; headers?: Record<string, string> }
+
+/**
+ * POSTs a request to `path` with the endpoint's credential, in the headers `auth` makes from it.
+ * A renewable credential the provider refuses (401) is renewed and the request sent once more.
+ */
+export async function send(endpoint: Endpoint, path: string, auth: (key: string) => Record<string, string>, req: Request, body: object): Promise<globalThis.Response> {
+  const headers = async (renew: boolean) => {
+    const key = typeof endpoint.key === "string" ? endpoint.key : await endpoint.key(renew)
+    return { ...auth(key), ...identity(req), ...endpoint.headers }
+  }
+  const url = `${endpoint.baseURL}${path}`
+  try {
+    return await post(url, await headers(false), body, req.signal)
+  } catch (err) {
+    if (typeof endpoint.key === "string" || !(err instanceof ProviderError) || err.status !== 401) throw err
+    return post(url, await headers(true), body, req.signal)
+  }
+}
 
 /** The headers that identify ask and the conversation to a provider. */
 export function identity(req: Request): Record<string, string> {
@@ -106,6 +131,7 @@ export function decodeError(status: number, text: string, retryAfter?: number): 
     const e = typeof v.error === "object" && v.error ? v.error : v
     if (typeof e.message === "string" && e.message) message = e.message
     else if (typeof v.error === "string") message = v.error
+    else if (typeof v.detail === "string" && v.detail) message = v.detail
     code = String(e.code ?? e.type ?? "")
   } catch {
     if (text.trim()) message = `HTTP ${status}: ${text.trim().slice(0, 300)}`
@@ -182,8 +208,13 @@ export function withRetries(p: Provider, onRetry?: (attempt: number, err: Provid
   }
 }
 
-/** Errors reported inside a stream arrive with status 200 and are transient only by their code. */
+/**
+ * Errors reported inside a stream arrive with status 200 and are transient only by their code.
+ * A ChatGPT plan's usage errors pass only when they say usage couldn't be checked; a limit or
+ * an ineligible account won't change by retrying.
+ */
 function transient(e: ProviderError): boolean {
+  if (e.code.startsWith("subscription_sharing_")) return e.code.endsWith("_unavailable")
   if (e.status === 200) return /overloaded|server_error|rate_limit|timeout/i.test(e.code)
   return e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500
 }

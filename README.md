@@ -55,6 +55,10 @@ and gateways) or Anthropic's Messages API. Read-only means the subagent is given
 write or run a command. Each turn runs in a background worker and saves its transcript after
 every step, so a worker stopped partway resumes where it left off.
 
+Two more ways to reach a model need no API key: sign in with ChatGPT to use your Plus or Pro
+plan (`chatgpt/MODEL`), or run your own installed Claude Code with its own sign-in
+(`claude/MODEL`).
+
 <table>
   <tr>
     <td width="33%" valign="top">

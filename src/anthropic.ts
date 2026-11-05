@@ -4,7 +4,7 @@
 // every turn. Effort maps to a thinking budget. Anthropic has no response schema, so a
 // requested schema is stated in the system prompt instead.
 
-import { events, identity, post, ProviderError, type Call, type Endpoint, type Message, type Provider, type Response, type Usage } from "./provider.ts"
+import { events, send, ProviderError, type Call, type Endpoint, type Message, type Provider, type Response, type Usage } from "./provider.ts"
 
 const budgets: Record<string, number> = { minimal: 1024, low: 4096, medium: 16384, high: 32768 }
 
@@ -23,12 +23,7 @@ export function anthropic(endpoint: Endpoint): Provider {
       if (system) body.system = [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
       if (budget) body.thinking = { type: "enabled", budget_tokens: budget }
       if (req.tools.length) body.tools = req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }))
-      const res = await post(
-        `${endpoint.baseURL}/messages`,
-        { "x-api-key": endpoint.key, "anthropic-version": "2023-06-01", ...identity(req), ...endpoint.headers },
-        body,
-        req.signal,
-      )
+      const res = await send(endpoint, "/messages", (key) => ({ "x-api-key": key, "anthropic-version": "2023-06-01" }), req, body)
       return decode(res)
     },
   }

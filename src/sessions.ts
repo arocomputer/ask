@@ -41,8 +41,11 @@ export type Turn = {
   commits?: number
 }
 
-/** session.json. `worktree` is the checkout and branch a worktree task works on. */
-export type Record = { id: string; created: string; dir: string; worktree?: { path: string; branch: string }; turns: Turn[] }
+/**
+ * session.json. `worktree` is the checkout and branch a worktree task works on; `claude` the
+ * Claude Code session behind a claude/ session.
+ */
+export type Record = { id: string; created: string; dir: string; worktree?: { path: string; branch: string }; claude?: string; turns: Turn[] }
 
 export type Session = Record & { folder: string }
 

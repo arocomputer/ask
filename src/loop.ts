@@ -153,6 +153,16 @@ function elide(messages: Message[]): boolean {
 /** Turns a provider error into a failure with a next step. */
 function describe(err: unknown): Failure {
   if (!(err instanceof ProviderError)) return { message: (err as Error)?.message ?? String(err) }
+  switch (err.code) {
+    case "subscription_sharing_usage_limit_exceeded":
+      return { message: `your ChatGPT plan's usage limit for ask is reached: ${err.message}`, hint: "wait for it to reset, or raise ask's limit at https://chatgpt.com/settings/usage" }
+    case "subscription_sharing_user_not_eligible":
+      return { message: `this ChatGPT account or workspace can't use its plan here: ${err.message}`, hint: "use a provider with an API key instead, through ask settings" }
+    case "subscription_sharing_unsupported_capability":
+      return { message: `ChatGPT's plan route doesn't support part of this request: ${err.message}` }
+    case "subscription_sharing_invalid_user":
+      return { message: `ChatGPT didn't accept the sign-in: ${err.message}`, hint: "run ask settings to sign in to ChatGPT again" }
+  }
   if (overflowed(err)) return { message: `the conversation no longer fits the model's context: ${err.message}`, hint: "start a new session with a narrower task, or use a model with a larger context" }
   if (err.status === 401 || err.status === 403) return { message: `the provider rejected the credential: ${err.message}`, hint: "ask doctor checks the key; ask settings replaces it" }
   if (err.status === 429) return { message: `the provider is rate limiting or out of quota: ${err.message}`, hint: "wait and continue the session, or use another model" }

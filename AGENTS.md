@@ -33,8 +33,9 @@ bun src/cli.ts doctor                    # run this checkout (node src/cli.ts wo
 - Fewest moving parts. No runtime dependencies, no daemon, no configuration beyond what a change
   needs.
 - One word per file and folder; `.test` is the only suffix.
-- The engine imports only Node's built-ins and its own files, and names no particular coding
-  agent; `test/rules.test.ts` checks both.
+- The engine imports only Node's built-ins and its own files. The only coding agent it runs is
+  Claude Code, for `claude/` models, and how it runs it lives in `src/claude.ts` alone;
+  `test/rules.test.ts` checks these.
 - Grow by need: a new tool, request field or setting only when a real use needs it. New request
   fields are free; changing or removing one breaks every agent that uses it.
 - Document module purpose, public contracts and non-obvious reasons. Omit comments that repeat

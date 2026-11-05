@@ -8,6 +8,7 @@ import { find, providers, type Catalog } from "../catalog.ts"
 import { catalog, credential, readJSON, type Auth, type Config, type Home } from "../home.ts"
 import { alive, latest, list } from "../sessions.ts"
 import { ago, spinner, style } from "../term.ts"
+import { status } from "../claude.ts"
 import { check } from "./settings.ts"
 
 export const summary = "Check that ask can run tasks"
@@ -54,7 +55,14 @@ export async function run(h: Home): Promise<number> {
         const m = find(c, cfg.model)
         add({ mark: "ok", name: "Model", detail: cfg.model })
         const cred = credential(h, m.provider, m.env)
-        if (!cred) add({ mark: "fail", name: "Key", detail: `no key for ${m.provider}`, fix: "ask settings" })
+        if (m.protocol === "claude") {
+          const s = status()
+          add(
+            s.signedIn
+              ? { mark: "ok", name: "Key", detail: `Claude Code ${s.version ?? ""} is signed in${s.method ? ` (${s.method})` : ""}`.replace("  ", " ") }
+              : { mark: "fail", name: "Key", detail: s.installed ? "Claude Code isn't signed in" : "Claude Code isn't installed", fix: s.installed ? "run claude and sign in with /login" : "install it from https://claude.com/claude-code" },
+          )
+        } else if (!cred) add({ mark: "fail", name: "Key", detail: `no key for ${m.provider}`, fix: "ask settings" })
         else {
           const sp = spinner(`Checking the ${c[m.provider].name} key`)
           const problem = await check(m, cred.key, readJSON<Auth>(h.auth, {})[m.provider]?.base_url)

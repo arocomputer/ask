@@ -29,9 +29,9 @@ export function split(data: string): string[] {
 
 /**
  * Reads keys in raw mode, one at a time even when they arrive together (a paste, or a slow
- * link), until `onKey` returns true; Ctrl-C exits with 130.
+ * link), until `onKey` returns true or `signal` aborts; Ctrl-C exits with 130.
  */
-function keys(onKey: (key: string) => boolean | void): Promise<void> {
+function keys(onKey: (key: string) => boolean | void, signal?: AbortSignal): Promise<void> {
   const stdin = process.stdin
   return new Promise((done) => {
     stdin.setRawMode(true)
@@ -55,6 +55,14 @@ function keys(onKey: (key: string) => boolean | void): Promise<void> {
       stdin.setRawMode(false)
       stdin.pause()
     }
+    signal?.addEventListener(
+      "abort",
+      () => {
+        cleanup()
+        done()
+      },
+      { once: true },
+    )
     stdin.on("data", handler)
   })
 }
@@ -213,6 +221,25 @@ export async function input(text: string, initial = ""): Promise<string> {
   const result = value.trim() || initial
   screen.settle(answered(text, result))
   return result
+}
+
+/**
+ * Asks for a line of text, shown as it is typed or pasted. Resolves to undefined when `signal`
+ * aborts first, leaving `done` as the answer on screen.
+ */
+export async function line(text: string, signal: AbortSignal, done: string): Promise<string | undefined> {
+  const screen = canvas()
+  let value = ""
+  const render = () => screen.draw([`${question(text)} ${value}`])
+  render()
+  await keys((k) => {
+    if (k === "\r" || k === "\n") return value.trim().length > 0 || undefined
+    if (k === "\x7f" || k === "\b") value = value.slice(0, -1)
+    else if (!k.startsWith("\x1b") && k >= " ") value += k
+    render()
+  }, signal)
+  screen.settle(answered(text, signal.aborted ? done : "pasted"))
+  return signal.aborted ? undefined : value.trim()
 }
 
 /** Asks yes or no. */

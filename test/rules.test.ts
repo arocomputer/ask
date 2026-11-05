@@ -23,9 +23,11 @@ describe("rules", () => {
     assert.deepEqual(outside, [])
   })
 
-  test("the engine names no particular coding agent", () => {
-    const named = files.filter(({ text }) => /\b(Claude Code|Claude|Codex|Cursor|Copilot|Aider|Gemini CLI|claude|codex)\b/.test(text)).map((f) => f.name)
-    assert.deepEqual(named, [])
+  test("the engine names no coding agent but Claude Code, and runs that only from claude.ts", () => {
+    const others = files.filter(({ text }) => /\b(Codex|Cursor|Copilot|Aider|Gemini CLI|codex)\b/.test(text)).map((f) => f.name)
+    assert.deepEqual(others, [])
+    const runs = files.filter(({ name, text }) => name !== "src/claude.ts" && /--session-id|--resume|disableAllHooks|stream-json/.test(text)).map((f) => f.name)
+    assert.deepEqual(runs, [])
   })
 
   test("every module says what it is for", () => {

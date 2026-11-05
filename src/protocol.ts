@@ -188,6 +188,11 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
         delete last.retry
       }
       const target = await chosen(h, t.model ?? last.model)
+      if (target.startsWith("claude/") !== last.model.startsWith("claude/"))
+        throw new Invalid(
+          `${s.id} runs ${last.model.startsWith("claude/") ? "in Claude Code" : "in ask's own loop"}, and its conversation can't move ${target.startsWith("claude/") ? "into Claude Code" : "out of Claude Code"}`,
+          "start a new task with that model",
+        )
       s.turns.push({
         prompt: t.prompt,
         model: target,

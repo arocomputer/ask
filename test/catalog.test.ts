@@ -3,7 +3,7 @@ import { mkdtempSync, utimesSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
-import { find, load, type Catalog } from "../src/catalog.ts"
+import { find, load, usable, type Catalog } from "../src/catalog.ts"
 
 const catalog: Catalog = {
   "opencode-go": {
@@ -14,6 +14,7 @@ const catalog: Catalog = {
     api: "https://opencode.ai/inference/go/openai/v1",
     models: {
       "glm-5.3": { id: "glm-5.3", name: "GLM 5.3" },
+      "beam-free": { id: "beam-free", name: "Beam Free", cost: { input: 0, output: 0 } },
       "minimax-m3": { id: "minimax-m3", name: "MiniMax M3", provider: { npm: "@ai-sdk/anthropic", api: "https://opencode.ai/inference/go/anthropic/v1" } },
     },
   },
@@ -27,6 +28,11 @@ describe("catalog", () => {
     assert.equal(m.protocol, "anthropic")
     assert.equal(m.baseURL, "https://opencode.ai/inference/go/anthropic/v1")
     assert.equal(find(catalog, "openai/gpt-5.5").baseURL, "https://api.openai.com/v1")
+  })
+
+  test("OpenCode's free-tier models, which answer 403 outside OpenCode, aren't offered", () => {
+    assert.throws(() => find(catalog, "opencode-go/beam-free"), /free only inside OpenCode/)
+    assert.deepEqual(usable(catalog, "opencode-go").map((m) => m.id), ["glm-5.3", "minimax-m3"])
   })
 
   test("a model named without its provider gets a suggestion", () => {

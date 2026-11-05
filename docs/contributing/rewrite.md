@@ -93,7 +93,9 @@ variants, not by argument.
 4. **Lock.** Done: worktree tasks, change tracking that counts commits, the Go tests' intent
    ported, the project's rules as a test, the Go tree removed, CI and release on Node and Bun,
    an npm package, and the docs, AGENTS.md and changelog rewritten.
-5. **Sign-ins.** Researched 2026-11-05; design below, not built.
+5. **Sign-ins and Claude Code.** Built as designed below, tested against a fake OpenAI and a
+   fake `claude`. Still to confirm with one real ChatGPT sign-in: how namespaced tool calls come
+   back, and whether encrypted reasoning is accepted on the plan route.
 
 ## Phase 5: sign-ins
 
@@ -159,6 +161,30 @@ Plus or Pro plan. This replaces copying Codex's login, which we never do.
   whether `include: ["reasoning.encrypted_content"]` is accepted on this route.
 - **Left out for now:** several ChatGPT accounts at once (sign out to switch), and importing a
   credential file from another machine.
+
+### Claude Code: run the user's own, as `claude/MODEL`
+
+Anthropic's terms (code.claude.com/docs/en/legal-and-compliance) allow running the unmodified
+Claude Code binary with the user's own sign-in, and forbid collecting, storing or relaying
+Claude credentials, or offering Claude.ai login in another product; developers building on the
+Agent SDK are asked to use API keys. So `claude/` runs the `claude` the user installed, signed in
+its own way, and ask never touches its credentials; `anthropic/` stays ask's own loop with an API
+key. OpenCode does the same through Anthropic's Agent SDK, which drives the same binary; ask
+starts the CLI directly, to keep zero dependencies.
+
+- **Controls,** all documented: `--settings '{"disableAllHooks":true}'`, `--strict-mcp-config`
+  with an empty config, `--disable-slash-commands`, `--setting-sources user`,
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`. Never `--bare`,
+  which would refuse the subscription sign-in.
+- **Read-only:** `--tools Read,Grep,Glob`, the same as allowed tools, Bash and the edit tools
+  disallowed, and the manual permission mode, so anything else is refused; git without optional
+  locks or fsmonitor. Checked live: a request to write a file was refused. **Write:** the full
+  tool set with `bypassPermissions`.
+- **Sessions:** one Claude session per ask session, `--session-id` then `--resume`; a turn whose
+  Claude session was never saved starts it afresh. A session can't move between Claude Code and
+  ask's loop.
+- **Steps:** the stream's tool calls become ask's steps (Read → read, Bash → shell), saved after
+  each, with paths relative to the task's folder.
 
 ## Not now
 

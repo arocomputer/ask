@@ -99,5 +99,7 @@ function encode(protocol: Protocol, r: Reply, turn: number): [string, object][] 
         ["message_stop", { type: "message_stop" }],
       ]
     }
+    case "claude":
+      return []
   }
 }

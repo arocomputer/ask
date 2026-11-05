@@ -3,9 +3,13 @@
 // items so they replay across turns; only OpenAI's own endpoint returns them, and a gateway's
 // bare reasoning items are dropped, since sending them back fails.
 
-import { events, identity, post, ProviderError, type Call, type Endpoint, type Message, type Provider, type Response } from "./provider.ts"
+import { events, send, ProviderError, type Call, type Endpoint, type Message, type Provider, type Response } from "./provider.ts"
 
-export function responses(endpoint: Endpoint, reasoning = false): Provider {
+/**
+ * A Responses client. With `namespace`, the tools are offered grouped under that name, as
+ * ChatGPT's plan route requires.
+ */
+export function responses(endpoint: Endpoint, reasoning = false, namespace?: string): Provider {
   return {
     async complete(req) {
       const body: Record<string, unknown> = {
@@ -17,10 +21,12 @@ export function responses(endpoint: Endpoint, reasoning = false): Provider {
       if (req.instructions) body.instructions = req.instructions
       if (reasoning) body.include = ["reasoning.encrypted_content"]
       if (req.effort) body.reasoning = { effort: req.effort }
-      if (req.tools.length)
-        body.tools = req.tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.parameters }))
+      if (req.tools.length) {
+        const functions = req.tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.parameters }))
+        body.tools = namespace ? [{ type: "namespace", name: namespace, description: "Tools for working in the task's folder.", tools: functions }] : functions
+      }
       if (req.schema) body.text = { format: { type: "json_schema", name: "answer", schema: req.schema } }
-      const res = await post(`${endpoint.baseURL}/responses`, { authorization: `Bearer ${endpoint.key}`, ...identity(req), ...endpoint.headers }, body, req.signal)
+      const res = await send(endpoint, "/responses", (key) => ({ authorization: `Bearer ${key}` }), req, body)
       return decode(res)
     },
   }
@@ -41,6 +47,11 @@ function encode(m: Message): unknown[] {
   }
 }
 
+/** A tool's own name, whether a namespaced call reports it as "ask.read" or plain "read". */
+function bare(name: string): string {
+  return name.replace(/^[A-Za-z0-9_-]+[.:/]/, "")
+}
+
 async function decode(res: globalThis.Response): Promise<Response> {
   const items: any[] = []
   const calls: Call[] = []
@@ -51,7 +62,7 @@ async function decode(res: globalThis.Response): Promise<Response> {
         const item = data.item
         if (!item || (item.type === "reasoning" && !item.encrypted_content)) break
         items.push(item)
-        if (item.type === "function_call") calls.push({ id: item.call_id, name: item.name, arguments: item.arguments ?? "" })
+        if (item.type === "function_call") calls.push({ id: item.call_id, name: bare(item.name ?? ""), arguments: item.arguments ?? "" })
         if (item.type === "message")
           for (const c of item.content ?? []) if (c.type === "output_text") text += c.text
         break

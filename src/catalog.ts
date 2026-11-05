@@ -7,7 +7,7 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
 import { anthropic } from "./anthropic.ts"
 import { chat } from "./chat.ts"
-import type { Protocol, Provider } from "./provider.ts"
+import type { Key, Protocol, Provider } from "./provider.ts"
 import { responses } from "./responses.ts"
 
 export const source = "https://models.dev/api.json"
@@ -31,7 +31,7 @@ type ModelEntry = {
   tool_call?: boolean
   reasoning?: boolean
   limit?: { context?: number; output?: number }
-  cost?: { input?: number }
+  cost?: { input?: number; output?: number }
   provider?: { npm?: string; api?: string }
 }
 
@@ -53,6 +53,17 @@ const endpoints: Record<string, string> = {
   "@ai-sdk/openai": "https://api.openai.com/v1",
   "@ai-sdk/anthropic": "https://api.anthropic.com/v1",
 }
+
+/**
+ * OpenCode's free-tier models, the ones priced at zero, work only inside OpenCode: other tools
+ * get HTTP 403 even with a key (opencode.ai/v2/docs/console/harnesses).
+ */
+function freeOnlyInOpenCode(provider: string, m: ModelEntry): boolean {
+  return (provider === "opencode" || provider === "opencode-go") && m.cost?.input === 0 && m.cost?.output === 0
+}
+
+/** The marker ask gives its "claude" provider: the user's Claude Code, not an HTTP API. */
+export const claudeCode = "claude-code"
 
 /** SDKs whose providers don't speak any of ask's three protocols. */
 const foreign = /^@ai-sdk\/(google|google-vertex|azure|amazon-bedrock|gateway)$/
@@ -112,11 +123,14 @@ export function find(catalog: Catalog, name: string): Model {
   const pid = name.slice(0, slash)
   const mid = name.slice(slash + 1)
   const p = catalog[pid]
+  if (!p && pid === "claude") throw new Error("claude/ models run your installed Claude Code, and it isn't installed; get it from https://claude.com/claude-code")
   if (!p) throw new Error(`no provider ${pid} in the catalog; ask models lists them`)
   const m = p.models[mid]
   if (!m) throw new Error(`${pid} has no model ${mid}; ask models ${pid} lists its models`)
   if (m.tool_call === false) throw new Error(`${name} can't call tools, so it can't work as a subagent`)
+  if (freeOnlyInOpenCode(pid, m)) throw new Error(`${name} is free only inside OpenCode, and answers 403 to other tools; choose a paid or Go model`)
   const npm = m.provider?.npm ?? p.npm ?? ""
+  if (npm === claudeCode) return { provider: pid, id: mid, name: m.name, protocol: "claude", baseURL: "", env: [], reasoning: true }
   const baseURL = (m.provider?.api ?? p.api ?? endpoints[npm] ?? "").replace(/\/+$/, "")
   const protocol: Protocol = npm === "@ai-sdk/openai" ? "responses" : npm === "@ai-sdk/anthropic" ? "anthropic" : "chat"
   if (foreign.test(npm) || !baseURL) throw new Error(`${name} needs ${npm || "an SDK"}, which ask doesn't speak yet`)
@@ -136,7 +150,10 @@ export function find(catalog: Catalog, name: string): Model {
 /** A provider ask can talk to, with how many of its models can work as subagents. */
 export type ProviderInfo = { id: string; name: string; models: number; env: string[]; doc?: string }
 
-/** The models of one provider that ask can use, by name. */
+/**
+ * The models of one provider that ask can use, by name; ask's own providers keep their order,
+ * which means something there (Claude Code's aliases first, ChatGPT's models as OpenAI lists them).
+ */
 export function usable(catalog: Catalog, provider: string): Model[] {
   const p = catalog[provider]
   if (!p) return []
@@ -146,7 +163,7 @@ export function usable(catalog: Catalog, provider: string): Model[] {
       out.push(find(catalog, `${provider}/${id}`))
     } catch {}
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name))
+  return provider === "claude" || provider === "chatgpt" ? out : out.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** Every provider with at least one usable model, by name. */
@@ -163,15 +180,21 @@ export function cheapest(catalog: Catalog, provider: string): Model | undefined 
   return usable(catalog, provider).sort((a, b) => price(a) - price(b))[0]
 }
 
-/** Opens a provider client for a model with a credential; `baseURL` overrides the catalog's. */
-export function connect(model: Model, key: string, baseURL?: string): Provider {
+/**
+ * Opens a provider client for a model with a credential; `baseURL` overrides the catalog's.
+ * ChatGPT's plan route wants function tools grouped in a namespace.
+ */
+export function connect(model: Model, key: Key, baseURL?: string): Provider {
   const endpoint = { baseURL: (baseURL ?? model.baseURL).replace(/\/+$/, ""), key }
+  const plan = model.provider === "chatgpt"
   switch (model.protocol) {
     case "responses":
-      return responses(endpoint, endpoint.baseURL === endpoints["@ai-sdk/openai"])
+      return responses(endpoint, plan || endpoint.baseURL === endpoints["@ai-sdk/openai"], plan ? "ask" : undefined)
     case "anthropic":
       return anthropic(endpoint)
     case "chat":
       return chat(endpoint)
+    case "claude":
+      throw new Error("claude/ models run through Claude Code, not a provider client")
   }
 }

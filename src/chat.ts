@@ -1,7 +1,7 @@
 // The OpenAI chat completions protocol, the one most providers and gateways serve. Streamed;
 // tool calls arrive as fragments keyed by index and are joined here.
 
-import { events, identity, post, ProviderError, type Call, type Endpoint, type Message, type Provider, type Response } from "./provider.ts"
+import { events, send, ProviderError, type Call, type Endpoint, type Message, type Provider, type Response } from "./provider.ts"
 
 export function chat(endpoint: Endpoint): Provider {
   return {
@@ -17,7 +17,7 @@ export function chat(endpoint: Endpoint): Provider {
       if (req.tools.length)
         body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }))
       if (req.schema) body.response_format = { type: "json_schema", json_schema: { name: "answer", schema: req.schema } }
-      const res = await post(`${endpoint.baseURL}/chat/completions`, { authorization: `Bearer ${endpoint.key}`, ...identity(req), ...endpoint.headers }, body, req.signal)
+      const res = await send(endpoint, "/chat/completions", (key) => ({ authorization: `Bearer ${key}` }), req, body)
       return decode(res)
     },
   }

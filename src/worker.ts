@@ -3,6 +3,7 @@
 // its pid as the session's lock. Either way the transcript is saved after every step, the
 // record says `retrying` while a provider is being retried, and a write turn lists what it
 // changed. A turn whose prompt is already in the transcript is resumed from where it stopped.
+// A claude/ turn runs through the user's Claude Code (claude.ts) instead of ask's own loop.
 
 import { spawn } from "node:child_process"
 import { closeSync, openSync } from "node:fs"
@@ -11,8 +12,9 @@ import { fileURLToPath } from "node:url"
 import { connect } from "./catalog.ts"
 import { changes, snapshot } from "./git.ts"
 import { resolve, type Home } from "./home.ts"
+import { runClaude } from "./claude.ts"
 import { run } from "./loop.ts"
-import { withRetries } from "./provider.ts"
+import { withRetries, type Message, type Usage } from "./provider.ts"
 import { latest, lock, now, save, saveTranscript, transcript, unlock, worker, type Session } from "./sessions.ts"
 
 /** Starts a detached worker for the session's latest turn and records it as the lock. */
@@ -66,16 +68,17 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     return finish()
   }
   const before = t.write ? snapshot(s.dir) : undefined
-  const provider = withRetries(connect(target.model, target.key, target.baseURL), (attempt, err) => {
-    t.state = "retrying"
-    t.retry = `${err.message} (attempt ${attempt})`
-    save(s)
-  })
   const timeout = AbortSignal.timeout(t.timeout * 1000)
   const messages = transcript(s)
   const resuming = messages.filter((m) => m.role === "user").length >= s.turns.length
-  const r = await run({
-    provider,
+  const onUpdate = (messages: Message[], usage: Usage) => {
+    saveTranscript(s, messages)
+    t.state = "running"
+    delete t.retry
+    t.usage = usage
+    save(s)
+  }
+  const common = {
     model: target.model.id,
     dir: s.dir,
     prompt: resuming ? undefined : t.prompt,
@@ -83,17 +86,29 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     write: t.write,
     effort: t.effort,
     schema: t.schema,
-    maxOutput: target.model.output,
-    session: s.id,
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    onUpdate(messages, usage) {
-      saveTranscript(s, messages)
-      t.state = "running"
-      delete t.retry
-      t.usage = usage
-      save(s)
-    },
-  })
+    onUpdate,
+  }
+  const r =
+    target.model.protocol === "claude"
+      ? await runClaude({
+          ...common,
+          session: s.claude,
+          onSession(id) {
+            s.claude = id
+            save(s)
+          },
+        })
+      : await run({
+          ...common,
+          provider: withRetries(connect(target.model, target.key, target.baseURL), (attempt, err) => {
+            t.state = "retrying"
+            t.retry = `${err.message} (attempt ${attempt})`
+            save(s)
+          }),
+          maxOutput: target.model.output,
+          session: s.id,
+        })
   saveTranscript(s, r.messages)
   t.usage = r.usage
   t.steps = r.steps
@@ -104,7 +119,7 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     t.state = "stopped"
   } else if (timeout.aborted) {
     t.state = "failed"
-    t.error = { message: `timed out after ${t.timeout} seconds`, hint: "continue the session to let it go on, or pass a longer --timeout" }
+    t.error = { message: `timed out after ${t.timeout} seconds`, hint: "continue the session to let it go on, or give the task a longer timeout" }
   } else {
     t.state = "failed"
     t.error = r.error
