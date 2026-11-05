@@ -18,7 +18,7 @@ import { latest, lock, now, save, saveTranscript, transcript, unlock, worker, ty
 /** Starts a detached worker for the session's latest turn and records it as the lock. */
 export function launch(s: Session) {
   lock(s)
-  const script = fileURLToPath(new URL("./cli.ts", import.meta.url))
+  const script = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "./cli.ts" : "./cli.js", import.meta.url))
   const args = script.startsWith("/$bunfs") ? [] : [script]
   const out = openSync(join(s.folder, "log"), "a", 0o600)
   const child = spawn(process.execPath, [...args, "__worker", s.folder], { detached: true, stdio: ["ignore", out, out] })

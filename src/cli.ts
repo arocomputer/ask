@@ -1,13 +1,16 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 // The ask command. Agents send one JSON request on stdin and read one JSON response on stdout
 // (see protocol.ts). People run the commands below. Help pages share one layout: what the
 // command does, then USAGE, FLAGS, INHERITED FLAGS, EXAMPLES and LEARN MORE, titles in bold.
 // Exit status: 0 handled, 1 failed, 2 a request or command ask can't carry out.
 
+import { realpathSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { home } from "./home.ts"
 import { guide, handle } from "./protocol.ts"
 import { open } from "./sessions.ts"
 import { style } from "./term.ts"
+import { version } from "./version.ts"
 import { main as worker } from "./worker.ts"
 import * as doctor from "./cmd/doctor.ts"
 import * as models from "./cmd/models.ts"
@@ -16,7 +19,6 @@ import * as settings from "./cmd/settings.ts"
 import * as show from "./cmd/show.ts"
 import { Usage, type Command } from "./cmd/usage.ts"
 
-export const version = "3.0.0-dev"
 
 const commands: Record<string, Command> = { settings, doctor, models, sessions, show }
 
@@ -146,7 +148,17 @@ function unknown(name: string, what: string): number {
   return 2
 }
 
-if (import.meta.main ?? process.argv[1] === new URL(import.meta.url).pathname) {
+/** True when this file is what was run, even through a symlink like npm's bin link. */
+function entry(): boolean {
+  if (typeof import.meta.main === "boolean") return import.meta.main
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+  } catch {
+    return false
+  }
+}
+
+if (entry()) {
   main(process.argv.slice(2)).then(
     (code) => (process.exitCode = code),
     (err) => {

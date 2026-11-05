@@ -3,6 +3,8 @@
 // server-sent-events reader they share, provider errors and the retry policy. It knows nothing
 // about sessions; the loop owns the conversation.
 
+import { version } from "./version.ts"
+
 /** One entry of a conversation, independent of the protocol that produced it. */
 export type Message =
   | { role: "user"; text: string }
@@ -70,7 +72,7 @@ export type Endpoint = { baseURL: string; key: string; headers?: Record<string, 
 
 /** The headers that identify ask and the conversation to a provider. */
 export function identity(req: Request): Record<string, string> {
-  return { "user-agent": "ask/3", ...(req.session ? { "x-opencode-session": req.session } : {}) }
+  return { "user-agent": `ask/${version}`, ...(req.session ? { "x-opencode-session": req.session } : {}) }
 }
 
 /** POSTs a JSON body and returns the streaming response, or throws the provider's error. */

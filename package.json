@@ -1,6 +1,6 @@
 {
   "name": "@arocomputer/ask",
-  "version": "3.0.0-dev",
+  "version": "0.4.0-dev",
   "description": "Hand tasks to subagents",
   "license": "MIT",
   "type": "module",
@@ -8,12 +8,24 @@
   "engines": {
     "node": ">=24"
   },
-  "exports": {
-    ".": "./src/index.ts"
+  "bin": {
+    "ask": "dist/src/cli.js"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "dist/package.json"
+  ],
   "scripts": {
     "check": "tsc",
-    "test": "node --test 'test/*.test.ts' && bun test ./test/"
+    "test": "node --test 'test/*.test.ts' && bun test ./test/",
+    "build": "rm -rf dist && tsc --noEmit false --declaration --rewriteRelativeImportExtensions --outDir dist --rootDir .",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

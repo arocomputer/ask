@@ -67,7 +67,7 @@ export async function run(h: Home): Promise<number> {
     }
   }
 
-  const cli = fileURLToPath(new URL("../cli.ts", import.meta.url))
+  const cli = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../cli.ts" : "../cli.js", import.meta.url))
   const args = cli.startsWith("/$bunfs") ? ["--version"] : [cli, "--version"]
   const started = await output(process.execPath, args)
   add(started?.startsWith("ask ") ? { mark: "ok", name: "Worker", detail: "background tasks can start" } : { mark: "fail", name: "Worker", detail: `${process.execPath} can't run ask`, fix: "reinstall ask" })
