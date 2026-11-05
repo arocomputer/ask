@@ -37,13 +37,15 @@ variants, not by argument.
   The library's `handle` takes the same object, and MCP will wrap it later. `ask help requests`
   documents it; `protocol.ts` defines it.
 - **The command line is only for people, and small:** `ask settings` (the one interactive
-  command: its first run sets ask up, later runs open a menu for the default model, chosen
-  models, providers and their keys, and the timeout), `ask doctor` (checks runtime, home,
+  command: its first run adds a provider, its key, models and default; later runs ask what to
+  change, do it and exit), `ask doctor` (checks runtime, home,
   catalog, model, key, worker and git, with a fix for each failure), `ask models`,
   `ask sessions`, `ask show`. Settings live in `config.json` and `auth.json`, editable by hand,
   or a provider's environment variable.
-- **One list control** for every choice: a title with the list's size, a `> search` line that
-  narrows it as you type, a scrolling window, and a key line; model lists toggle with a Save row.
+- **Prompts are drawn as gh draws them** (its survey prompter): one `? Question` line with
+  typed filter text after it and key help in brackets, a page of seven options with `> ` on
+  the focused one, `[x]` toggles with Enter to finish, and each answered prompt collapses to
+  `? Question Answer`, leaving a readable record. No titles, menus that loop, or footers.
 - **Looks like gh:** text in the terminal's own color, bold for headers and the subject of a
   line, gray for details, green ✓ / red X / yellow * only on state symbols, cyan only for what a
   prompt has selected. Color and prompts only on a terminal, honoring `NO_COLOR`; piped tables

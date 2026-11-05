@@ -1,10 +1,9 @@
-// Interactive prompts on a terminal. They draw on stderr so stdout stays clean, and only work
-// when stdin and stderr are terminals; callers check `interactive()` first.
-//
-// `pick` is the one list control: a title with the list's size, a "> search" line that
-// narrows the list as you type, a scrolling window of items, and a key line at the bottom.
-// With `multi`, items toggle on and off and a Save row ends the choice. Esc clears the search,
-// or goes back when the search is empty.
+// Interactive prompts on a terminal, drawn the way gh draws them (its survey prompter): one
+// question line, "? Which provider?", with typed filter text after it and short key help in
+// brackets; a page of seven options with the focused one marked "> "; and once answered, the
+// prompt collapses to "? Which provider? OpenCode Go", which stays on screen as a record.
+// They draw on stderr so stdout stays clean, and only work when stdin and stderr are
+// terminals; callers check `interactive()` first.
 
 import { style, truncate, width } from "./term.ts"
 
@@ -60,174 +59,175 @@ function keys(onKey: (key: string) => boolean | void): Promise<void> {
   })
 }
 
-/** Redraws a block of lines in place on stderr. */
+/** Redraws a block of lines in place on stderr, each cut to the terminal's width. */
 function canvas() {
   let drawn = 0
   return {
     draw(lines: string[]) {
       const cols = (process.stderr.columns || 80) - 1
       const fitted = lines.map((l) => (width(l) > cols ? truncate(l.replace(/\x1b\[[0-9;]*m/g, ""), cols) : l))
-      process.stderr.write((drawn ? `\x1b[${drawn}A\r` : "") + "\x1b[J" + fitted.join("\n") + "\n")
+      process.stderr.write((drawn ? `\x1b[${drawn}A\r` : "\r") + "\x1b[J" + fitted.join("\n") + "\n")
       drawn = fitted.length
     },
-    clear() {
-      if (drawn) process.stderr.write(`\x1b[${drawn}A\r\x1b[J`)
+    /** Replaces the block with the answered question. */
+    settle(line: string) {
+      process.stderr.write((drawn ? `\x1b[${drawn}A\r` : "\r") + "\x1b[J" + line + "\n\x1b[?25h")
       drawn = 0
     },
   }
 }
 
-export type PickOptions<T> = {
-  /** Shown at the top with the list's size: "Providers · 235". */
-  title: string
-  items: Item<T>[]
-  /** Where the cursor starts. */
-  start?: number
-  /** Toggle items on and off; resolves to the chosen values when Save is picked. */
-  multi?: boolean
-  /** Values chosen at the start, with multi. */
-  chosen?: T[]
-  /** How many rows of items to show at once. */
-  rows?: number
-  /** False for a short menu: no count and no search line. */
-  search?: boolean
+const page = 7
+
+function question(text: string): string {
+  const st = style(process.stderr)
+  return `${st.bold(st.green("?"))} ${st.bold(text)}`
 }
 
-/** Asks for one item, or with `multi` a set of them. Resolves to undefined when the user goes back. */
-export async function pick<T>(o: PickOptions<T> & { multi?: false }): Promise<T | undefined>
-export async function pick<T>(o: PickOptions<T> & { multi: true }): Promise<T[] | undefined>
-export async function pick<T>(o: PickOptions<T>): Promise<T | T[] | undefined> {
+/** The question line with its key help after it, or on the next line when both don't fit. */
+function asking(text: string, query: string, help: string): string[] {
   const st = style(process.stderr)
+  const line = `${question(text)}${query ? ` ${query}` : ""}`
+  const bracket = st.cyan(`[${help}]`)
+  return width(line) + 2 + help.length + 2 < (process.stderr.columns || 80) ? [`${line}  ${bracket}`] : [line, `  ${bracket}`]
+}
+
+function answered(text: string, answer: string): string {
+  return `${question(text)} ${style(process.stderr).cyan(answer)}`
+}
+
+/** A page of options around the cursor, the focused one marked "> " in cyan. */
+function options<T>(shown: Item<T>[], cursor: number, mark?: (item: Item<T>) => string): string[] {
+  const st = style(process.stderr)
+  const top = Math.max(0, Math.min(cursor - page + 1, shown.length - page))
+  return shown.slice(top, top + page).map((o, i) => {
+    const here = top + i === cursor
+    const hint = o.hint ? st.gray(` - ${o.hint}`) : ""
+    return `${here ? st.cyan(">") : " "}${mark ? ` ${mark(o)}` : ""} ${o.label}${hint}`
+  })
+}
+
+/** Asks for one of the items. Typing filters them; Enter picks the focused one. */
+export async function select<T>(text: string, items: Item<T>[], start = 0): Promise<T> {
   const screen = canvas()
-  const rows = Math.min(o.items.length || 1, o.rows ?? Math.max(4, Math.min(10, (process.stderr.rows || 24) - 8)))
-  const scrolls = o.items.length > rows
-  const searchable = o.search ?? true
-  const chosen = new Set<T>(o.chosen ?? [])
-  const labelWidth = Math.min(32, Math.max(0, ...o.items.map((i) => width(i.label))))
   let query = ""
-  let cursor = o.start ?? 0
-  let shown = o.items
-  const onSave = () => o.multi && cursor === shown.length
-
+  let cursor = start
+  let shown = items
   const render = () => {
-    shown = filter(o.items, query)
-    cursor = Math.min(cursor, o.multi ? shown.length : Math.max(0, shown.length - 1))
-    const count = query ? `${shown.length} of ${o.items.length}` : `${o.items.length}`
-    const lines = [searchable ? `${st.bold(o.title)}${st.gray(` · ${count}`)}` : st.bold(o.title)]
-    if (searchable) lines.push(query ? `${st.gray(">")} ${query}` : st.gray("> search"))
-    const at = Math.min(cursor, shown.length - 1)
-    const top = Math.max(0, Math.min(at - Math.floor(rows / 2), shown.length - rows))
-    if (scrolls) lines.push(top > 0 ? st.gray(`  ↑ ${top} more`) : "")
-    for (let i = top; i < Math.min(shown.length, top + rows); i++) {
-      const item = shown[i]
-      const here = i === cursor
-      const box = o.multi ? (chosen.has(item.value) ? st.cyan("[x] ") : st.gray("[ ] ")) : ""
-      const label = item.label + " ".repeat(Math.max(0, labelWidth - width(item.label)))
-      lines.push(`${here ? st.cyan("›") : " "} ${box}${here ? st.bold(label) : label}  ${st.gray(item.hint ?? "")}`.trimEnd())
-    }
-    if (!shown.length) lines.push(st.gray("  No matches"))
-    for (let i = Math.max(shown.length, 1); i < rows; i++) lines.push("")
-    const below = shown.length - top - rows
-    if (scrolls) lines.push(below > 0 ? st.gray(`  ↓ ${below} more`) : "")
-    if (o.multi) {
-      const note = st.gray(` · ${chosen.size} selected`)
-      lines.push(onSave() ? `${st.cyan("›")} ${st.bold(st.cyan("Save"))}${note}` : `  ${st.cyan("Save")}${note}`)
-    }
-    lines.push(st.gray(o.multi ? "↑↓ move · space select · tab save · esc back" : "↑↓ move · enter choose · esc back"))
-    screen.draw(lines)
+    shown = filter(items, query)
+    cursor = Math.max(0, Math.min(cursor, shown.length - 1))
+    screen.draw([...asking(text, query, "Use arrows to move, type to filter"), ...options(shown, cursor)])
   }
-
-  let result: T | T[] | undefined
+  let picked: Item<T> | undefined
   process.stderr.write("\x1b[?25l")
   render()
   await keys((k) => {
-    const last = o.multi ? shown.length : shown.length - 1
-    if (k === "\x1b[A") cursor = cursor <= 0 ? last : cursor - 1
-    else if (k === "\x1b[B") cursor = cursor >= last ? 0 : cursor + 1
-    else if (k === "\x1b[5~") cursor = Math.max(0, cursor - rows)
-    else if (k === "\x1b[6~") cursor = Math.min(last, cursor + rows)
-    else if (k === "\t" && o.multi) cursor = shown.length
-    else if (k === "\x1b") {
-      if (!query) return true
-      query = ""
-      cursor = 0
-    } else if (k === "\r" || k === "\n" || (k === " " && o.multi && !query)) {
-      if (o.multi) {
-        if (onSave()) {
-          result = o.items.map((i) => i.value).filter((v) => chosen.has(v))
-          return true
-        }
-        const v = shown[cursor]?.value
-        if (v !== undefined) chosen.has(v) ? chosen.delete(v) : chosen.add(v)
-      } else if (shown[cursor]) {
-        result = shown[cursor].value
-        return true
-      }
-    } else if (k === "\x7f" || k === "\b") {
-      query = query.slice(0, -1)
-      cursor = 0
-    } else if (searchable && !k.startsWith("\x1b") && k >= " ") {
-      query += k.replace(/[\r\n\t]/g, "")
+    if (k === "\r" || k === "\n") {
+      if (!shown.length) return
+      picked = shown[cursor]
+      return true
+    }
+    if (k === "\x1b[A" || k === "\x10") cursor = cursor > 0 ? cursor - 1 : shown.length - 1
+    else if (k === "\x1b[B" || k === "\x0e") cursor = cursor < shown.length - 1 ? cursor + 1 : 0
+    else if (k === "\x1b") query = ""
+    else if (k === "\x7f" || k === "\b") query = query.slice(0, -1)
+    else if (!k.startsWith("\x1b") && k >= " ") {
+      query += k
       cursor = 0
     }
     render()
   })
-  screen.clear()
-  process.stderr.write("\x1b[?25h")
-  return result
+  screen.settle(answered(text, picked!.label))
+  return picked!.value
 }
 
-/** Asks for a secret without showing it; a pasted value with a trailing newline ends the entry. */
-export async function secret(question: string): Promise<string> {
+/** Asks for any number of the items. Space toggles, right arrow picks all, left none, Enter finishes. */
+export async function multi<T>(text: string, items: Item<T>[], chosen: T[] = []): Promise<T[]> {
   const st = style(process.stderr)
-  process.stderr.write(`${st.bold(question)} ${st.gray("(hidden)")} `)
+  const screen = canvas()
+  const on = new Set(chosen)
+  let query = ""
+  let cursor = 0
+  let shown = items
+  const render = () => {
+    shown = filter(items, query)
+    cursor = Math.max(0, Math.min(cursor, shown.length - 1))
+    const help = "Space to select, Enter to finish, type to filter"
+    screen.draw([...asking(text, query, help), ...options(shown, cursor, (o) => (on.has(o.value) ? st.green("[x]") : st.bold("[ ]")))])
+  }
+  process.stderr.write("\x1b[?25l")
+  render()
+  await keys((k) => {
+    if (k === "\r" || k === "\n") return true
+    if (k === "\x1b[A" || k === "\x10") cursor = cursor > 0 ? cursor - 1 : shown.length - 1
+    else if (k === "\x1b[B" || k === "\x0e") cursor = cursor < shown.length - 1 ? cursor + 1 : 0
+    else if (k === " ") {
+      const v = shown[cursor]?.value
+      if (v !== undefined) on.has(v) ? on.delete(v) : on.add(v)
+    } else if (k === "\x1b[C") for (const o of shown) on.add(o.value)
+    else if (k === "\x1b[D") for (const o of shown) on.delete(o.value)
+    else if (k === "\x1b") query = ""
+    else if (k === "\x7f" || k === "\b") query = query.slice(0, -1)
+    else if (!k.startsWith("\x1b") && k > " ") {
+      query += k
+      cursor = 0
+    }
+    render()
+  })
+  const result = items.filter((o) => on.has(o.value))
+  screen.settle(answered(text, result.map((o) => o.label).join(", ") || "none"))
+  return result.map((o) => o.value)
+}
+
+/** Asks for a secret, echoing one * per character; a paste ending in a newline submits it. */
+export async function secret(text: string): Promise<string> {
+  process.stderr.write(`${question(text)} `)
   let value = ""
   await keys((k) => {
-    for (const c of k) {
-      if (c === "\r" || c === "\n") return true
-      if (c === "\x1b") {
-        value = ""
-        return true
-      }
-      if (c === "\x7f" || c === "\b") value = value.slice(0, -1)
-      else if (c >= " ") value += c
+    if (k === "\r" || k === "\n") return true
+    if (k === "\x7f" || k === "\b") {
+      if (value) process.stderr.write("\b \b")
+      value = value.slice(0, -1)
+    } else if (!k.startsWith("\x1b") && k >= " ") {
+      value += k
+      process.stderr.write("*")
     }
   })
   process.stderr.write("\n")
   return value.trim()
 }
 
-/** Asks for a line of text, offering `initial`; resolves to undefined on Esc. */
-export async function text(question: string, initial = ""): Promise<string | undefined> {
+/** Asks for a line of text, offering `initial` in parentheses; Enter alone keeps it. */
+export async function input(text: string, initial = ""): Promise<string> {
   const st = style(process.stderr)
   const screen = canvas()
-  let value = initial
-  let cancelled = false
-  const render = () => screen.draw([`${st.bold(question)} ${value}${st.gray("▏")}`, st.gray("enter save · esc back")])
+  let value = ""
+  const render = () => screen.draw([`${question(text)} ${initial ? st.gray(`(${initial}) `) : ""}${value}`])
   render()
   await keys((k) => {
     if (k === "\r" || k === "\n") return true
-    if (k === "\x1b") return (cancelled = true)
     if (k === "\x7f" || k === "\b") value = value.slice(0, -1)
     else if (!k.startsWith("\x1b") && k >= " ") value += k
     render()
   })
-  screen.clear()
-  return cancelled ? undefined : value.trim()
+  const result = value.trim() || initial
+  screen.settle(answered(text, result))
+  return result
 }
 
 /** Asks yes or no. */
-export async function confirm(question: string, yes = true): Promise<boolean> {
+export async function confirm(text: string, yes = true): Promise<boolean> {
   const st = style(process.stderr)
-  process.stderr.write(`${st.bold(question)} ${st.gray(yes ? "(Y/n)" : "(y/N)")} `)
+  const screen = canvas()
+  screen.draw([`${question(text)} ${st.gray(yes ? "(Y/n)" : "(y/N)")}`])
   let answer = yes
   await keys((k) => {
     const c = k.toLowerCase()
     if (c === "y") answer = true
-    else if (c === "n" || c === "\x1b") answer = false
+    else if (c === "n") answer = false
     else if (c !== "\r" && c !== "\n") return
     return true
   })
-  process.stderr.write((answer ? "Yes" : "No") + "\n")
+  screen.settle(answered(text, answer ? "Yes" : "No"))
   return answer
 }
