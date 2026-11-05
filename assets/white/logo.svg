@@ -1,8 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<svg xmlns="http://www.w3.org/2000/svg" width="72.38" height="72.38" viewBox="0 28 72.38 72.38" fill="#d1d7e0" role="img" aria-labelledby="ask-logo-title">
-  <title id="ask-logo-title">ask logo</title>
-  <desc>A rounded square with a short vertical bar inside its left edge, like a cursor waiting for input.</desc>
-  <!-- Geometric outlines; no fonts or raster images. -->
-  <path fill-rule="evenodd" clip-rule="evenodd" d="M19.9045 28H52.4755C63.4685 28 72.38 36.9116 72.38 47.9045V80.4755C72.38 91.4685 63.4685 100.38 52.4755 100.38H19.9045C8.91155 100.38 0 91.4685 0 80.4755V47.9045C0 36.9116 8.91155 28 19.9045 28ZM19.9045 37.0475H52.4755C58.4717 37.0475 63.3325 41.9084 63.3325 47.9045V80.4755C63.3325 86.4717 58.4717 91.3325 52.4755 91.3325H19.9045C13.9083 91.3325 9.0475 86.4717 9.0475 80.4755V47.9045C9.0475 41.9084 13.9083 37.0475 19.9045 37.0475Z"/>
-  <path d="M24.4283 47.9045C27.6762 47.9045 30.3091 50.5375 30.3091 53.7854V74.5946C30.3091 77.8426 27.6762 80.4755 24.4283 80.4755C21.1803 80.4755 18.5474 77.8426 18.5474 74.5946V53.7854C18.5474 50.5375 21.1803 47.9045 24.4283 47.9045Z"/>
-</svg>

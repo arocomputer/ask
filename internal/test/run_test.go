@@ -1,0 +1,131 @@
+package test
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// TestRun covers launching a native run and collecting its answer.
+func TestRun(t *testing.T) {
+	t.Run("launch prints the ID and wait prints the answer", func(t *testing.T) {
+		s := fresh(t)
+		id := s.launch("-m", "openai/test-model", "What is here?")
+		rec := s.record(id)
+		eq(t, rec.s("model"), "openai/test-model")
+		eq(t, rec.s("dir"), s.tmp)
+		eq(t, rec.b("write"), false)
+		out := s.ask("wait", id)
+		eq(t, out.code, 0)
+		eq(t, out.stdout, "echo: What is here?\n")
+		match(t, out.stderr, `^ask `+id+` · succeeded · Test Model · [\d.]+s · 100 in · 10 out · 20 cached\n$`)
+		eq(t, s.record(id).s("state"), "succeeded")
+	})
+	t.Run("wait option prints the answer instead of the ID", func(t *testing.T) {
+		s := fresh(t)
+		out := s.ask("-m", "openai/test-model", "--wait", "answer forty-two")
+		eq(t, out.code, 0)
+		eq(t, out.stdout, "forty-two\n")
+	})
+	t.Run("the prompt can come from stdin or be extended by it", func(t *testing.T) {
+		s := fresh(t)
+		out := s.run([]string{"-m", "openai/test-model", "--wait", "-"}, "from stdin\n", nil)
+		eq(t, out.stdout, "echo: from stdin\n")
+		out = s.run([]string{"-m", "openai/test-model", "--wait", "--stdin", "Review this"}, "diff text\n", nil)
+		eq(t, out.stdout, "echo: diff text\n")
+		req := s.provider.requests()
+		input := req[len(req)-1]["input"].([]any)
+		text := input[0].(map[string]any)["content"].([]any)[0].(map[string]any)["text"]
+		eq(t, text, "Review this\n\ndiff text")
+	})
+	t.Run("a model is required unless a default is set", func(t *testing.T) {
+		s := fresh(t)
+		out := s.ask("hello")
+		eq(t, out.code, 2)
+		match(t, out.stderr, "choose a model with -m")
+		s.config(object{"model": "openai/default-model"})
+		id := s.launch("hello")
+		eq(t, s.record(id).s("model"), "openai/default-model")
+		out = s.ask("-m", "test-model", "hello")
+		eq(t, out.code, 2)
+		match(t, out.stderr, "a model is provider/model for ask's own harness, like opencode-go/glm-5.3, or harness:model")
+		out = s.ask("-m", "nowhere/x", "hello")
+		eq(t, out.code, 2)
+		match(t, out.stderr, `"nowhere" is not a provider \(openai, opencode, opencode-go\); for an external harness write nowhere:x`)
+		delete(s.env, "OPENAI_API_KEY")
+		out = s.ask("-m", "openai/test-model", "hello")
+		eq(t, out.code, 2)
+		match(t, out.stderr, "no credential for openai: set OPENAI_API_KEY or run ask setup")
+	})
+	t.Run("json prints the launch and the result record", func(t *testing.T) {
+		s := fresh(t)
+		out := s.ask("-m", "openai/test-model", "--json", "hi")
+		launched := obj(t, out.stdout)
+		eq(t, launched.s("state"), "running")
+		out = s.ask("wait", launched.s("session_id"), "--json")
+		eq(t, out.code, 0)
+		res := obj(t, out.stdout)
+		eq(t, res.s("session_id"), launched.s("session_id"))
+		eq(t, res.s("state"), "succeeded")
+		eq(t, res.s("answer"), "echo: hi")
+		eq(t, res.s("task"), "hi")
+		usage := res["usage"].(map[string]any)
+		eq(t, usage["input"], 100.0)
+		if _, has := res["prompt"]; has {
+			t.Fatal("the result record must not carry the prompt")
+		}
+	})
+	t.Run("a provider failure fails the run with its message", func(t *testing.T) {
+		s := fresh(t)
+		id := s.launch("-m", "openai/test-model", "fail server_error the model is down\nhi")
+		out := s.ask("wait", id)
+		eq(t, out.code, 1)
+		eq(t, out.stdout, "")
+		match(t, out.stderr, `· failed · .*the model is down \(server_error\)`)
+		out = s.ask("wait", id, "--json")
+		eq(t, out.code, 1)
+		match(t, obj(t, out.stdout).s("error"), "the model is down")
+	})
+	t.Run("a run past its timeout fails as timed out", func(t *testing.T) {
+		s := fresh(t)
+		id := s.launch("-m", "openai/test-model", "-t", "1", "slow\nhi")
+		out := s.ask("wait", id)
+		eq(t, out.code, 1)
+		match(t, out.stderr, "· failed · .*timed out")
+	})
+	t.Run("the directory option sets where the run works", func(t *testing.T) {
+		s := fresh(t)
+		dir := filepath.Join(s.tmp, "project")
+		s.write(filepath.Join(dir, "note.txt"), "hello from note\n")
+		out := s.ask("-m", "openai/test-model", "--wait", "-C", dir, `call read {"path":"note.txt"}`+"\nread it")
+		eq(t, out.code, 0)
+		match(t, out.stdout, "hello from note")
+		out = s.ask("-m", "openai/test-model", "-C", filepath.Join(s.tmp, "missing"), "hi")
+		eq(t, out.code, 2)
+	})
+	t.Run("a schema is passed to the provider as the answer format", func(t *testing.T) {
+		s := fresh(t)
+		s.write(filepath.Join(s.tmp, "schema.json"), `{"type":"object","properties":{"ok":{"type":"boolean"}}}`)
+		out := s.ask("-m", "openai/test-model", "--wait", "--schema", filepath.Join(s.tmp, "schema.json"), `answer {"ok":true}`)
+		eq(t, out.stdout, `{"ok":true}`+"\n")
+		req := s.provider.requests()[0]
+		format := req["text"].(map[string]any)["format"].(map[string]any)
+		eq(t, format["type"], "json_schema")
+		match(t, req.s("instructions"), "must be JSON matching the required schema")
+	})
+	t.Run("a prompt that starts with a dash word is still a prompt", func(t *testing.T) {
+		s := fresh(t)
+		out := s.ask("-m", "openai/test-model", "--wait", "--", "-v means verbose")
+		eq(t, out.stdout, "echo: -v means verbose\n")
+		out = s.ask("--bogus", "hi")
+		eq(t, out.code, 2)
+		match(t, out.stderr, "unknown option --bogus")
+	})
+	t.Run("the worker outlives the launcher", func(t *testing.T) {
+		s := fresh(t)
+		id := s.launch("-m", "openai/test-model", "slow\nhi")
+		eq(t, s.record(id).s("state"), "running")
+		until(t, func() bool { return s.record(id).s("state") == "succeeded" })
+		eq(t, strings.TrimSpace(s.ask("wait", id).stdout), "echo: hi")
+	})
+}

@@ -7,9 +7,9 @@ fail() { printf 'package: %s\n' "$*" >&2; exit 1; }
 [ "$#" -eq 2 ] || fail 'usage: .github/release/package.sh vX.Y.Z OUTPUT_DIRECTORY'
 tag=$1
 out=$2
-case $tag in *[!v0-9.]* | '') fail 'invalid stable version' ;; esac
-printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' ||
-    fail 'expected stable vX.Y.Z without leading zeros'
+case $tag in *[!v0-9.rc-]* | '') fail 'invalid version' ;; esac
+printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$' ||
+    fail 'expected vX.Y.Z or vX.Y.Z-rc.N without leading zeros'
 [ -n "$out" ] || fail 'output directory is empty'
 mkdir -p "$out"
 [ -z "$(ls -A "$out")" ] || fail 'output directory must be empty (no stale release assets)'

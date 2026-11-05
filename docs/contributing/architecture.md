@@ -1,97 +1,83 @@
 # Architecture
 
-ask is one Go binary. Bubble Tea owns interactive terminal rendering and input; Lip Gloss and
-Charm's ANSI helpers measure and clip terminal text. Execution uses the standard library only.
-It turns a command line into tasks, runs each task by
-starting an agent (a separate executable) under a small contract, and records the result. ask
-itself knows no particular coding agent: the official harnesses are reached through
-agents in [`packages/`](../../packages/), which use the same contract as anyone's.
+ask is one Go binary with no dependencies beyond the standard library. It turns a command line
+into a session, executes each turn in a detached worker, and records what happened. The worker
+runs the turn with ask's own harness against a model provider, or hands it to an external
+harness, an extension, through a small executable contract.
 
-## How a task runs
+The layout follows [gh](https://github.com/cli/cli): `main.go` builds the binary, `internal/`
+holds the packages, one per command under `internal/cmd/`, and `internal/cmdutil` is what the
+commands share. Files and folders are one word.
+
+## How a turn goes
 
 ```text
-main.go ──► cli          parse options, pick the command, print answers and status
-             │
-             ▼
-            runs         name the run, write tasks.json, take the lock, run tasks in parallel
-             │  ├──► hooks     task hooks before, result hooks after (they fail open)
-             ▼  │
-            task         worktree, prompt, run the agent, collect git changes, check JSON
-             │
-             ▼
-            agent        find the agent, start it under the contract, read its report
-             │
-             ▼
-          an agent executable  (~/.ask/agents/NAME, or a package's agents/NAME)
+ask "task"   or   ask continue ID "next"    the launcher
+  │  cmd/run, cmd/continue   resolve the model, read the prompt, create the session or add a turn
+  │  cmd/worker              start the worker, print the ID once it holds the lock
+  ▼
+ask __worker FOLDER                         detached, in its own session
+  │  sessions     the lock, session.json, transcript.json, events.jsonl
+  ├─ harness      the loop: provider ⇄ tools, until an answer or a limit
+  │    provider       one streaming request per model call (the OpenAI Responses protocol)
+  │    tools          read, list, grep; write, edit, shell in a write turn; extension tools
+  └─ extension    or: start an extension's harness under the contract, read its report
+  │  git          what a write turn changed; worktrees
+  ▼
+session.json: the turn succeeded, failed or stopped    cmd/wait, cmd/show, cmd/sessions read it
 ```
 
-Beside the path: `find` resolves agents, hooks and commands (yours before packages'), `process`
-starts children in process groups and stops them all on a signal, `git` reports changes and makes
-worktrees, `status` draws the status lines and live rows, and `schema` checks `--schema` answers.
+The launcher prints the ID only after the worker holds the session's lock, so an ID always
+names work that is under way. Everything else reads the folder: `wait` polls `session.json`,
+`show` reads `events.jsonl` by byte cursor, `stop` signals the lock's owner.
 
 ## Packages
 
-Each implementation folder in `src/` is one Go package with a `// Package` comment saying what
-it is for; `go doc ./src/NAME` prints it. `src/test/` holds the binary tests, their fake and fixtures,
-and the adapter integration runner. The repository has one root `go.mod`.
-
 | Package | Purpose |
 | --- | --- |
-| `cli` | Commands in `run.go`, `batch.go`, `continue.go`, `bench.go`, `runs.go`, `wait.go`, `show.go`, `stop.go`, `clean.go`, `models.go`, `packages.go`, `settings.go`, `setup.go`, `title.go`, `docs.go` and `update.go`; `worker.go` handles detached admission, `menus.go` settings prompts, `shell.go` tokenization, `help.go` help, and `cli.go` dispatch, options and exit codes |
-| `runs` | `run.go`: identity and references; `store.go`: saved tasks and results; `prepare.go`: validation and follow-ups; `execute.go`: locks, parallel execution, admission and stopping; `hooks.go`: task/result decisions and combined results. Names, continuation locks, recovery, progress and event paths stay in their feature files |
-| `task` | One task, start to finish |
-| `agent` | Finding agents, listing their models, running one under the contract, model display names |
-| `hooks` | Task, result, title and name hooks |
-| `packages` | Installing, updating and removing packages from git |
-| `find` | Where agents, hooks and commands come from |
-| `git` | What a write run changed, and worktrees |
+| `cmd/root` | Dispatch, exit status and help rendering |
+| `cmd/run`, `cmd/wait`, `cmd/show`, `cmd/continue`, `cmd/stop`, `cmd/sessions`, `cmd/models`, `cmd/config`, `cmd/setup`, `cmd/clean` | One command each: its `Help` page and its `Run` |
+| `cmd/install` | `ask install`, `ask remove` and `ask extensions` |
+| `cmd/worker` | The detached side of a turn, and `Launch`, which `run` and `continue` share |
+| `cmdutil` | Option parsing, model resolution, the model catalog, prompt and limits, the result record, session scoping, waiting and printing |
+| `harness` | The agent loop (`harness.go`), the tools (`tools.go`) and the system prompt (`prompt.go`) |
+| `provider` | The provider interface, the known endpoints, the OpenAI client, the models.dev snapshot, declared models and pricing |
+| `sessions` | Sessions and their turns, folders, the lock, events |
+| `extension` | Manifests, finding harnesses, tools and commands, running a harness under the contract, installing |
+| `git` | Changes a write session made, worktrees, whether a branch landed |
 | `process` | Process groups, timeouts, signals; Linux parent-death signals |
-| `status` | Status lines, live rows and the `ask runs` table |
-| `setup` | What `ask setup` offers: the official agents, the ask skill per app, the title hook |
-| `schema` | The `--schema` check |
-| `home` | `~/.ask` paths, the contract environment, `settings.json`, `models.json` and generic `environment.json` policy, atomic JSON records |
-| `tui` | Inline Bubble Tea prompts and the review diff; owns prompt input and terminal cleanup |
-| `update` | Finding the latest release and replacing a directly installed ask |
+| `term` | Terminal styles, status lines, tables |
+| `config` | The home layout, config.json, credentials, atomic JSON |
+| `test` | Black-box tests of the binary against a fake provider and a fake harness |
 
-`home` keeps its name because it covers the home directory, persisted records, shared JSON
-types and the contract environment. `config` would describe only its settings and policy files;
-broader names such as `state` would still miss its contract and JSON utilities.
+`extensions/` holds the two extensions ask ships, embedded in the binary and written to
+`~/.ask/agent/extensions/NAME/` by `ask install`.
 
 ## Rules the layout keeps
 
-[`.github/checks/guard.sh`](../../.github/checks/guard.sh) checks each of these on every change:
+[`.github/checks/guard.sh`](../../.github/checks/guard.sh) checks these on every change:
 
-- **Leaves.** `home`, `tui` and `update` import no other ask package. Everything may build on
-  them.
-- **No particular agent.** Only `setup`, which offers the official agents on a first run, names
-  them as values. Anything specific to a coding agent belongs in its agent, in `packages/`.
-- **Presentation-only dependencies.** External Go imports stay in `tui` and `status`. Bubble Tea
-  renders prompts and live status inline, without taking over stdin for live status. Core
-  execution uses the standard library; official agents import only Node.js built-ins.
+- **No dependencies.** The standard library and ask's own packages only; `go.mod` lists none.
+- **No particular coding agent in `internal/`.** Only `cmd/setup`, which offers the built-in
+  extensions for the CLIs it finds, names them as values. Anything specific to a coding agent
+  lives in its extension under `extensions/`.
+- **Leaves.** `config` and `provider` import nothing of ask's; everything may build on them.
+- **Commands share through `cmdutil`**, never each other; `worker` is the one exception.
 - **Every package says what it is for.**
+- **The built-in extensions use Node.js built-ins only**, like any extension someone could
+  write, and keep identical copies of `writer.mjs`.
 
-Two more are kept by tests and review, not grep:
+Two more are kept by tests and review:
 
-- **Contracts change only as [compatibility.md](../compatibility.md) says.** Additions are free; a
-  breaking change bumps `ASK_CONTRACT`. Released run records in `src/test/fixtures/` stay readable.
-- **Grow by need.** A new hook event, contract field or setting arrives with the use that needs it.
-
-## Other folders
-
-| Folder | What's there |
-| --- | --- |
-| [`docs/`](../) | User docs, built into ask for `ask docs` (only the top level; this folder is not) |
-| [`packages/`](../../packages/) | The official agents |
-| [`src/test/`](../../src/test/) | Black-box tests of the binary, one file per feature; fake, fixtures and integration runner |
-| `.github/checks/` | Architectural guards |
-| `.github/release/` | Release preparation, packaging and formula generation in [releases.md](releases.md) |
-| `assets/` | The logo, wordmark and README screens |
-| `x` | The one entry point for checks: `./x check` is what CI runs |
+- **Contracts change only as [compatibility.md](../compatibility.md) says.** Additions are free;
+  a breaking change bumps `ASK_CONTRACT`.
+- **Grow by need.** A new tool, config key or contract field arrives with the use that needs it.
+  Extensions add executables, never code inside ask: a harness, tools, commands and notes, each
+  declared in `extension.json`. The system prompt is ask's own, followed by the project's
+  `AGENTS.md`; there is no global instructions file.
 
 ## Trying a development build
 
-`./x dev` uses the normal `ASK_HOME` unless you set it. Like a released build, it refreshes
-installed official agents to match the binary, so alternating development and installed builds
-rewrites those package copies. To try changes without affecting your installed agents, use a
-separate `ASK_HOME`, run `./x dev install codex` (or another agent) there, and keep that same
-`ASK_HOME` for the test run.
+`./x dev` builds this checkout and runs it with your normal `ASK_HOME`; `./x install` puts the
+build in `~/.local/bin`. To keep development runs apart from your own, set `ASK_HOME` to a
+scratch folder for that shell.

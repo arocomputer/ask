@@ -3,11 +3,13 @@
 set -eu
 
 fail() { printf 'release: %s\n' "$*" >&2; exit 1; }
-[ "$#" -eq 1 ] || fail 'usage: ./x release vX.Y.Z'
+dry=
+if [ "${1-}" = --dry-run ]; then dry=1; shift; fi
+[ "$#" -eq 1 ] || fail 'usage: ./x release [--dry-run] vX.Y.Z[-rc.N]'
 tag=$1
-case $tag in *[!v0-9.]* | '') fail 'expected a stable version such as v1.2.3' ;; esac
-printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' ||
-    fail 'expected a stable version such as v1.2.3, without leading zeros'
+case $tag in *[!v0-9.rc-]* | '') fail 'expected a version such as v1.2.3 or v1.2.3-rc.1' ;; esac
+printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$' ||
+    fail 'expected a version such as v1.2.3 or v1.2.3-rc.1, without leading zeros'
 command -v gh >/dev/null 2>&1 || fail 'install the GitHub CLI (gh)'
 cd "$(git rev-parse --show-toplevel)"
 [ "$(git branch --show-current)" = main ] || fail 'run this from main'
@@ -64,5 +66,9 @@ commit=$(git rev-parse HEAD)
 result=$(gh run list --workflow ci.yml --branch main --event push --commit "$commit" \
     --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
 [ "$result" = 'completed success' ] || fail "main CI for $commit has not passed: ${result:-not found}"
-gh workflow run release.yml --ref main -f "tag=$tag" -f "commit=$commit"
-printf 'Requested release %s for %s. Watch it in GitHub Actions.\n' "$tag" "$commit"
+gh workflow run release.yml --ref main -f "tag=$tag" -f "commit=$commit" -f "dry_run=${dry:+true}${dry:-false}"
+if [ -n "$dry" ]; then
+    printf 'Requested a dry run of %s for %s: it builds and verifies, tags nothing. Watch it in GitHub Actions.\n' "$tag" "$commit"
+else
+    printf 'Requested release %s for %s. Watch it in GitHub Actions.\n' "$tag" "$commit"
+fi
