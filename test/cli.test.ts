@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFile, execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, describe, test } from "node:test"
@@ -85,6 +85,29 @@ describe("cli", () => {
     execFileSync("git", ["init", "-q"], { cwd: project })
     const r = await ask({ start: [{ prompt: "Add a file", write: true }], wait: 30 })
     assert.deepEqual(r.tasks[0].changes, [{ path: "new.txt", change: "added" }])
+  })
+
+  test("a word ask doesn't know is an error, never a prompt", async () => {
+    const { run, home } = await setup([{ text: "unused" }])
+    const r = await run(["settings-typo"])
+    assert.equal(r.code, 2)
+    assert.match(r.stderr, /^unknown command "settings-typo" for "ask"/)
+    assert.throws(() => readdirSync(join(home, "sessions")))
+  })
+
+  test("one bad task in a start request starts none of them", async () => {
+    const { ask, home } = await setup([{ text: "unused" }])
+    const r = await ask({ start: [{ prompt: "fine" }, { prompt: "bad", dir: "/no/such/dir" }] })
+    assert.match(r.error.message, /start\[1\]\.dir/)
+    assert.throws(() => readdirSync(join(home, "sessions")))
+  })
+
+  test("the worker never runs a finished turn again", async () => {
+    const { ask, run, home, fake } = await setup([{ text: "Done." }])
+    const { tasks } = await ask({ start: [{ prompt: "Task" }], wait: 30 })
+    const r = await run(["__worker", join(home, "sessions", tasks[0].id)])
+    assert.equal(r.code, 2)
+    assert.equal(fake.requests.length, 1)
   })
 
   test("doctor names what is broken and how to fix it", async () => {

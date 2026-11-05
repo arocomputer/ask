@@ -13,7 +13,7 @@ import { connect } from "./catalog.ts"
 import { resolve, type Home } from "./home.ts"
 import { run } from "./loop.ts"
 import { withRetries } from "./provider.ts"
-import { latest, lock, now, save, saveTranscript, transcript, unlock, type Change, type Session } from "./sessions.ts"
+import { latest, lock, now, save, saveTranscript, transcript, unlock, worker, type Change, type Session } from "./sessions.ts"
 
 /** Starts a detached worker for the session's latest turn and records it as the lock. */
 export function launch(s: Session) {
@@ -27,8 +27,16 @@ export function launch(s: Session) {
   child.unref()
 }
 
-/** The detached side: runs the turn, ending it as stopped on SIGTERM. */
+/**
+ * The detached side: runs the turn, ending it as stopped on SIGTERM. It refuses a turn that
+ * isn't waiting to run, or that another live worker owns, so it can never run a turn twice.
+ */
 export async function main(h: Home, s: Session) {
+  const owner = worker(s)
+  if (latest(s).state !== "running" || (owner && owner !== process.pid)) {
+    process.stderr.write(`ask: session ${s.id} has no turn waiting to run\n`)
+    process.exit(2)
+  }
   const stop = new AbortController()
   process.on("SIGTERM", () => stop.abort())
   process.on("SIGHUP", () => {})

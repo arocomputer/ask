@@ -124,8 +124,10 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       only(req, ["start", "wait"])
       if (!Array.isArray(req.start) || !req.start.length) throw new Invalid("start takes a list of tasks", '{"start": [{"prompt": "..."}]}')
       const tasks = req.start.map((t, i) => task(t, `start[${i}]`))
+      const ready: { t: Task; dir: string; model: string }[] = []
+      for (const [i, t] of tasks.entries()) ready.push({ t, dir: folder(t.dir, `start[${i}]`), model: await chosen(h, t.model) })
       const started: Session[] = []
-      for (const t of tasks) started.push(await begin(h, t))
+      for (const r of ready) started.push(begin(h, r.t, r.dir, r.model))
       return wait === undefined ? started.map(result) : collect(started, wait)
     }
     case "collect": {
@@ -200,12 +202,18 @@ async function collect(sessions: Session[], wait: number): Promise<Result[]> {
   }
 }
 
-async function begin(h: Home, t: Task): Promise<Session> {
-  const dir = absolute(t.dir ?? ".")
-  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) throw new Invalid(`${t.dir} is not a directory`)
+/** A task's working directory, made absolute; it must exist. */
+function folder(dir: string | undefined, where: string): string {
+  const full = absolute(dir ?? ".")
+  if (!statSync(full, { throwIfNoEntry: false })?.isDirectory()) throw new Invalid(`${where}.dir ${JSON.stringify(dir)} is not a directory`)
+  return full
+}
+
+/** Creates and launches a session for a task already checked. */
+function begin(h: Home, t: Task, dir: string, model: string): Session {
   const s = create(h, dir, {
     prompt: t.prompt,
-    model: await chosen(h, t.model),
+    model,
     write: t.write ?? false,
     effort: t.effort,
     schema: t.schema,
@@ -231,9 +239,14 @@ async function stop(s: Session): Promise<Session> {
     }
     return !worker(s)
   }
-  process.kill(pid, "SIGTERM")
+  const signal = (sig: NodeJS.Signals) => {
+    try {
+      process.kill(pid, sig)
+    } catch {}
+  }
+  signal("SIGTERM")
   if (!(await gone(10_000))) {
-    process.kill(pid, "SIGKILL")
+    signal("SIGKILL")
     await gone(2_000)
   }
   const fresh = reload(s)
