@@ -42,11 +42,11 @@ variants, not by argument.
   catalog, model, key, worker and git, with a fix for each failure), `ask models`,
   `ask sessions`, `ask show`. Settings live in `config.json` and `auth.json`, editable by hand,
   or a provider's environment variable.
-- **Prompts are drawn as gh draws them** (its survey prompter): one `? Question` line with
+- **Prompts:** one `? Question` line with
   typed filter text after it and key help in brackets, a page of seven options with `> ` on
   the focused one, `[x]` toggles with Enter to finish, and each answered prompt collapses to
   `? Question Answer`, leaving a readable record. No titles, menus that loop, or footers.
-- **Looks like gh:** text in the terminal's own color, bold for headers and the subject of a
+- **Looks:** text in the terminal's own color, bold for headers and the subject of a
   line, gray for details, green ✓ / red X / yellow * only on state symbols, cyan only for what a
   prompt has selected. Color and prompts only on a terminal, honoring `NO_COLOR`; piped tables
   are tab-separated.

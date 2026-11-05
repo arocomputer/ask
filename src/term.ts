@@ -1,6 +1,6 @@
-// Terminal output in the manner of GitHub's gh: color and symbols only on a terminal (honoring
-// NO_COLOR, CLICOLOR_FORCE and TERM=dumb), tables that fit the width there and turn into
-// tab-separated lines when piped, relative times, and a spinner on stderr.
+// Terminal output: color and symbols only on a terminal (honoring NO_COLOR, CLICOLOR_FORCE and
+// TERM=dumb), tables that fit the width there and turn into tab-separated lines when piped,
+// relative times, and a spinner on stderr.
 //
 // The palette: text in the terminal's own color; bold for headers and the one thing a line is
 // about; gray for details; green, red and yellow only on state symbols and warnings; cyan only
@@ -31,8 +31,8 @@ export function style(s: Stream = process.stdout): Style {
 }
 
 /**
- * A state's symbol, the one place state gets color, as in gh: ✓ green, X red, * yellow while
- * running, ! yellow while retrying, - gray when stopped.
+ * A state's symbol: ✓ green, X red, * yellow while running, ! yellow while retrying, - gray
+ * when stopped.
  */
 export function symbol(state: State, st: Style): string {
   switch (state) {
@@ -49,13 +49,16 @@ export function symbol(state: State, st: Style): string {
   }
 }
 
-/** "just now", "5m ago", "3h ago", "2d ago". */
+/** "less than a minute ago", "about 5 minutes ago", "about 1 day ago", and so on. */
 export function ago(iso: string, from = Date.now()): string {
   const s = Math.max(0, (from - Date.parse(iso)) / 1000)
-  if (s < 45) return "just now"
-  if (s < 3600) return `${Math.round(s / 60)}m ago`
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`
-  return `${Math.round(s / 86400)}d ago`
+  const say = (n: number, unit: string) => `about ${n} ${unit}${n === 1 ? "" : "s"} ago`
+  if (s < 60) return "less than a minute ago"
+  if (s < 3600) return say(Math.floor(s / 60), "minute")
+  if (s < 86400) return say(Math.floor(s / 3600), "hour")
+  if (s < 30 * 86400) return say(Math.floor(s / 86400), "day")
+  if (s < 365 * 86400) return say(Math.floor(s / (30 * 86400)), "month")
+  return say(Math.floor(s / (365 * 86400)), "year")
 }
 
 /** "12s", "4m 3s", "1h 2m". */
@@ -96,7 +99,7 @@ export function clean(s: string): string {
 /**
  * Prints rows as a table. On a terminal, columns are aligned, a header is shown in bold if
  * given, and the column marked `flex` is truncated to fit (losing its color); piped, rows are
- * tab-separated with plain values and no header, like gh's scriptable output. A cell is
+ * tab-separated with plain values and no header, for scripts. A cell is
  * [plain, styled]; the styled form is what a terminal shows.
  */
 export function table(rows: [string, string][][], opts: { header?: string[]; flex?: number; out?: Stream } = {}) {

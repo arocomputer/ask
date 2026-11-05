@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // The ask command. Agents send one JSON request on stdin and read one JSON response on stdout
-// (see protocol.ts). People run the few commands below to set up and look at sessions.
+// (see protocol.ts). People run the commands below. Help pages share one layout: what the
+// command does, then USAGE, FLAGS, INHERITED FLAGS, EXAMPLES and LEARN MORE, titles in bold.
 // Exit status: 0 handled, 1 failed, 2 a request or command ask can't carry out.
 
 import { home } from "./home.ts"
@@ -13,47 +14,65 @@ import * as models from "./cmd/models.ts"
 import * as sessions from "./cmd/sessions.ts"
 import * as settings from "./cmd/settings.ts"
 import * as show from "./cmd/show.ts"
+import { Usage, type Command } from "./cmd/usage.ts"
 
 export const version = "3.0.0-dev"
 
-type Command = { help: string; run(h: ReturnType<typeof home>, argv: string[]): Promise<number> }
-
 const commands: Record<string, Command> = { settings, doctor, models, sessions, show }
 
-function overview(): string {
-  const b = style().bold
-  return `ask hands tasks to subagents that work in the background.
+const environment = `ask reads these environment variables.
 
-${b("USAGE")}
-  ask < request.json    For agents: one JSON request on stdin, one JSON response on stdout
-  ask <command>         For people: settings, and a look at what subagents did
+ASK_HOME: where ask keeps its settings, keys, model catalog and sessions (default: ~/.ask)
 
-${b("COMMANDS")}
-  settings:   Providers, keys, models and the default; the first run sets ask up
-  doctor:     Check that ask can run tasks, and say how to fix what can't
-  models:     List your models
-  sessions:   List recent sessions
-  show:       Show a session's steps and answer
+NO_COLOR: set to any value to turn color off
 
-${b("REQUESTS")}
-  {"start": [{"prompt": "Find the retry logic"}], "wait": 300}
-  {"collect": ["k3f9a2"], "wait": 300}
-  {"continue": "k3f9a2", "prompt": "Now add a test", "write": true}
-  {"stop": ["k3f9a2"]}
-  {"show": "k3f9a2"}
+CLICOLOR_FORCE: set to a value other than 0 to keep color when output is piped
 
-${b("FILES")}
-  ~/.ask/config.json   {"model": "provider/model", "models": [...], "timeout": 900}
-  ~/.ask/auth.json     {"provider": {"api_key": "..."}}
-  Both are written by ask settings, and can be edited by hand.
-
-${b("LEARN MORE")}
-  ask help requests     Every request and response field
-  ask help <command>    More about a command
+A provider's own key variable, like OPENAI_API_KEY, works without ask settings. ask models
+lists the models of every provider it finds a key for.
 `
+
+const topics: Record<string, [string, string]> = {
+  requests: ["How agents use ask, with JSON on stdin", guide],
+  environment: ["Environment variables ask reads", environment],
 }
 
-function page(text: string): string {
+/** Two aligned columns, as help pages list commands and flags. */
+function columns(rows: [string, string][], colon = false): string {
+  const w = Math.max(...rows.map(([a]) => a.length + (colon ? 1 : 0)))
+  return rows.map(([a, b]) => `  ${(colon ? a + ":" : a).padEnd(w)}  ${b}`).join("\n")
+}
+
+/** Renders a help page: the opening text, then each titled section. */
+function page(about: string, sections: [string, string][]): string {
+  const b = style().bold
+  return [about.trimEnd(), ...sections.filter(([, body]) => body).map(([title, body]) => `${b(title)}\n${body}`)].join("\n\n") + "\n"
+}
+
+const learn = "  Use `ask <command> --help` for more information about a command.\n  Use `ask help requests` to see how agents hand ask work."
+
+function overview(): string {
+  return page("Hand tasks to subagents that work in the background.", [
+    ["USAGE", "  ask <command> [flags]\n  ask < request.json"],
+    ["COMMANDS", columns(Object.entries(commands).map(([n, c]) => [n, c.summary]), true)],
+    ["HELP TOPICS", columns(Object.entries(topics).map(([n, [s]]) => [n, s]), true)],
+    ["FLAGS", columns([["--help", "Show help for command"], ["--version", "Show ask version"]])],
+    ["EXAMPLES", ["$ ask settings", "$ ask sessions", `$ echo '{"start": [{"prompt": "Where is the retry logic?"}], "wait": 300}' | ask`].map((e) => "  " + e).join("\n")],
+    ["LEARN MORE", learn],
+  ])
+}
+
+function commandPage(c: Command): string {
+  return page(c.about, [
+    ["USAGE", "  " + c.usage],
+    ["FLAGS", c.flags ? columns(c.flags) : ""],
+    ["INHERITED FLAGS", columns([["--help", "Show help for command"]])],
+    ["EXAMPLES", (c.examples ?? []).map((e) => "  $ " + e).join("\n")],
+    ["LEARN MORE", learn],
+  ])
+}
+
+function topicPage(text: string): string {
   const b = style().bold
   return text.replace(/^([A-Z][A-Z ]+)$/gm, (m) => b(m))
 }
@@ -67,18 +86,20 @@ async function read(): Promise<string> {
 export async function main(argv: string[]): Promise<number> {
   const h = home()
   const [first, ...rest] = argv
-  const st = style(process.stderr)
   if (first === "__worker") {
     await worker(h, open(h, rest[0].split("/").pop()!))
     return 0
   }
-  if (first === "-v" || first === "--version") {
-    process.stdout.write(`ask ${version}\n`)
+  if (first === "--version" || first === "-v") {
+    process.stdout.write(`ask version ${version}\n`)
     return 0
   }
-  if (first === "help" || first === "-h" || first === "--help") {
+  if (first === "help" || first === "--help" || first === "-h") {
     const topic = rest[0]
-    process.stdout.write(topic === "requests" ? page(guide) : topic && commands[topic] ? page(commands[topic].help) : overview())
+    if (!topic) process.stdout.write(overview())
+    else if (commands[topic]) process.stdout.write(commandPage(commands[topic]))
+    else if (topics[topic]) process.stdout.write(topicPage(topics[topic][1]))
+    else return unknown(topic, "help topic")
     return 0
   }
   if (first === undefined) {
@@ -98,30 +119,39 @@ export async function main(argv: string[]): Promise<number> {
     return "error" in response ? 2 : 0
   }
   const command = commands[first]
-  if (!command) {
-    process.stderr.write(`${st.red("X")} Unknown command ${JSON.stringify(first)}\n${st.gray("  Agents send a JSON request on stdin; ask help shows how")}\n`)
-    return 2
-  }
-  if (rest.includes("-h") || rest.includes("--help")) {
-    process.stdout.write(page(command.help))
+  if (!command) return unknown(first, "command")
+  if (rest.includes("--help") || rest.includes("-h")) {
+    process.stdout.write(commandPage(command))
     return 0
   }
-  return command.run(h, rest)
+  try {
+    return await command.run(h, rest)
+  } catch (err) {
+    const e = err as Error & { code?: string }
+    if (!(err instanceof Usage) && !e.code?.startsWith("ERR_PARSE_ARGS")) throw err
+    const message = e.message
+      .replace(/^Unknown option '(.*?)'.*$/s, "unknown flag: $1")
+      .replace(/^Unexpected argument '(.*?)'.*$/s, "unexpected argument: $1")
+      .replace(/^Option '(.*?)' argument missing$/, "flag needs an argument: $1")
+    process.stderr.write(`${message}\n\nUsage:  ${command.usage}\n\nRun 'ask ${first} --help' for more.\n`)
+    return 2
+  }
 }
 
-/** Prints an unexpected error as gh does: a red X and the message, and a hint when there is one. */
-function report(err: unknown): number {
-  const st = style(process.stderr)
-  const e = err as Error & { code?: string }
-  const usage = !!e?.code?.startsWith("ERR_PARSE_ARGS")
-  const message = (e?.message ?? String(err)).replace(/\. To specify a positional argument.*$/s, "")
-  process.stderr.write(`${st.red("X")} ${message}\n${usage ? st.gray("  ask help lists the flags") + "\n" : ""}`)
-  return usage ? 2 : 1
+/** An unknown command or topic, with what there is instead. */
+function unknown(name: string, what: string): number {
+  const names = what === "command" ? Object.keys(commands) : [...Object.keys(commands), ...Object.keys(topics)]
+  process.stderr.write(`unknown ${what} ${JSON.stringify(name)} for "ask"\n\nUsage:  ask <command> [flags]\n\nAvailable ${what === "command" ? "commands" : "topics"}:\n${names.map((n) => "  " + n).join("\n")}\n`)
+  if (what === "command") process.stderr.write(`\nAgents send work as JSON on stdin; see 'ask help requests'.\n`)
+  return 2
 }
 
 if (import.meta.main ?? process.argv[1] === new URL(import.meta.url).pathname) {
   main(process.argv.slice(2)).then(
     (code) => (process.exitCode = code),
-    (err) => (process.exitCode = report(err)),
+    (err) => {
+      process.stderr.write(`${(err as Error)?.message ?? String(err)}\n`)
+      process.exitCode = 1
+    },
   )
 }

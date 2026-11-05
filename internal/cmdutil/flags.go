@@ -82,7 +82,7 @@ func Number(opts config.Object, name, meaning string) (float64, error) {
 	return n, nil
 }
 
-// Page is a command's help: a one-line summary and titled sections, rendered like gh's help.
+// Page is a command's help: a one-line summary and titled sections, rendered as every help page is.
 type Page struct {
 	Summary  string
 	Sections []Section

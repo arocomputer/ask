@@ -1,7 +1,7 @@
-// Interactive prompts on a terminal, drawn the way gh draws them (its survey prompter): one
-// question line, "? Which provider?", with typed filter text after it and short key help in
-// brackets; a page of seven options with the focused one marked "> "; and once answered, the
-// prompt collapses to "? Which provider? OpenCode Go", which stays on screen as a record.
+// Interactive prompts on a terminal: one question line, "? Which provider?", with typed filter
+// text after it and short key help in brackets; a page of seven options with the focused one
+// marked "> "; and once answered, the prompt collapses to "? Which provider? OpenCode Go",
+// which stays on screen as a record.
 // They draw on stderr so stdout stays clean, and only work when stdin and stderr are
 // terminals; callers check `interactive()` first.
 

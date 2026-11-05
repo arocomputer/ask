@@ -5,7 +5,7 @@ into a session, executes each turn in a detached worker, and records what happen
 runs the turn with ask's own harness against a model provider, or hands it to an external
 harness, an extension, through a small executable contract.
 
-The layout follows [gh](https://github.com/cli/cli): `main.go` builds the binary, `internal/`
+`main.go` builds the binary, `internal/`
 holds the packages, one per command under `internal/cmd/`, and `internal/cmdutil` is what the
 commands share. Files and folders are one word.
 

@@ -34,7 +34,7 @@ ask 2 is a rewrite around its own harness. It does not read ask 1's runs; see
 - Pick a model when none is chosen: the default of the first provider with a credential, or the
   first model declared for a provider of your own. A model named without its provider gets a suggestion, like `did you mean
   opencode-go/glm-5.3?`.
-- Render status, tables and help the way gh does: colored states with `✓ ✗ ! -` symbols, bold
+- Render status, tables and help cleanly: colored states with `✓ ✗ ! -` symbols, bold
   IDs, dimmed details and uppercase sections on a terminal; plain stable lines and
   tab-separated lists when piped. A running session shows an orange spinner that turns while
   `ask wait` waits, and a launch on a terminal prints one line instead of the ID twice. Help

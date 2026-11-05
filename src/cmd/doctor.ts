@@ -10,11 +10,10 @@ import { latest, list, worker } from "../sessions.ts"
 import { ago, spinner, style } from "../term.ts"
 import { check } from "./settings.ts"
 
-export const help = `Check that ask can run tasks: its runtime, home, catalog, model, key, worker and git.
-
-USAGE
-  ask doctor
-`
+export const summary = "Check that ask can run tasks"
+export const about = `Check that ask can run tasks: its runtime, its home folder, the model catalog, the default
+model and its key, the background worker and git. Anything broken comes with how to fix it.`
+export const usage = "ask doctor"
 
 type Line = { mark: "ok" | "warn" | "fail"; name: string; detail: string; fix?: string }
 

@@ -117,7 +117,7 @@ as without `--json`.
 ## Output
 
 stdout is the one thing the command is for: the ID at launch, the answer from `wait`. Status
-goes to stderr. On a terminal it is colored, with gh's symbols and an orange spinner for a
+goes to stderr. On a terminal it is colored, with state symbols and an orange spinner for a
 running session, which turns in place while `wait` waits. A launch prints one line that says
 how to collect the session; the bare ID goes to stdout only when a script captures it:
 

@@ -72,7 +72,7 @@ func help(p config.Paths, args []string) (int, error) {
 	return 0, config.Usage("no help for %q; see ask help", args[0])
 }
 
-// render lays a page out as gh does: the summary, then bold uppercase titles with bodies
+// render lays a page out: the summary, then bold uppercase titles with bodies
 // indented two spaces.
 func render(pg cmdutil.Page, s term.Style) string {
 	var b strings.Builder

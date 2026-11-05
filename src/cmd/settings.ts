@@ -1,7 +1,6 @@
-// ask settings: the one interactive command, in the manner of gh auth login. The first time,
-// it adds a provider: its key, its models and the default. After that it asks what to change,
-// does that and exits. Everything is saved in config.json and auth.json, which can also be
-// edited by hand.
+// ask settings: the one interactive command. The first time, it adds a provider: its key, its
+// models and the default. After that it asks what to change, does that and exits. Everything
+// is saved in config.json and auth.json, which can also be edited by hand.
 
 import { randomUUID } from "node:crypto"
 import { cheapest, connect, providers, usable, type Catalog, type Model } from "../catalog.ts"
@@ -10,15 +9,13 @@ import { confirm, input, interactive, multi, secret, select } from "../input.ts"
 import { ProviderError } from "../provider.ts"
 import { spinner, style } from "../term.ts"
 
-export const help = `Set ask up: the providers it can use, their keys, your models and the default.
+export const summary = "Choose providers, keys, models and the default"
+export const about = `Choose the providers ask uses, their keys, your models and the default model. The first run
+adds a provider; after that it asks what to change.
 
-USAGE
-  ask settings
-
-The first run adds a provider. After that it asks what to change. Everything is saved in
-~/.ask/config.json and ~/.ask/auth.json, which you can also edit; a provider's usual
-environment variable, like OPENAI_API_KEY, works too.
-`
+Everything is saved in ~/.ask/config.json and ~/.ask/auth.json, which you can also edit. A
+provider's own key variable, like OPENAI_API_KEY, works without settings.`
+export const usage = "ask settings"
 
 /** The providers listed first, in order. */
 const common = ["opencode-go", "opencode", "openai", "anthropic", "openrouter", "deepseek", "xai", "mistral"]
@@ -53,7 +50,7 @@ const update = (h: Home, change: (c: Config) => void) => {
 export async function run(h: Home): Promise<number> {
   const st = style(process.stderr)
   if (!interactive()) {
-    say(`${st.red("X")} ask settings needs a terminal`)
+    say("ask settings needs a terminal")
     say(`Instead, set the provider's key variable, like OPENAI_API_KEY, and put {"model": "openai/gpt-5.5"} in ${h.config}`)
     return 2
   }

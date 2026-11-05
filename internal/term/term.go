@@ -270,7 +270,7 @@ func Ago(stamp string) string {
 }
 
 // Table renders rows for a terminal as aligned columns under an uppercase dimmed header, and
-// for a pipe as tab-separated lines with no header, as gh does: cut-friendly and untruncated.
+// for a pipe as tab-separated lines with no header: cut-friendly and untruncated.
 // cell may color a cell by column for the terminal; it gets the plain text and returns styled.
 func Table(s Style, header []string, rows [][]string, cell func(column int, text string) string) string {
 	var b strings.Builder
@@ -318,7 +318,7 @@ var escape = regexp.MustCompile("\x1b\\[[0-9;]*m")
 // Width is how many columns text takes on a terminal: its characters without color codes.
 func Width(text string) int { return len([]rune(escape.ReplaceAllString(text, ""))) }
 
-// Success is a confirmation line, as gh prints one: a green check, then what happened.
+// Success is a confirmation line: a green check, then what happened.
 func (s Style) Success(text string) string {
 	if !s.On {
 		return text
