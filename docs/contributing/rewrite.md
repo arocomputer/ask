@@ -62,7 +62,7 @@ variants, not by argument.
 1. **Engine.** Catalog, the three protocols, tools, loop, system prompt, as plain functions.
    Tests against fake provider servers, one behavior each.
 2. **Sessions and CLI.** Session folders, a detached worker per turn, stop and continue; config,
-   credentials, `ask setup` (including OpenCode key import), `ask models`. The same turn
+   credentials, `ask setup` (API keys pasted without echo; sign-ins come in phase 5), `ask models`. The same turn
    function runs in-process (library) or in the worker (CLI).
 3. **Interface experiments.** Two or three JSON variants over phase 2, driven by Claude Code
    (Sonnet) and Codex on this server, with `experiments/fake2.py` as the subagent model.
@@ -71,7 +71,16 @@ variants, not by argument.
    - Measured: correct answer, seconds over the critical path, driver tokens, calls, failed
      calls. Three reps per cell.
 4. **Lock.** Write the winner's protocol, docs and changelog. Port the Go black-box tests' intent.
-5. **Real providers**, alongside 3: why OpenCode's stored key gets 401, then ChatGPT sign-in.
+5. **Real providers and sign-ins**, alongside 3.
+   - First real call per protocol, with an OpenCode Go API key in `~/.ask/auth.json`. (Solved:
+     the old key in OpenCode's v1 `auth.json` was a leftover, inactive in OpenCode's credential
+     store; OpenCode itself authenticates with an account sign-in.)
+   - **OpenCode sign-in:** `ask setup` signs in to the OpenCode account the way OpenCode does,
+     with access and refresh tokens, and ask refreshes its own login. Never reuse OpenCode's
+     stored tokens: two programs refreshing one login sign each other out. Find the flow from
+     OpenCode's source and docs before building it; ship it labeled as relying on OpenCode's
+     sign-in, which isn't a published API for other clients.
+   - **ChatGPT sign-in**, the same way, labeled unofficial.
 
 ## Not now
 
