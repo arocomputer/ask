@@ -1,24 +1,34 @@
 # Setup
 
-`ask setup` sets ask up the first time. It asks before each change and reads its answers from
-stdin, so a script can drive it too. Change anything later with [`ask config`](config.md).
+`ask setup` sets ask up the first time, and again whenever you switch provider or default model.
+It asks before each change and reads its answers from stdin, so a script can drive it too.
+Change single keys later with [`ask config`](config.md).
 
 ```text
 $ ask setup
-openai API key (enter to skip):
-opencode API key (enter to skip):
-OpenCode has a key for opencode-go; use it for ask too? [Y/n]
-opencode-go: saved to ~/.ask/auth.json
-Download the model list from models.dev? [Y/n]
-Default model, like opencode-go/glm-5.3 (enter to skip): opencode-go/glm-5.3
+Which provider should ask use?
+  1. OpenCode Go  key found in OpenCode
+  2. OpenCode Zen
+  3. OpenAI
+  4. Another OpenAI-compatible endpoint
+Choose [1]:
+OpenCode already has a key for OpenCode Go; use it? [Y/n]
+✓ opencode-go: saved to ~/.ask/auth.json
+Download model names and prices from models.dev? [Y/n]
+Default model:
+   1. deepseek-v4-pro  DeepSeek V4 Pro
+   2. glm-5.3  GLM 5.3
+Default model, a number or an id [glm-5.3]:
+✓ default model: opencode-go/glm-5.3
 Codex is installed; add it as a harness, so codex:MODEL runs it? [Y/n]
 Write the ask skill for Claude Code? [Y/n]
 Write the ask skill for Codex? [Y/n]
 ```
 
-- **Credentials** go to `~/.ask/auth.json`, mode 0600, one per provider: OpenAI, OpenCode
-  Console and OpenCode Go. When OpenCode itself already holds an API key for one of them, setup
-  offers to copy it rather than ask again. `NAME_API_KEY` in the environment works too and wins.
+- **The provider** is one you pick: OpenCode Go, OpenCode Zen, OpenAI, or another endpoint that
+  speaks the OpenAI Responses protocol, added by a name and base URL. Its key goes to
+  `~/.ask/auth.json`, mode 0600, and is not echoed as you paste it. When OpenCode itself already
+  holds an API key for it, setup offers to copy it rather than ask. `NAME_API_KEY` in the environment works too and wins.
   ask does not sign in for you; a token from a subscription sign-in works where the provider
   permits it.
 - **The model list** is a snapshot of [models.dev](https://models.dev) with display names and

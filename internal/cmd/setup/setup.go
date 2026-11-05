@@ -20,9 +20,11 @@ import (
 // Help is the command's page.
 var Help = cmdutil.Page{Summary: "Connect a provider, pick a default model, teach your agents ask.", Sections: []cmdutil.Section{
 	{Title: "USAGE", Body: "ask setup"},
-	{Title: "ARGUMENTS", Body: `Asks before each change and reads answers from stdin: a credential for each provider (offering
-the key OpenCode already has), the model listing, a default model, external harnesses for coding
-agents found on this machine, and the ask skill for Claude Code, Codex, OpenCode, Cursor and pi.`},
+	{Title: "ARGUMENTS", Body: `Walks through choosing a provider (OpenCode Go, OpenCode Zen, OpenAI or another
+OpenAI-compatible endpoint) and its key, offering the key OpenCode already holds; the model
+listing; a default model from that provider; external harnesses for coding agents found on this
+machine; and the ask skill for Claude Code, Codex, OpenCode, Cursor and pi. Answers are read from
+stdin, so a pipe can drive it. Run it again to switch provider or default model.`},
 }}
 
 // harnesses are the built-in external harnesses, the CLI each one runs and its name for people.
@@ -98,6 +100,24 @@ func Run(p config.Paths, args []string) (int, error) {
 		line, _ := in.ReadString('\n')
 		return config.Trim(line)
 	}
+	// secret reads a key without echoing it, when stdin is a terminal.
+	secret := func(prompt string) string {
+		if !term.Styled(os.Stdin).On {
+			return ask(prompt)
+		}
+		quiet := exec.Command("stty", "-echo")
+		quiet.Stdin = os.Stdin
+		if quiet.Run() != nil {
+			return ask(prompt)
+		}
+		defer func() {
+			loud := exec.Command("stty", "echo")
+			loud.Stdin = os.Stdin
+			_ = loud.Run()
+			fmt.Fprintln(os.Stderr)
+		}()
+		return ask(prompt)
+	}
 	yes := func(prompt string) bool {
 		a := strings.ToLower(ask(prompt + " [Y/n] "))
 		return a == "" || a == "y" || a == "yes"
@@ -113,31 +133,16 @@ func Run(p config.Paths, args []string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	known := opencodeKeys()
-	for _, spec := range provider.Known {
-		if config.Credential(auth, spec.Name) != "" {
-			done(spec.Name + ": credential present")
-			continue
-		}
-		key := known[spec.Name]
-		if key != "" && !yes("OpenCode has a key for "+spec.Name+"; use it for ask too?") {
-			key = ""
-		}
-		if key == "" {
-			key = ask(spec.Name + " API key (enter to skip): ")
-		}
-		if key == "" {
-			continue
-		}
-		auth.Set(spec.Name, config.Object{"api_key": key})
-		if err := p.WriteAuth(auth); err != nil {
-			return 0, err
-		}
-		done(spec.Name + ": saved to " + config.Tilde(filepath.Join(p.Home, "auth.json")))
+	name, err := chooseProvider(p, auth, ask, secret, yes, done, st)
+	if err != nil {
+		return 0, err
+	}
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "No provider connected; run ask setup again when you have a key.")
 	}
 	catalog := cmdutil.CachePath(p)
-	if _, err := os.Stat(catalog); err != nil {
-		if yes("Download the model list from models.dev?") {
+	if _, err := os.Stat(catalog); err != nil && name != "" {
+		if yes("Download model names and prices from models.dev?") {
 			if err := provider.FetchCatalog(context.Background(), catalog, cmdutil.Providers(auth)); err != nil {
 				fmt.Fprintln(os.Stderr, "ask: "+err.Error())
 			}
@@ -147,20 +152,16 @@ func Run(p config.Paths, args []string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if cfg.S("model") == "" {
-		if m := ask("Default model, like opencode-go/glm-5.3 (enter to skip): "); m != "" {
-			if _, err := cmdutil.Resolve(p, cfg, m); err != nil {
-				fmt.Fprintln(os.Stderr, "ask: "+err.Error())
-			} else {
-				cfg.Set("model", m)
-				if err := p.WriteConfig(cfg); err != nil {
-					return 0, err
-				}
-				done("default model: " + m)
+	if m := chooseModel(p, cfg, name, ask, st); name != "" && m != "" {
+		if _, err := cmdutil.Resolve(p, cfg, m); err != nil {
+			fmt.Fprintln(os.Stderr, "ask: "+err.Error())
+		} else {
+			cfg.Set("model", m)
+			if err := p.WriteConfig(cfg); err != nil {
+				return 0, err
 			}
+			done("default model: " + m)
 		}
-	} else {
-		done("default model: " + cfg.S("model"))
 	}
 	for _, h := range harnesses {
 		if _, err := exec.LookPath(h.CLI); err != nil {
@@ -200,6 +201,122 @@ func Run(p config.Paths, args []string) (int, error) {
 		}
 	}
 	return 0, nil
+}
+
+// titles are the known providers' names for people, in the order setup offers them.
+var titles = []struct{ Name, Title string }{
+	{"opencode-go", "OpenCode Go"}, {"opencode", "OpenCode Zen"}, {"openai", "OpenAI"},
+}
+
+// chooseProvider asks which provider ask should use and makes sure it has a key: one already
+// saved or set in the environment, the one OpenCode holds, or one typed in. Another
+// OpenAI-compatible endpoint is added by name and base URL. It returns the provider's name, or
+// "" when none was connected.
+func chooseProvider(p config.Paths, auth config.Object, ask, secret func(string) string, yes func(string) bool, done func(string), st term.Style) (string, error) {
+	known := opencodeKeys()
+	choice := 0
+	fmt.Fprintln(os.Stderr, "Which provider should ask use?")
+	for i, t := range titles {
+		note := ""
+		switch {
+		case config.Credential(auth, t.Name) != "":
+			note = "connected"
+		case known[t.Name] != "":
+			note = "key found in OpenCode"
+		}
+		if note != "" && choice == 0 {
+			choice = i + 1
+		}
+		if note != "" {
+			note = st.Dim("  " + note)
+		}
+		fmt.Fprintf(os.Stderr, "  %d. %s%s\n", i+1, t.Title, note)
+	}
+	fmt.Fprintf(os.Stderr, "  %d. Another OpenAI-compatible endpoint\n", len(titles)+1)
+	if choice == 0 {
+		choice = 1
+	}
+	answer := ask(fmt.Sprintf("Choose [%d]: ", choice))
+	if answer != "" {
+		n := 0
+		if _, err := fmt.Sscan(answer, &n); err != nil || n < 1 || n > len(titles)+1 {
+			return "", config.Usage("choose a number from 1 to %d", len(titles)+1)
+		}
+		choice = n
+	}
+	save := func(name string, entry config.Object) error {
+		auth.Set(name, entry)
+		if err := p.WriteAuth(auth); err != nil {
+			return err
+		}
+		done(name + ": saved to " + config.Tilde(filepath.Join(p.Home, "auth.json")))
+		return nil
+	}
+	if choice == len(titles)+1 {
+		name := strings.ToLower(ask("Name for it, like my-proxy: "))
+		base := ask("Base URL, like https://example.com/v1: ")
+		key := secret("API key: ")
+		if name == "" || base == "" || key == "" {
+			return "", nil
+		}
+		return name, save(name, config.Object{"api_key": key, "base_url": base})
+	}
+	t := titles[choice-1]
+	if config.Credential(auth, t.Name) != "" {
+		done(t.Title + " is connected")
+		return t.Name, nil
+	}
+	if key := known[t.Name]; key != "" && yes("OpenCode already has a key for "+t.Title+"; use it?") {
+		return t.Name, save(t.Name, config.Object{"api_key": key})
+	}
+	key := secret(t.Title + " API key: ")
+	if key == "" {
+		return "", nil
+	}
+	return t.Name, save(t.Name, config.Object{"api_key": key})
+}
+
+// chooseModel asks for the default model from the provider's listed models, offering the
+// current default when it is on that provider, else the provider's own. It returns
+// provider/model, or "" to keep the current one.
+func chooseModel(p config.Paths, cfg config.Object, name string, ask func(string) string, st term.Style) string {
+	suggest := ""
+	if spec, ok := provider.For(name, ""); ok {
+		suggest = spec.Default
+	}
+	if current := cfg.S("model"); strings.HasPrefix(current, name+"/") {
+		suggest = strings.TrimPrefix(current, name+"/")
+	}
+	if name == "" {
+		return ""
+	}
+	catalog, _ := cmdutil.Catalog(p)
+	listed := catalog[name]
+	if len(listed) > 0 {
+		fmt.Fprintln(os.Stderr, "Default model:")
+		for i, m := range listed {
+			fmt.Fprintf(os.Stderr, "  %2d. %s%s\n", i+1, m.ID, st.Dim("  "+m.Name))
+		}
+	}
+	prompt := "Default model, a number or an id"
+	if suggest != "" {
+		prompt += " [" + suggest + "]"
+	}
+	answer := ask(prompt + ": ")
+	n := 0
+	if _, err := fmt.Sscan(answer, &n); err == nil && n >= 1 && n <= len(listed) && fmt.Sprint(n) == answer {
+		answer = listed[n-1].ID
+	}
+	if answer == "" {
+		if suggest == "" || cfg.S("model") == name+"/"+suggest {
+			return ""
+		}
+		answer = suggest
+	}
+	if !strings.Contains(answer, "/") {
+		answer = name + "/" + answer
+	}
+	return answer
 }
 
 // opencodeKeys reads the API keys OpenCode itself holds, by provider name, so setup can offer

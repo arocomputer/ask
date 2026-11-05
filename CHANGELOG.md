@@ -28,6 +28,9 @@ ask 2 is a rewrite around its own harness. It does not read ask 1's runs; see
 - Accept a launch as one JSON object on stdin: `echo '{"prompt": "...", "write": true}' | ask
   --json`, or `{"session": ID, "prompt": "..."}` to add a turn. `--schema` also takes the schema
   inline.
+- Make `ask setup` ask which provider to use, OpenCode Go, OpenCode Zen, OpenAI or another
+  OpenAI-compatible endpoint, then only that provider's key, unechoed, and a default model from
+  its list.
 - Pick a model when none is chosen: the default of the first provider with a credential, or the
   first model declared for a provider of your own. A model named without its provider gets a suggestion, like `did you mean
   opencode-go/glm-5.3?`.
