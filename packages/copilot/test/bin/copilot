@@ -7,8 +7,9 @@
  * $FAKE_TOOLS is set. A prompt containing $FAKE_FAIL fails with a session.error. Like Copilot, the
  * usage file counts the whole session: each run appends a session.shutdown event with the totals to
  * $COPILOT_HOME/session-state/ID/events.jsonl, and a resumed session adds to the last one.
+ * FAKE_STREAM and FAKE_TAIL name raw native JSONL files to replay; FAKE_RELEASE gates exit.
  */
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const argv = process.argv.slice(2);
@@ -21,6 +22,23 @@ const emit = (type, data) => console.log(JSON.stringify({ type, data, id: 'e', t
 const message = (content, toolRequests = []) => emit('assistant.message', { messageId: 'm', model, content, toolRequests });
 
 emit('user.message', { content: stdin });
+// Replay raw offline native events in arbitrary byte fragments, including split UTF-8.
+if (process.env.FAKE_STREAM) {
+  const stream = readFileSync(process.env.FAKE_STREAM);
+  for (let offset = 0; offset < stream.length;) {
+    const end = Math.min(stream.length, offset + (offset < 128 ? 1 : 4096));
+    process.stdout.write(stream.subarray(offset, end));
+    offset = end;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+// The live-activity test releases this gate after reading the sink, before the answer exists.
+if (process.env.FAKE_RELEASE) {
+  const deadline = Date.now() + 5000;
+  while (!existsSync(process.env.FAKE_RELEASE) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 let exitCode = 0;
 if (FAKE_FAIL && stdin.includes(FAKE_FAIL)) {
   emit('session.error', { errorType: 'query', message: 'copilot boom', statusCode: 400 });
@@ -28,6 +46,8 @@ if (FAKE_FAIL && stdin.includes(FAKE_FAIL)) {
 } else {
   if (FAKE_TOOLS) {
     message('Let me look.', [{ toolCallId: 't', name: 'view', arguments: { path: '.' } }]);
+    emit('tool.execution_start', { toolCallId: 't', toolName: 'view', arguments: { path: '.' } });
+    emit('tool.execution_complete', { toolCallId: 't', success: true, result: { content: 'a' } });
     console.log(JSON.stringify({ type: 'assistant.message', agentId: 'sub', data: { messageId: 's', content: 'a subagent says this', toolRequests: [] } }));
   }
   message(FAKE_ANSWER ?? `copilot: ${stdin.trim().split('\n').pop()}`);
@@ -45,3 +65,6 @@ writeFileSync(after('--usage-output-file'), JSON.stringify({ totalPremiumRequest
 mkdirSync(state, { recursive: true });
 appendFileSync(join(state, 'events.jsonl'), JSON.stringify({ type: 'session.shutdown', data: { shutdownType: 'routine', modelMetrics } }) + '\n');
 process.exitCode = exitCode;
+
+// Optional final bytes exercise incomplete JSON and a complete final line without a newline.
+if (process.env.FAKE_TAIL) process.stdout.write(readFileSync(process.env.FAKE_TAIL));

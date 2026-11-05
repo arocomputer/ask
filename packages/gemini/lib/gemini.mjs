@@ -11,9 +11,11 @@
  * follow-up resumes it with --resume. Gemini CLI cannot name a session, so ASK_TITLE is unused.
  * Tokens come with the result event; Gemini CLI reports no cost. A new read run's prompt starts
  * with GROUNDING. Gemini CLI is $ASK_GEMINI_BIN, else on PATH, else where its installers put it.
+ * Visible native messages and tools append best-effort to ASK_EVENTS; no reasoning is emitted.
  * Started by agents/gemini, which finds Node.js.
  */
 import { spawn } from 'node:child_process';
+import { activity, argumentsText } from './activity.mjs';
 import { randomUUID } from 'node:crypto';
 import { accessSync, constants, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, platform, tmpdir } from 'node:os';
@@ -104,7 +106,10 @@ function exec(command, args, { input = '', env, onLine } = {}) {
     child.stderr.on('data', (d) => (stderr += d));
     child.on('error', (error) => (stderr += `${error.message}\n`));
     child.stdin.on('error', () => {});
-    child.on('close', (code) => resolve({ code, stdout, stderr }));
+    child.on('close', (code) => {
+      if (onLine && seen < stdout.length) onLine(stdout.slice(seen));
+      resolve({ code, stdout, stderr });
+    });
     child.stdin.end(input);
   });
 }
@@ -177,6 +182,8 @@ await adapter({
       let text = '';
       let failure;
       let result;
+      const emit = activity(process.env.ASK_EVENTS);
+      const tools = new Map();
       const onLine = (line) => {
         let event;
         try {
@@ -184,7 +191,24 @@ await adapter({
         } catch {
           return;
         }
-        if (event.type === 'message' && event.role === 'assistant') text += event.content || '';
+        if (!event || typeof event !== 'object' || Array.isArray(event)) return;
+        // Native schema: google-gemini/gemini-cli packages/core/src/output/types.ts.
+        if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') {
+          text += event.content;
+          emit('message', event.content);
+        }
+        if (event.type === 'tool_use' && typeof event.tool_name === 'string') {
+          if (typeof event.tool_id === 'string' && event.tool_id.length <= 256) {
+            if (tools.size >= 1024) tools.delete(tools.keys().next().value);
+            tools.set(event.tool_id, event.tool_name.slice(0, 256));
+          }
+          emit('tool', event.tool_name + ' ' + argumentsText(event.parameters), event.tool_name);
+        }
+        if (event.type === 'tool_result') {
+          const tool = tools.get(event.tool_id);
+          emit('tool_result', typeof event.output === 'string' ? event.output : event.error?.message, tool);
+          tools.delete(event.tool_id);
+        }
         if (event.type === 'tool_use') text = '';
         if (event.type === 'error' && event.severity === 'error') failure = event.message;
         if (event.type === 'result') result = event;

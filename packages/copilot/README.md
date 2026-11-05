@@ -58,6 +58,41 @@ what the session had used before, from the last `session.shutdown` event in Copi
 AI credits rather than dollars, so no cost is reported. The report names the model that did most of
 the work (`GPT-5.4`, `Haiku 4.5`).
 
+## Live activity
+
+When ask supplies `ASK_EVENTS`, the agent appends visible main-agent activity to that absolute,
+pre-created private JSONL file. Supported native events and fields are verified against the
+[CLI runtime event schema](https://github.com/github/copilot-sdk/blob/main/nodejs/src/generated/session-events.ts)
+and offline fixtures:
+
+- `assistant.message`: string `data.content` becomes `message`. Each `data.toolRequests` entry
+  becomes `tool` using `name` and serialized `arguments`.
+- `assistant.message_delta`: string `data.deltaContent` becomes `message`; the matching
+  `data.messageId` final message snapshot is suppressed in activity only.
+- `tool.execution_start`: `data.toolName` and serialized `data.arguments` become `tool`.
+  `data.toolCallId` suppresses a duplicate call already emitted from a message request.
+- `tool.execution_complete`: string `data.result.detailedContent`, else `data.result.content`,
+  else `data.error.message` becomes `tool_result`. A matching call ID supplies the tool name.
+
+Only events actually present on stdout produce activity; CLI versions may omit deltas or tool
+execution events. Subagent events (`agentId` or `data.parentToolCallId`), user/lifecycle events,
+reasoning and opaque fields, partial tool snapshots, shell-output events and unknown events are
+ignored. No reasoning is inferred. Final answers still come from complete main-agent messages.
+
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline, with `type`, string
+`text` and optional string `tool`. Text is inspected up to 64 Ki UTF-16 code units, sanitized for
+terminal escapes, controls and bidi overrides, and truncated by encoded JSON size with an ellipsis.
+Tool names are limited to 128 UTF-16 code units. Common credential forms are redacted best effort;
+this is incomplete, especially for credentials split across chunks. Only activity is sanitized;
+the answer and report retain their existing behavior.
+
+The agent never creates or truncates the sink, so retries append. Missing, unwritable, relative,
+symlink, non-regular, non-private or differently owned sinks disable activity without changing the
+answer, report or exit status. A write failure disables activity for that invocation. Each
+correlation cache holds at most 1,024 IDs of up to 256 code units: eviction can allow duplicate
+snapshots/calls or omit a result's tool name. Complete final native lines work without a trailing
+newline; incomplete JSON is ignored.
+
 ## Cost limits
 
 Copilot reports no cost, so ask's cost limits (`--max-cost`, models.json or the `max_cost` setting)
@@ -73,7 +108,7 @@ doesn't map one to the other. Use `-t` to bound how long a run may take.
 | `COPILOT_HOME` | Copilot's home, for its session logs; `~/.copilot` by default. |
 
 The agent also reads ask's contract variables: `ASK_MODEL`, `ASK_EFFORT`, `ASK_ACCESS`, `ASK_TITLE`,
-`ASK_SESSION` and `ASK_REPORT` (see [Agents](../../docs/agents.md)).
+`ASK_SESSION`, `ASK_REPORT` and `ASK_EVENTS` (see [Agents](../../docs/agents.md)).
 
 ## Testing
 
