@@ -9,11 +9,12 @@ library only. The official agents use Node.js 18+, built-ins only.
 ## Commands
 
 ```sh
-./x check                            # PR checks: fmt, vet, tests, integration, shellcheck, guard
+./x check                            # Go, integration, shell, workflows, formula syntax and guard
 ./x integration copilot               # offline integration checks for Copilot
 ./x test ./src/test -run 'TestRuns'    # one feature; add /subtest_name for one behavior
 ./x dev runs                         # build this checkout and run it
 ./x hooks                            # once per clone: gofmt and vet before each commit
+./x release vX.Y.Z                  # prepare a changelog PR, then dispatch the checked main commit
 ```
 
 `ask help` and `ask help COMMAND` are the contract for flags and output. Prefer these forms in
@@ -29,7 +30,8 @@ guidance and examples; `--help` and `-h` remain supported aliases.
 - `packages/`: the official agents ([packages/README.md](packages/README.md)).
 - `docs/`: user docs, built into ask for `ask docs`. `docs/contributing/` is for people working on
   ask and is not built in.
-- `scripts/`: `guard.sh` (the rules below that grep can check) and the release scripts
+- `.github/checks/`: architectural guards (the rules below that grep can check).
+- `.github/release/`: release preparation, packaging and formula generation
   ([docs/contributing/releases.md](docs/contributing/releases.md)). `install.sh` is the installer
   people run; `ask.rb` is the Homebrew formula each release regenerates.
 

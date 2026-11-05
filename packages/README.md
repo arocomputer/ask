@@ -35,7 +35,7 @@ See [Runs](../docs/runs.md) for details.
 
 They get no special treatment: each uses only the agent contract in
 [docs/agents.md](../docs/agents.md), the same one anyone's agent uses. ask's core knows nothing
-about them; `scripts/guard.sh` checks that.
+about them; `.github/checks/guard.sh` checks that.
 
 Capabilities differ: not every harness supports enforced read access, native titles, usage or
 continuation. Read each package's README (also available as `ask docs NAME`) for prerequisites

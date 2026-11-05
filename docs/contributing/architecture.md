@@ -59,7 +59,7 @@ broader names such as `state` would still miss its contract and JSON utilities.
 
 ## Rules the layout keeps
 
-[`scripts/guard.sh`](../../scripts/guard.sh) checks each of these on every change:
+[`.github/checks/guard.sh`](../../.github/checks/guard.sh) checks each of these on every change:
 
 - **Leaves.** `home`, `tui` and `update` import no other ask package. Everything may build on
   them.
@@ -83,7 +83,8 @@ Two more are kept by tests and review, not grep:
 | [`docs/`](../) | User docs, built into ask for `ask docs` (only the top level; this folder is not) |
 | [`packages/`](../../packages/) | The official agents |
 | [`src/test/`](../../src/test/) | Black-box tests of the binary, one file per feature; fake, fixtures and integration runner |
-| `scripts/` | `guard.sh`, and the release scripts in [releases.md](releases.md) |
+| `.github/checks/` | Architectural guards |
+| `.github/release/` | Release preparation, packaging and formula generation in [releases.md](releases.md) |
 | `assets/` | The logo, wordmark and README screens |
 | `x` | The one entry point for checks: `./x check` is what CI runs |
 

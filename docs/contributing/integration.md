@@ -12,7 +12,8 @@ temporary homes, without API keys, installed coding CLIs or a running agent.
 ```
 
 `./x integration` is the runner's only command; the old `baymax` and `node` commands have been
-removed. Formatting, vet, shellcheck and architectural guards remain separate checks.
+removed. Formatting, vet, shellcheck, actionlint, Ruby syntax and architectural guards remain
+separate checks.
 
 ## What it protects
 

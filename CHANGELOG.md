@@ -17,6 +17,9 @@
   replace `started`/`ok` and machine `success` with `running`/`succeeded`. Batch summaries always
   include succeeded and failed counts, including zeros, with stopped work separate. Persisted
   result `ok` booleans and historical run records are unchanged.
+- Expose `./x release vX.Y.Z`, pin release dispatch to the checked main commit, and require
+  stable tags with one nonempty changelog section. Share verified archive and checksum builds
+  between CI and publication; check workflows, Homebrew formula syntax and internal Go races.
 
 - Supply agents an optional private per-task `ASK_EVENTS` JSONL file, preserved across retries
   and hook follow-ups, independently of final answers and `ASK_REPORT` metadata.
@@ -168,7 +171,7 @@
   its checksum; `--check` only reports. Homebrew and go install are pointed to their own update.
   In a terminal, ask mentions a newer release at most once a day (`ASK_NO_UPDATE_CHECK=1` stops it).
 - Releases carry build provenance (`gh attestation verify`), run CI's checks and `govulncheck`
-  first, and are installed for real on macOS and Linux. `scripts/release.sh` releases in two runs.
+  first, and are installed for real on macOS and Linux. `./x release` releases in two runs.
 - A new README.
 
 ## v0.1.0 · 2026-10-02

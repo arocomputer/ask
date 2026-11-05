@@ -2,7 +2,7 @@
 # guard: the rules AGENTS.md states, checked on every change. Each check pins one invariant; a
 # change that moves a rule must move this script in the same diff, where review can see it.
 set -eu
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 fail=0
 
 bad() { printf 'guard: FAIL: %s\n' "$1" >&2; fail=1; }
