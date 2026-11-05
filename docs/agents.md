@@ -64,6 +64,7 @@ ask runs the agent with no arguments, in the directory the agent should work in 
 | `ASK_SCHEMA` | Set only with `--schema`: a file holding the JSON Schema, for CLIs that enforce one. |
 | `ASK_SESSION` | Set for a follow-up or saved-session recovery: the session to continue (see [Sessions](#sessions)). |
 | `ASK_REPORT` | A file path for the optional report. |
+| `ASK_EVENTS` | An optional private JSONL file for visible activity events; append complete records as work happens. |
 | `ASK_ENVIRONMENT` | Effective integration booleans for adapters with an environment sidecar. See [Agent environments](environment.md) for enforced controls and unavailable defaults. |
 | `ASK_ENVIRONMENT_REQUESTED` | Explicit user integration booleans, or `{}`. Enforce explicit restrictions or refuse; unavailable defaults must be reported accurately. |
 | `ASK_MAX_COST` | Set only when the task has a cost limit: dollars, like `2` or `0.5`. See [Cost limits](#cost-limits). |
@@ -99,6 +100,14 @@ and emits at most one activity line per task every five seconds (reset for a fol
 Brief changes may be missed or suppressed. Activity is neither an answer nor a heartbeat, and is
 not saved in run results. Keep cumulative usage and session when replacing the report; optional
 activity must not replace them. Timeouts and reported-cost limits apply as before.
+
+For richer observation, an adapter may append one JSON object per line to `ASK_EVENTS`, with
+`type` (`message`, `reasoning`, `tool` or `tool_result`), `text`, and optional `tool`. Records
+are UTF-8 and at most 16 KiB including the newline. Emit only content the underlying harness
+actually exposes; never invent hidden reasoning. Preserve complete lines, append across follow-ups,
+and keep the final answer on stdout. If the event path is absent or unavailable, the task must
+still run normally. Ask stores the event file privately with the run; it may contain sensitive
+commands, paths or model output, so treat it as a transcript rather than a redacted audit log.
 
 ask handles everything else: timeouts, stopping, batches, recording runs, follow-ups, worktrees,
 reporting what changed and checking JSON answers. Official agents apply `ASK_TITLE` when their

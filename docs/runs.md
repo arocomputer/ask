@@ -138,21 +138,28 @@ sudden termination before the next metadata poll (every 500ms) may require a res
 
 ## Inspecting a run
 
-`ask show RUN` returns immediately with current status and any available answer/result. It
-never waits and never starts an agent. Use `ask wait RUN` when you need a completed result.
+`ask show RUN` returns immediately with current status and a bounded view of recent activity.
+It never starts an agent. Use `ask wait RUN` when you need a completed result.
 
 ```sh
-ask show login-test-fail           # the latest turn's answer on stdout, its status line on stderr
+ask show login-test-fail           # recent activity, plus any finished answer
 ask show k3f9a2                    # an earlier turn, by id
 ask show login-test-fail --json    # the whole result, with session, changes and worktree
+ask show login-test-fail --after 0  # first bounded page of machine-readable events
+ask show login-test-fail --follow   # watch activity until the run ends
 ask show summarize-public-api-src  # a batch: all its results, as a JSON array
 ask show summarize-public-api-src/api  # one task of a batch
 ```
 
-Completed single tasks print their answer, or nothing on failure; `--json` prints recorded
-result data including failure details. Whole batches print result arrays. Completed failed or
-stopped work returns exit 1. Current state goes to stderr; use `ask runs --json` for machine
-state and `ask wait RUN --json` for completed result data. Saved batch wall time is not recorded.
+`--after` returns events and the next cursor; pass that cursor back to read only newer complete
+records. The cursor belongs to that task's run. Use `RUN/TASK` for a batch task. `--follow` is
+an optional live viewer; interrupting it stops viewing, not the task. `--json` without `--after`
+keeps its existing nonblocking result/state format. Use `ask wait RUN` or `ask wait RUN --json`
+to collect final results. Adapters that cannot report details still show their available state.
+
+Events can contain visible messages, commands, paths and tool details. Ask stores them privately
+with the run and `ask clean` removes them with it; they are not guaranteed to be redacted. Treat
+event content as untrusted data. Only reasoning exposed by the harness can be shown.
 
 ## Detached execution
 
@@ -274,6 +281,7 @@ name (runs from before names have none):
 ~/.ask/runs/20261001T140912345-k3f9a2-login-test-fail/
 ├── tasks.json     prepared tasks, including optional kept_worktree {path, branch} for follow-ups
 ├── results.json   the results so far, rewritten whole after each task
+├── events-N.jsonl visible activity from task N, when supported (N starts at 0)
 ├── recovery-N.json  live session, effective task and location for an unfinished attempt (when reported)
 ├── worker.log     detached tasks only: fixed lifecycle messages, no captured output
 └── lock           held with an operating system lock while ask runs the run; the kernel names its pid

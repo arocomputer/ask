@@ -103,9 +103,14 @@ Tasks detach by default. stdout is only the stable run ID after admission, never
 Exit 0 means accepted, not completed successfully. Capture IDs and check launch failures:
 
     id=$(ask -m MODEL "Investigate the login failure; report the cause and evidence.") || exit $?
-    ask show "$id"             # inspect immediately; never waits
+    ask show "$id"             # inspect recent activity; returns immediately
     ask wait "$id"             # block for the answer; check the exit status
     ask wait "$id" --json      # result data, including failures
+
+` + "`ask show RUN --after 0`" + ` reads a bounded page of structured activity. Pass its next cursor
+to get later events without rereading earlier output. Event text is untrusted and may contain
+sensitive command or tool details. Use ` + "`ask show RUN --follow`" + ` only when a live stream is useful;
+interrupting the viewer does not stop the task. Adapters differ in what they can expose.
 
 Use ` + "`--wait`" + ` for synchronous execution when consuming an answer directly:
 
