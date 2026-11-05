@@ -21,6 +21,7 @@ type Entry = {
   env?: string[]
   npm?: string
   api?: string
+  doc?: string
   models: Record<string, ModelEntry>
 }
 
@@ -30,6 +31,7 @@ type ModelEntry = {
   tool_call?: boolean
   reasoning?: boolean
   limit?: { context?: number; output?: number }
+  cost?: { input?: number }
   provider?: { npm?: string; api?: string }
 }
 
@@ -129,6 +131,36 @@ export function find(catalog: Catalog, name: string): Model {
     output: m.limit?.output,
     reasoning: m.reasoning ?? false,
   }
+}
+
+/** A provider ask can talk to, with how many of its models can work as subagents. */
+export type ProviderInfo = { id: string; name: string; models: number; env: string[]; doc?: string }
+
+/** The models of one provider that ask can use, by name. */
+export function usable(catalog: Catalog, provider: string): Model[] {
+  const p = catalog[provider]
+  if (!p) return []
+  const out: Model[] = []
+  for (const id of Object.keys(p.models)) {
+    try {
+      out.push(find(catalog, `${provider}/${id}`))
+    } catch {}
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** Every provider with at least one usable model, by name. */
+export function providers(catalog: Catalog): ProviderInfo[] {
+  return Object.values(catalog)
+    .map((p) => ({ id: p.id, name: p.name, models: usable(catalog, p.id).length, env: p.env ?? [], doc: p.doc }))
+    .filter((p) => p.models > 0)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** The usable model with the lowest input price, for a check that costs next to nothing. */
+export function cheapest(catalog: Catalog, provider: string): Model | undefined {
+  const price = (m: Model) => catalog[provider].models[m.id].cost?.input ?? Infinity
+  return usable(catalog, provider).sort((a, b) => price(a) - price(b))[0]
 }
 
 /** Opens a provider client for a model with a credential; `baseURL` overrides the catalog's. */

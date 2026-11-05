@@ -23,7 +23,8 @@ variants, not by argument.
 - **models.dev is the provider registry.** A model's `npm` field picks its protocol and its
   `provider.api` overrides the endpoint: `@ai-sdk/openai` speaks Responses,
   `@ai-sdk/anthropic` speaks Anthropic Messages, anything else with an endpoint speaks chat
-  completions. Credentials come from the provider's `env` variables or `~/.ask/auth.json`.
+  completions. Credentials come from the provider's `env` variables or keys pasted into
+  `~/.ask/auth.json`; ask never imports another program's credentials.
   The catalog is cached in `~/.ask/cache/` and refreshed daily, stale copy as fallback.
 - **Three protocols:** Responses, chat completions, Anthropic Messages. Google's native API and
   cloud-specific ones (Bedrock, Azure) wait for a need.
@@ -31,8 +32,14 @@ variants, not by argument.
   assistant message keeps its provider-native items, replayed only to the same protocol (for
   encrypted reasoning and thinking signatures).
 - The first agent doorway is a CLI that reads one JSON request on stdin and writes one JSON
-  result on stdout. Human commands stay useful: `ask setup`, `ask models`, `ask sessions`,
-  `ask show`. MCP comes later as a thin wrapper over the same engine.
+  result on stdout. MCP comes later as a thin wrapper over the same engine.
+- **The human CLI is redone in the spirit of GitHub's `gh`:** colored state symbols, aligned
+  tables that fit the terminal, a spinner on stderr, interactive prompts (arrow keys, type to
+  filter, hidden key entry), bold section headers in help, `--json` on anything that lists or
+  shows. Color and prompts only on a terminal, honoring `NO_COLOR`; piped output is plain and
+  tab-separated. Commands: `ask setup`, `ask auth login|logout|status`, `ask models`,
+  `ask config get|set`, `ask PROMPT`, `ask sessions`, `ask show`, `ask wait`, `ask continue`,
+  `ask stop`.
 
 ## Stripped from the Go version
 
@@ -43,8 +50,8 @@ variants, not by argument.
 - Streaming text callbacks nobody read.
 - The worker's pipe handshake, fcntl locks and the container special case: one lock file holding
   the worker's pid.
-- The executable-extension contract, tables, spinner, the `x` script, `guard.sh` (its rules
-  become a test), `install`/`remove`.
+- The executable-extension contract, the `x` script, `guard.sh` (its rules become a test),
+  `install`/`remove`, and importing OpenCode's key in `ask setup`.
 
 ## Fixed in the harness
 
@@ -61,9 +68,10 @@ variants, not by argument.
 
 1. **Engine.** Catalog, the three protocols, tools, loop, system prompt, as plain functions.
    Tests against fake provider servers, one behavior each.
-2. **Sessions and CLI.** Session folders, a detached worker per turn, stop and continue; config,
-   credentials, `ask setup` (API keys pasted without echo; sign-ins come in phase 5), `ask models`. The same turn
-   function runs in-process (library) or in the worker (CLI).
+2. **Sessions and the human CLI.** Session folders, a detached worker per turn, stop and
+   continue; config and pasted keys; the `gh`-style commands above. The same turn function runs
+   in-process (library) or in the worker (CLI). Agent-facing JSON stays minimal until phase 3.
+   Still to port: `--worktree`, and the library's in-process entry point.
 3. **Interface experiments.** Two or three JSON variants over phase 2, driven by Claude Code
    (Sonnet) and Codex on this server, with `experiments/fake2.py` as the subagent model.
    - Waiting: block per call, return the first finished, or start and collect in one call.

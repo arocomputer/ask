@@ -4,7 +4,7 @@
 // caller can save it and show progress from it.
 
 import { overflowed, ProviderError, type Message, type Provider, type Usage } from "./provider.ts"
-import { instructions } from "./prompt.ts"
+import { instructions } from "./system.ts"
 import { tools as builtIn, type Args, type Tool } from "./tools.ts"
 
 export type RunOptions = {
@@ -21,7 +21,7 @@ export type RunOptions = {
   effort?: string
   /** A JSON Schema the final answer must match. */
   schema?: object
-  /** Replaces the system prompt `prompt.ts` builds. */
+  /** Replaces the system prompt `system.ts` builds. */
   instructions?: string
   maxOutput?: number
   /** Model turns before giving up; 100 by default. */
