@@ -1,6 +1,7 @@
 package test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -63,8 +64,8 @@ func TestWorktrees(t *testing.T) {
 		s.ask("wait", idle)
 		s.ask("wait", busy)
 		out := s.ask("clean", "--dry-run")
-		match(t, out.stdout, "remove  ~?.*nothing-to-do  ask/nothing-to-do\n")
-		match(t, out.stdout, "keep    .*write-something\\S*  ask/write-something\\S* · uncommitted changes\n")
+		match(t, out.stdout, "remove  ~/home/agent/worktrees/nothing-to-do  ask/nothing-to-do · no changes\n")
+		match(t, out.stdout, "keep    .*write-something\\S*  ask/write-something\\S* · uncommitted: 0 tracked, 1 untracked\n")
 		out = s.ask("clean", "--yes")
 		eq(t, out.code, 0)
 		if exists(s.record(idle)["worktree"].(map[string]any)["path"].(string)) {
@@ -80,5 +81,51 @@ func TestWorktrees(t *testing.T) {
 		if !s.hasSession(busy) {
 			t.Fatal("a run with a kept worktree was removed")
 		}
+	})
+	t.Run("clean keeps work another branch contains unless --contained, then keeps its branch", func(t *testing.T) {
+		s := fresh(t)
+		repo, git := s.repo()
+		id := strings.TrimSpace(s.in(repo, "-m", "openai/test-model", "--worktree", "change readme\n"+`call write {"path":"b.txt","content":"new"}`).stdout)
+		s.ask("wait", id)
+		w := s.record(id)["worktree"].(map[string]any)
+		path, branch := w["path"].(string), w["branch"].(string)
+		gitAt := s.gitAt(path)
+		gitAt("add", ".")
+		gitAt("commit", "-qm", "change")
+		git("branch", "feature/keep", branch)
+
+		out := s.ask("clean", "--dry-run")
+		match(t, out.stdout, "keep    .*  "+branch+" · contained in feature/keep; use --contained\n")
+
+		out = s.ask("clean", "--contained", "--dry-run")
+		match(t, out.stdout, "remove  .*  "+branch+" · contained in feature/keep \\(branch kept\\)\n")
+		if !exists(path) {
+			t.Fatal("the dry run removed the worktree")
+		}
+
+		out = s.ask("clean", "--contained", "--yes")
+		eq(t, out.code, 0)
+		match(t, out.stderr, "removed .*; kept "+branch+" for review")
+		if exists(path) {
+			t.Fatal("the contained worktree remains")
+		}
+		match(t, git("branch", "--list", branch), branch)
+	})
+	t.Run("clean keeps a worktree while its session is running", func(t *testing.T) {
+		s := fresh(t)
+		repo, _ := s.repo()
+		hang := s.start([]string{"-m", "fake:small", "-C", repo, "--worktree", "hang"}, "", map[string]string{"FAKE_HANG": "hang"})
+		path := filepath.Join(s.home, "agent", "worktrees", "hang")
+		until(t, func() bool {
+			entries, _ := os.ReadDir(filepath.Join(s.home, "agent", "sessions"))
+			return exists(path) && len(entries) > 0
+		})
+		out := s.ask("clean", "--dry-run")
+		match(t, out.stdout, "keep    ~/home/agent/worktrees/hang  ask/hang · session running\n")
+		if !exists(path) {
+			t.Fatal("the running session's worktree is gone")
+		}
+		_ = hang.cmd.Process.Kill()
+		hang.wait(t)
 	})
 }

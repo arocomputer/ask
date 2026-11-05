@@ -317,9 +317,171 @@ func Checkouts(dir string) []string {
 	return paths
 }
 
+// targets returns the branches Landed considers primary: origin's default, then main or master.
+func targets(path string) []string {
+	out := []string{}
+	if ref, ok := git(path, []string{"rev-parse", "--abbrev-ref", "origin/HEAD"}, ""); ok {
+		out = append(out, config.Trim(ref))
+	}
+	for _, name := range []string{"main", "master"} {
+		if _, ok := git(path, []string{"rev-parse", "--verify", "-q", "refs/heads/" + name}, ""); ok {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// patchID returns a diff's stable patch id, or "".
+func patchID(path, diff string) string {
+	out, ok := git(path, []string{"patch-id", "--stable"}, diff)
+	if !ok {
+		return ""
+	}
+	if fields := strings.Fields(out); len(fields) > 0 {
+		return fields[0]
+	}
+	return ""
+}
+
+// Contained returns another local or remote branch that already contains branch, if any.
+func Contained(path, branch string) (string, bool) {
+	upstream, _ := git(path, []string{"rev-parse", "--abbrev-ref", branch + "@{upstream}"}, "")
+	upstream = config.Trim(upstream)
+	out, ok := git(path, []string{"for-each-ref", "--contains", branch, "--format=%(refname:short)", "refs/heads", "refs/remotes"}, "")
+	if !ok {
+		return "", false
+	}
+	for _, ref := range strings.Split(config.Trim(out), "\n") {
+		ref = config.Trim(ref)
+		if ref == "" || ref == branch || ref == upstream || strings.HasSuffix(ref, "/"+branch) {
+			continue
+		}
+		return ref, true
+	}
+	return "", false
+}
+
+// LikelyLanded reports whether every file branch changed already has the branch's final blob in
+// a primary branch's history. It is advisory: a reworked merge can look like this without being
+// the same commit. Renames and partial rewrites stay not landed.
+func LikelyLanded(path, branch string) (bool, string) {
+	for _, target := range targets(path) {
+		base, ok := git(path, []string{"merge-base", target, branch}, "")
+		if !ok {
+			continue
+		}
+		base = config.Trim(base)
+		files, _ := git(path, []string{"diff", "--name-only", "-z", base, branch}, "")
+		names := strings.Split(strings.TrimRight(files, "\x00"), "\x00")
+		if files == "" {
+			return true, "no changes"
+		}
+		all := true
+		for _, file := range names {
+			if file == "" {
+				continue
+			}
+			blob, exists := git(path, []string{"rev-parse", branch + ":" + file}, "")
+			if !exists {
+				// The branch deleted the file; the target must not have it.
+				if _, there := git(path, []string{"rev-parse", target + ":" + file}, ""); there {
+					all = false
+					break
+				}
+				continue
+			}
+			blob = config.Trim(blob)
+			if current, ok := git(path, []string{"rev-parse", target + ":" + file}, ""); ok && config.Trim(current) == blob {
+				continue
+			}
+			commits, _ := git(path, []string{"rev-list", base + ".." + target, "--", file}, "")
+			found := false
+			for _, commit := range strings.Fields(commits) {
+				if at, ok := git(path, []string{"rev-parse", commit + ":" + file}, ""); ok && config.Trim(at) == blob {
+					found = true
+					break
+				}
+			}
+			if !found {
+				all = false
+				break
+			}
+		}
+		if all {
+			return true, "likely landed in " + target
+		}
+	}
+	return false, ""
+}
+
+// Locked reports whether path is a git-locked worktree, and its lock reason.
+func Locked(path string) (bool, string) {
+	out, ok := git(path, []string{"worktree", "list", "--porcelain"}, "")
+	if !ok {
+		return false, ""
+	}
+	seen, reason := "", ""
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			seen, reason = strings.TrimPrefix(line, "worktree "), ""
+		case line == "locked":
+			reason = "locked"
+		case strings.HasPrefix(line, "locked "):
+			reason = strings.TrimPrefix(line, "locked ")
+		case line == "":
+			if seen == path {
+				return reason != "", reason
+			}
+			seen, reason = "", ""
+		}
+	}
+	return false, ""
+}
+
+// Nested reports whether path contains another registered worktree.
+func Nested(path string) bool {
+	real, e := filepath.EvalSymlinks(path)
+	if e == nil {
+		path = real
+	}
+	prefix := path + string(filepath.Separator)
+	for _, checkout := range Checkouts(path) {
+		if checkout != path && strings.HasPrefix(checkout, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// DirtyCounts returns tracked and untracked entries in path's status.
+func DirtyCounts(path string) (tracked, untracked int, ok bool) {
+	out, ok := git(path, []string{"status", "--porcelain"}, "")
+	if !ok {
+		return 0, 0, false
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "??") {
+			untracked++
+		} else {
+			tracked++
+		}
+	}
+	return tracked, untracked, true
+}
+
+// RemoveWorktreeOnly removes a worktree and leaves its branch reachable elsewhere.
+func RemoveWorktreeOnly(path string) bool {
+	_, ok := git(path, []string{"worktree", "remove", path}, "")
+	return ok
+}
+
 // Landed reports whether a kept worktree's branch needs nothing more, with why: it changed
-// nothing, or every file it changed already matches a default branch (origin's HEAD, main or
-// master), as after a merge or a squash merge. Uncommitted changes never land.
+// nothing, every commit is already upstream, or its changed files match a default branch
+// (origin's HEAD, main or master). Uncommitted changes never land.
 func Landed(path, branch string) (bool, string) {
 	status, ok := git(path, []string{"status", "--porcelain"}, "")
 	if !ok {
@@ -328,33 +490,65 @@ func Landed(path, branch string) (bool, string) {
 	if config.Trim(status) != "" {
 		return false, "uncommitted changes"
 	}
-	targets := []string{}
-	if ref, ok := git(path, []string{"rev-parse", "--abbrev-ref", "origin/HEAD"}, ""); ok {
-		targets = append(targets, config.Trim(ref))
-	}
-	for _, name := range []string{"main", "master"} {
-		if _, ok := git(path, []string{"rev-parse", "--verify", "-q", "refs/heads/" + name}, ""); ok {
-			targets = append(targets, name)
-		}
-	}
-	for _, target := range targets {
+	ts := targets(path)
+	for _, target := range ts {
 		base, ok := git(path, []string{"merge-base", target, branch}, "")
 		if !ok {
 			continue
 		}
-		files, _ := git(path, []string{"diff", "--name-only", "-z", config.Trim(base), branch}, "")
+		base = config.Trim(base)
+		files, _ := git(path, []string{"diff", "--name-only", "-z", base, branch}, "")
 		names := strings.Split(strings.TrimRight(files, "\x00"), "\x00")
 		if files == "" {
 			return true, "no changes"
+		}
+		// A deleted remote branch is usually a merged pull request: every commit's patch is
+		// already upstream even when later commits changed the same files.
+		if cherry, ok := git(path, []string{"cherry", target, branch}, ""); ok {
+			plus := false
+			for _, line := range strings.Split(config.Trim(cherry), "\n") {
+				if strings.HasPrefix(line, "+") {
+					plus = true
+					break
+				}
+			}
+			if !plus {
+				return true, "merged into " + target
+			}
+		}
+		// A multi-commit branch can be squash-merged as one commit. Its combined patch-id is
+		// stable across later edits to the same files.
+		if ahead, e := strconv.Atoi(config.Trim(mustGit(path, []string{"rev-list", "--count", base + ".." + branch}))); e == nil && ahead > 1 {
+			if diff, ok := git(path, []string{"diff", base, branch}, ""); ok {
+				want := patchID(path, diff)
+				if want != "" {
+					commits, _ := git(path, []string{"rev-list", base + ".." + target}, "")
+					for _, commit := range strings.Fields(commits) {
+						if _, ok := git(path, []string{"rev-parse", "--verify", "-q", commit + "^"}, ""); !ok {
+							continue
+						}
+						diff, ok := git(path, []string{"diff", commit + "^", commit}, "")
+						if ok && patchID(path, diff) == want {
+							return true, "merged into " + target
+						}
+					}
+				}
+			}
 		}
 		if _, same := git(path, append([]string{"diff", "--quiet", target, branch, "--"}, names...), ""); same {
 			return true, "merged into " + target
 		}
 	}
-	if len(targets) == 0 {
+	if len(ts) == 0 {
 		return false, "no main branch to compare with"
 	}
-	return false, "not merged into " + targets[0]
+	return false, "not merged into " + ts[0]
+}
+
+// mustGit returns git output or "", for counts that only feed a condition.
+func mustGit(dir string, args []string) string {
+	out, _ := git(dir, args, "")
+	return out
 }
 
 // Check verifies an existing worktree's repository and branch without recreating it.

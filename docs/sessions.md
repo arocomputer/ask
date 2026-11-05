@@ -96,12 +96,17 @@ records the turn as stopped and exits. It waits up to ten seconds. Exit 1 when n
 ask clean               # shows the plan, then asks
 ask clean --dry-run
 ask clean --yes --days 7
+ask clean --contained   # also work whose commits another branch holds
+ask clean --superseded  # also work a main branch matches after a rework
 ```
 
 Sessions inactive for longer than `--days` (default 30) are removed. A worktree goes when its
-branch has no uncommitted changes and either changed nothing or every file it changed already
-matches the main branch (as after a merge or a squash merge); its branch goes with it. A session
-whose worktree stays also stays.
+branch has no uncommitted changes and its work is on the main branch, as after a merge or a squash
+merge, or when it changed nothing; its branch goes with it. A worktree stays while its session is
+running, while git locks it, while it contains another worktree, and while its work is dirty or
+unlanded. `--contained` also removes work whose commits another branch holds but keeps its branch
+for review; `--superseded` also removes work a main branch already matches after a rework. A
+session whose worktree stays also stays.
 
 ## The result record
 
