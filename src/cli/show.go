@@ -219,6 +219,7 @@ func showActivity(p home.Paths, r *runs.Run, index int, ref string, follow bool)
 	cursor := int64(0)
 	first := true
 	lastStatus := ""
+	activityUnavailable := false
 	for {
 		fresh, record, err := runSnapshot(p, r)
 		if err != nil {
@@ -247,13 +248,15 @@ func showActivity(p home.Paths, r *runs.Run, index int, ref string, follow bool)
 			}
 		}
 		more := false
-		if index >= 0 {
+		if index >= 0 && !activityUnavailable {
 			page, err := readActivity(r, index, cursor, first)
 			if err != nil {
-				return 0, err
+				fmt.Fprintln(os.Stderr, "ask: activity unavailable; showing saved run state")
+				activityUnavailable = true
+			} else {
+				printActivity(page.Events)
+				cursor, more = page.NextCursor, page.HasMore
 			}
-			printActivity(page.Events)
-			cursor, more = page.NextCursor, page.HasMore
 		}
 		if state != "running" && !more {
 			if state == "stopped" {

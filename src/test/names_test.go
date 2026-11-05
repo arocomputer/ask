@@ -1,6 +1,7 @@
 package test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -55,6 +56,9 @@ func TestNames(t *testing.T) {
 		eq(t, object(calls[0]["input"].(map[string]any)).b("worktree"), false)
 		eq(t, object(calls[1]["input"].(map[string]any)).b("worktree"), true)
 		eq(t, object(calls[2]["input"].(map[string]any)).b("worktree"), true)
+		s.write(filepath.Join(s.home, "settings.json"), `{"worktree":true}`)
+		s.run([]string{"--wait", "-m", "fake:small", "-w", "-C", dir, "another"}, "", map[string]string{"FAKE_WRITE": "d.txt=new"})
+		eq(t, object(s.hookCalls()[3]["input"].(map[string]any)).b("worktree"), true)
 		eq(t, runID(t, r.stderr), "bright-running-fox-2")
 		match(t, git("branch", "--list", "ask/bright-running-fox-2"), `ask/bright-running-fox-2`)
 	})

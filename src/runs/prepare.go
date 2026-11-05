@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/arocomputer/ask/src/agent"
+	"github.com/arocomputer/ask/src/git"
 	"github.com/arocomputer/ask/src/home"
 	"github.com/arocomputer/ask/src/task"
 )
@@ -180,6 +181,24 @@ func Prepare(p home.Paths, items []any, defaults home.Object, label string, sing
 				name += "-" + strconv.Itoa(i+1) + "-" + safeWorktreeID(taskID)
 			}
 			x.Set("worktree", name)
+		}
+		if settings.B("worktree") && x.B("write") {
+			if t.Has("worktree") && !t.B("worktree") {
+				return nil, home.Usage(`%s: writes always run in a worktree; remove "worktree": false`, where)
+			}
+			if !x.B("worktree") {
+				if t.B("continue") {
+					return nil, home.Usage("%s: writes always run in a worktree; %s started outside one, so it cannot be continued with write access", where, t.S("continue"))
+				}
+				if git.Root(x.S("dir")) == "" {
+					return nil, home.Usage("%s: writes need a git worktree; %s is not in a git repository", where, x.S("dir"))
+				}
+				name := label
+				if !single {
+					name += "-" + strconv.Itoa(i+1) + "-" + safeWorktreeID(taskID)
+				}
+				x.Set("worktree", name)
+			}
 		}
 		if !x.B("model") && settings.Has("model") {
 			x.Set("model", settings.S("model"))

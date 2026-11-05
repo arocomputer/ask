@@ -2,9 +2,8 @@
 
 ## Unreleased
 
-- Move Go implementation packages and binary tests into `src/`, with the entry point at
-  `main.go`. Build from the repository root and install with
-  `go install github.com/arocomputer/ask@latest`. Bundled adapters stay in `packages/`.
+- Organize source under `src/` and release tooling under `.github/release/`; `go install` now uses the module root.
+- Add the optional `worktree` setting to require a separate worktree for write tasks.
 - Rename the offline adapter runner to `./x integration [AGENT...]`; remove the `baymax`
   and `node` aliases.
 - Preserve the previous bundled package during replacement, serialize concurrent writers, and
@@ -35,12 +34,7 @@
 - Add `ask runs --json` metadata and `ask wait --json` results with stable run IDs and batch
   positions. Report running and stopped selections in `ask show --json` with exit status 1;
   completed show results retain their format. Foreground start status includes the stable ID.
-- Run tasks, follow-ups, recovery and batches detached by default, returning only a stable ID
-  after locked admission. Use `--wait` for synchronous answers; `-w` remains write access and
-  `-m` remains model selection. Remove `ask start`. Completed runs require an explicit
-  follow-up prompt. Benchmarks remain synchronous.
 
-- Allow per-agent environment variable names to be added or removed without replacing defaults.
 - Extend environment allowlists and explicit integration policy to Claude, Codex and OpenCode.
   Claude probes supported MCP/skill/tool controls without resetting auth, instructions or hooks.
   Unavailable defaults produce visible run notes; explicit unenforceable restrictions fail.
@@ -61,12 +55,13 @@
   `ask models --roles` and edit them in `ask settings` or `ask settings set roles JSON`.
   Runs, batches and benches record resolved models; follow-ups and reruns keep their recorded
   models after role edits, with existing enabled-state and cost-limit rules.
-- Add editable `environment.json` for per-agent inherited variables and declared integration
-  controls. Pi now disables native MCP explicitly, checks CLI support, preserves auth paths
+- Add editable `environment.json` for per-agent inherited variables and integration controls.
+  Claude, Codex, OpenCode and Pi now inherit only their adapter allowlists by default; use `add`
+  to pass other needed variables. Pi disables native MCP, checks CLI support, preserves auth paths
   and refuses to suppress possible extension policy hooks. Other adapters reject integration
   policies they cannot enforce; see `ask docs environment` for supported defaults and limits.
-- Make promptless `ask continue` finish unfinished work in usable saved conversations, restart
-  otherwise with diagnostics under `--wait`, guide active runs to `ask wait`, and require explicit
+- Make promptless `ask continue` finish unfinished work in usable saved conversations; restart standalone reads without hooks
+  when needed, but refuse unsafe automatic retries, guide active runs to `ask wait`, and require explicit
   prompts for completed-run follow-ups. Keep successful batch tasks and auth/refusal/cost
   blockers untouched.
   Persist private live session and worktree metadata for interrupted attempts, invalidate stale

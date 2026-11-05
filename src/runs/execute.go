@@ -122,7 +122,12 @@ func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report fu
 		if !x.B("ok") && (len(selected) == 0 || selected[0] == i) {
 			if smart {
 				var why string
-				tasks[i], why, _ = recoverTask(r, i, true)
+				var resumed bool
+				tasks[i], why, resumed = recoverTask(r, i, true)
+				if !resumed && tasks[i] != nil && !ordered {
+					tasks[i] = nil
+					why = "cannot safely restart: hooks may change task access; review the previous attempt"
+				}
 				report(Event{Kind: "recovery", Index: i, Note: hooks.Note{Text: why}})
 				if tasks[i] == nil {
 					blocked = why
@@ -134,11 +139,13 @@ func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report fu
 	}
 	// Detached admission must promise actual work. Recheck under the lock: another owner
 	// may have completed the run since the launcher read it, or every failure may be blocked.
-	if ready != nil && len(todo) == 0 {
+	if len(todo) == 0 {
 		if blocked != "" {
 			return nil, home.Usage("%s: %s", r.ID, blocked)
 		}
-		return nil, home.Usage("%s is complete; give a prompt to continue the conversation", r.ID)
+		if ready != nil {
+			return nil, home.Usage("%s is complete; give a prompt to continue the conversation", r.ID)
+		}
 	}
 	planned := &Run{ID: r.ID, Name: r.Name, Tasks: tasks}
 	release, e := lockContinuations(a.Paths, planned, todo)

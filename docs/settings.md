@@ -48,7 +48,7 @@ Home/End, deletion and bracketed paste; pasted newlines become spaces rather tha
   an exact `agent:id[#effort]`. Add or select one to edit it; enter `-` as its target to remove it.
   See [Model roles](models.md#model-roles).
 - **Defaults**: the model when you don't give `-m`, the cost limit, the timeout and batch jobs.
-- **Worktrees**: where `--worktree` works, and its branch name.
+- **Worktrees**: where worktrees go, their branch names, and whether writes always use one.
 - **Apps**: the ask skill for each app that reads skills, and task titles in Claude Code.
 
 ## From scripts and agents
@@ -61,6 +61,7 @@ ask settings set roles '{"fast":"claude:haiku-4.5","deep":"codex:gpt-6.1-sol#hig
 ask settings set model fast
 ask settings get --json                # the values that apply
 ask settings set max_cost 2            # shows what changes, then saves
+ask settings set worktree on           # require a worktree for writes
 ask settings set worktrees '~/code/worktrees/ask-{name}' --dry-run
 ask settings unset model               # back to the default
 ask settings set hook on
@@ -87,6 +88,7 @@ without the file, ask uses the built-in defaults below.
   "timeout": 1800,
   "max_cost": 2,
   "jobs": 6,
+  "worktree": true,
   "worktrees": "~/code/worktrees/ask-{name}",
   "branches": "ask/{name}"
 }
@@ -99,6 +101,7 @@ without the file, ask uses the built-in defaults below.
 | `timeout` | Seconds a task may run, unless `-t` or the task says otherwise | `900` |
 | `jobs` | Batch tasks at once, unless `-j` says otherwise | `4` |
 | `max_cost` | Dollars a task may spend before ask stops it, unless `--max-cost` or the model's own limit in [models.json](models.md#modelsjson) says otherwise; `0` for none (see [Cost limits](usage.md#cost-limits)) | none |
+| `worktree` | Require every write task to use a Git worktree; refuse hook-routed in-place writes | `false` |
 | `worktrees` | Where `--worktree` puts a run's worktree: an absolute or `~` path, or a path inside the repository like `.ask/worktrees/{name}`, whose last part holds `{name}` once | `~/.ask/worktrees/{name}` |
 | `branches` | The branch of a run's worktree, holding `{name}` once | `ask/{name}` |
 

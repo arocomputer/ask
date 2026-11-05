@@ -89,6 +89,7 @@ func prepare(a *agent.Registry, items []any, defaults home.Object, label string,
 func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool) (string, []hooks.Note) {
 	prompts := []string{}
 	worktree := false
+	settings, _ := a.Paths.ReadSettings()
 	for _, item := range items {
 		t, _ := item.(home.Object)
 		prompts = append(prompts, home.String(t.Get("prompt")))
@@ -97,6 +98,8 @@ func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool)
 		} else {
 			worktree = worktree || defaults.B("worktree")
 		}
+		write := t.B("write") || (!t.Has("write") && defaults.B("write"))
+		worktree = worktree || settings.B("worktree") && write
 	}
 	if len(items) == 1 {
 		t, _ := items[0].(home.Object)

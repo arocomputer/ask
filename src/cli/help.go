@@ -165,7 +165,7 @@ A prompt continues the agent's conversation; default stdout is a new stable
 run ID. Add --wait to block and return the answer instead.
 Without a prompt:
   running         Use ask wait RUN
-  stopped/failed  Finish in the saved session if usable; otherwise restart
+  stopped/failed  Continue a usable session; otherwise restart only safe reads
   completed       Give an explicit follow-up prompt
 
 Batches recover only unfinished/failed tasks; successes stay untouched.
@@ -240,7 +240,7 @@ Usage
   ask batch --resume RUN [--wait] [-j N] [--no-hooks]
 
 --resume recovers only unfinished/failed tasks, using usable saved sessions
-or restarting. Successes and auth/refusal/cost blockers stay untouched.
+or restarting safe reads. Writes, follow-ups and tasks with hooks are not blindly retried.
 
 Tasks · a JSON array, or one object per line
   prompt     The task (required)
@@ -553,6 +553,7 @@ Keys
   timeout     Seconds per task (default: 900)
   jobs        Batch tasks at once (default: 4)
   max_cost    Dollars a task may spend; ask stops it there (default: no limit)
+  worktree    on or off: require a worktree for every write (default: off)
   worktrees   Where --worktree works, like ~/code/worktrees/ask-{name}
   branches    A worktree's branch (default: ask/{name})
   hook        on or off: title ask runs in Claude Code's task list

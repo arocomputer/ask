@@ -149,7 +149,7 @@ CLI's session id. An agent that supports them:
 ask runs a follow-up in the same directory as the run it continues, which most CLIs need to find
 the session. An agent that reports no session cannot support conversation follow-ups; ask says so.
 Without a prompt, `ask continue RUN` uses a usable saved session to finish the original task,
-or restarts from the beginning when none is available (`--wait` shows recovery diagnostics).
+or may restart a standalone read without hooks when none is available. It refuses unsafe retries (`--wait` shows recovery diagnostics).
 ask polls live reports every
 500ms and atomically saves session metadata and the actual location in private run records,
 so reporting a session early can make interrupted runs recoverable before a final result.

@@ -10,6 +10,16 @@ import (
 
 // TestActivity exercises the optional agent transport without a vendor CLI or network.
 func TestActivity(t *testing.T) {
+	t.Run("unreadable activity does not hide a completed answer", func(t *testing.T) {
+		s := fresh(t)
+		result := s.ask("--wait", "-m", "fake:small", "hello")
+		eq(t, result.code, 0)
+		s.write(filepath.Join(s.home, "runs", s.latest(), "events-0.jsonl"), strings.Repeat("x", 65536))
+		shown := s.ask("show", runID(t, result.stderr))
+		eq(t, shown.code, 0)
+		eq(t, shown.stdout, "fake: hello\n")
+		match(t, shown.stderr, `activity unavailable`)
+	})
 	t.Run("private events survive detached execution independently of answers and reports", func(t *testing.T) {
 		s := fresh(t)
 		stale := filepath.Join(s.tmp, "stale.jsonl")

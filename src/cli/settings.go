@@ -87,6 +87,15 @@ func (d *draft) set(key, value string) error {
 	var v any = value
 	if value == "" {
 		v = nil
+	} else if key == "worktree" {
+		switch value {
+		case "on", "true", "yes":
+			v = true
+		case "off", "false", "no":
+			v = false
+		default:
+			return home.Usage("worktree is on or off, not %q", value)
+		}
 	} else if key == "roles" {
 		roles, e := home.ParseRoles(value)
 		if e != nil {
@@ -382,7 +391,7 @@ func getSettings(p home.Paths, key string, asJSON bool) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	defaults := home.O("roles", home.Object{}, "timeout", 900.0, "jobs", 4.0, "max_cost", 0.0, "worktrees", "~/.ask/worktrees/{name}", "branches", "ask/{name}")
+	defaults := home.O("roles", home.Object{}, "timeout", 900.0, "jobs", 4.0, "max_cost", 0.0, "worktrees", "~/.ask/worktrees/{name}", "branches", "ask/{name}", "worktree", false)
 	values := home.Object{}
 	for _, k := range home.Settings {
 		if s.Has(k) {
@@ -413,7 +422,7 @@ func getSettings(p home.Paths, key string, asJSON bool) (int, error) {
 			fmt.Fprintln(os.Stdout)
 		case key == "roles":
 			fmt.Fprintln(os.Stdout, home.JSON(v, false))
-		case key == "hook":
+		case key == "hook" || key == "worktree":
 			fmt.Fprintln(os.Stdout, map[bool]string{true: "on", false: "off"}[v == true])
 		default:
 			fmt.Fprintln(os.Stdout, home.String(v))

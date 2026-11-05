@@ -50,7 +50,7 @@ Task status is followed by the model display name; hook lines use
 `--continue` options remain supported script aliases for conversation follow-ups; batch `--resume`
 remains an alias for recovering unfinished or failed tasks. Use `ask continue RUN "prompt"` for
 follow-ups and `ask continue RUN` for state-based recovery: usable sessions continue the original
-task, otherwise ask restarts. Blockers require an explicit prompt after resolution. The JSON `continue` field remains.
+task; if unavailable, ask may restart standalone reads without hooks but refuses unsafe retries. Blockers require an explicit prompt after resolution. The JSON `continue` field remains.
 Tasks, prompted continuations and batches now detach by default and print a stable run ID
 instead of an answer. Update answer-consuming scripts to use `--wait`, or capture the ID and
 collect it with `ask wait ID`. `-w` still means write; `-m` selects a model or configured role.

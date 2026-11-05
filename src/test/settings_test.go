@@ -11,6 +11,43 @@ import (
 
 // TestSettings pins settings.json and ask settings: what each setting changes, the review before a save, and bad values.
 func TestSettings(t *testing.T) {
+	t.Run("worktree setting isolates writes and refuses unsafe overrides", func(t *testing.T) {
+		s := fresh(t)
+		dir, _ := s.repo()
+		s.write(filepath.Join(s.home, "settings.json"), `{"model":"fake:small","worktree":true}`)
+		r := s.run([]string{"--wait", "-w", "-C", dir, "go"}, "", map[string]string{"FAKE_WRITE": "b.txt=new"})
+		eq(t, r.code, 0)
+		workdir := s.calls()[0].s("cwd")
+		if workdir == dir {
+			t.Fatal("write ran in the original checkout")
+		}
+		eq(t, s.read(filepath.Join(workdir, "b.txt")), "new")
+		eq(t, exists(filepath.Join(dir, "b.txt")), false)
+		read := s.ask("--wait", "-C", dir, "look")
+		eq(t, read.code, 0)
+		follow := s.ask("continue", runID(t, read.stderr), "--wait", "-w", "change")
+		eq(t, follow.code, 2)
+		match(t, follow.stderr, `writes always run in a worktree`)
+		outside := s.ask("--wait", "-w", "-C", s.tmp, "go")
+		eq(t, outside.code, 2)
+		match(t, outside.stderr, `writes need a git worktree`)
+		batch := s.run([]string{"batch", "--wait", "-C", dir, "-"}, `[{"prompt":"go","write":true,"worktree":false}]`, nil)
+		eq(t, batch.code, 2)
+		match(t, batch.stderr, `remove "worktree": false`)
+		eq(t, s.ask("settings", "get", "worktree").stdout, "on\n")
+		eq(t, s.ask("settings", "set", "worktree", "off").code, 0)
+		eq(t, s.ask("settings", "get", "worktree").stdout, "off\n")
+	})
+	t.Run("worktree setting refuses a hook that upgrades an in-place read to a write", func(t *testing.T) {
+		s := fresh(t)
+		dir, _ := s.repo()
+		s.write(filepath.Join(s.home, "settings.json"), `{"worktree":true}`)
+		s.hook("upgrade", []string{"task"}, `echo '{"task":{"write":true}}'`)
+		got := s.ask("--wait", "-m", "fake:small", "-C", dir, "inspect")
+		eq(t, got.code, 1)
+		match(t, got.stderr, `writes require a worktree`)
+		eq(t, len(s.calls()), 0)
+	})
 	t.Run("a partial skill save exits one and keeps successful changes", func(t *testing.T) {
 		s := fresh(t)
 		s.write(filepath.Join(s.tmp, ".codex", "skills"), "blocked")

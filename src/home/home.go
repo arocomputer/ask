@@ -125,8 +125,8 @@ func Tilde(path string) string {
 // model (the default -m), roles (names for exact model specifications), timeout (seconds per
 // task), jobs (batch tasks at once), max_cost (USD a task may spend; none when absent or 0),
 // worktrees (a path whose last part holds {name}) and branches (a worktree's branch name,
-// holding {name}).
-var Settings = []string{"model", "roles", "timeout", "jobs", "max_cost", "worktrees", "branches"}
+// holding {name}); worktree requires a separate worktree for every write task.
+var Settings = []string{"model", "roles", "timeout", "jobs", "max_cost", "worktrees", "branches", "worktree"}
 
 // ReadSettings reads the optional settings.json, like {"worktrees": "~/code/worktrees/ask-{name}"}.
 // Unknown keys and malformed values are errors.
@@ -227,6 +227,10 @@ func (p Paths) checkSettings(o Object) error {
 		case "jobs":
 			if n, ok := val.(float64); !ok || n < 1 || n != float64(int(n)) {
 				bad = "a whole number of tasks, 1 or more"
+			}
+		case "worktree":
+			if _, ok := val.(bool); !ok {
+				bad = "true or false"
 			}
 		case "worktrees":
 			if _, e := p.worktreeTemplate(val); e != nil {

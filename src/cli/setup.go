@@ -83,8 +83,14 @@ func survey(p home.Paths) (*machine, error) {
 
 // settingText shows a setting's value with unit, or its built-in default marked as such.
 func settingText(s home.Object, key string, unit ...string) string {
-	defaults := map[string]string{"model": "none: give -m", "roles": "{}", "timeout": "900", "jobs": "4", "max_cost": "none", "worktrees": "~/.ask/worktrees/{name}", "branches": "ask/{name}"}
+	defaults := map[string]string{"model": "none: give -m", "roles": "{}", "timeout": "900", "jobs": "4", "max_cost": "none", "worktrees": "~/.ask/worktrees/{name}", "branches": "ask/{name}", "worktree": "off"}
 	text, suffix := defaults[key], " (default)"
+	if key == "worktree" {
+		if s.Has(key) {
+			suffix = ""
+		}
+		return map[bool]string{true: "on", false: "off"}[s.B(key)] + suffix
+	}
 	if key == "max_cost" && s.N(key) > 0 {
 		return "$" + home.Dollars(s.N(key)) + " a task"
 	}

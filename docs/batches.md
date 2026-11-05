@@ -171,7 +171,7 @@ ask wait summarize-public-api-src | jq -c '.[] | select(.ok) | {continue: .run, 
 
 A batch that was stopped, or had failures, can be continued without a prompt. Only unfinished
 or failed tasks run again; successful results stay. ask finishes the original task in each
-usable saved conversation, otherwise restarts from the beginning. Add `--wait` for synchronous
+usable saved conversation; otherwise it may restart standalone reads without hooks but refuses unsafe retries. Add `--wait` for synchronous
 results and recovery diagnostics on stderr.
 Auth, refusal and cost blockers stay untouched with guidance to resolve them and give an explicit
 prompt; other eligible tasks still recover. Use `ask wait RUN` to collect results after recovery:

@@ -125,7 +125,7 @@ uses the stream as the whole prompt. Input must reach EOF before launch.
   a read-only investigation. Model changes must stay within the same agent. Names move to the
   latest turn; stable IDs keep pointing to the original turn. Wait before following up.
 - ` + "`ask continue RUN`" + ` without a prompt finishes stopped/failed work in a usable saved session,
-  otherwise restarts. It returns the existing run ID; add ` + "`--wait`" + ` for results and
+  otherwise may restart standalone reads without hooks, but refuses unsafe retries. It returns the existing run ID; add ` + "`--wait`" + ` for results and
   recovery diagnostics. Successful batch tasks stay untouched. Running work gets wait guidance;
   completed work requires an explicit follow-up prompt.
   Auth/refusal/cost blockers need resolution and an explicit prompt; do not blindly retry them.

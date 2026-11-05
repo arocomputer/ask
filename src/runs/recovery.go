@@ -69,40 +69,48 @@ func automaticBlocker(reason string) string {
 }
 
 // recoverTask chooses an actual reported session and location, or a fresh attempt with the
-// original prompt. Missing/replaced worktrees must not silently create a new session location.
+// original prompt for read tasks. A write task must not be repeated when its state is unknown.
 func recoverTask(r *Run, i int, automatic bool) (home.Object, string, bool) {
 	t := r.Tasks[i].Clone()
+	followup := t.B("continues") || t.B("session")
+	s := recovery(r, i)
+	effectiveWrite := t.B("write") || s != nil && s.Task != nil && s.Task.Write
 	t.Delete("session")
 	t.Delete("continues")
 	t.Delete("reuse")
 	t.Delete("kept_worktree")
-	s := recovery(r, i)
+	fallback := func(reason string) (home.Object, string, bool) {
+		if automatic && (effectiveWrite || followup) {
+			return nil, reason + "; review prior changes and conversation before starting a new task", false
+		}
+		return t, reason + "; rerunning 1 task from the beginning", false
+	}
 	if automatic && s != nil && s.Blocker != "" {
 		return nil, "blocked: " + s.Blocker + "; resolve it and give an explicit follow-up prompt", false
 	}
 	if s == nil || s.Session == "" {
-		return t, "no usable saved session; rerunning 1 task from the beginning", false
+		return fallback("no usable saved session")
 	}
 	if s.Task.Model == "" || s.Dir == "" || s.Task.Dir != t.S("dir") {
-		return t, "saved session location is unsafe; rerunning 1 task from the beginning", false
+		return fallback("saved session location is unsafe")
 	}
 	if t.B("worktree") {
 		if s.Worktree == nil || git.CheckWorktree(s.Task.Dir, s.Worktree) != nil {
-			return t, "saved worktree is missing or changed; rerunning 1 task from the beginning", false
+			return fallback("saved worktree is missing or changed")
 		}
 		realDir, dirErr := filepath.EvalSymlinks(s.Dir)
 		realTree, treeErr := filepath.EvalSymlinks(s.Worktree.Path)
 		rel, err := filepath.Rel(realTree, realDir)
 		if dirErr != nil || treeErr != nil || err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return t, "saved session location is unsafe; rerunning 1 task from the beginning", false
+			return fallback("saved session location is unsafe")
 		}
 		t.Set("kept_worktree", home.O("path", s.Worktree.Path, "branch", s.Worktree.Branch))
 		t.Set("reuse", true)
 	} else if filepath.Clean(s.Dir) != filepath.Clean(s.Task.Dir) {
-		return t, "saved session location is unsafe; rerunning 1 task from the beginning", false
+		return fallback("saved session location is unsafe")
 	}
 	if info, err := os.Stat(s.Dir); err != nil || !info.IsDir() {
-		return t, "saved session directory is missing; rerunning 1 task from the beginning", false
+		return fallback("saved session directory is missing")
 	}
 	t.Set("model", s.Task.Model)
 	t.Set("write", s.Task.Write)

@@ -61,8 +61,8 @@ and a run that is no longer active. Interrupted runs can be followed up when ask
 - **Running:** ask tells you to use `ask wait RUN`.
 - **Failed or stopped:** ask finishes the original task in the saved conversation when its
   session and directory are usable. It checks an interrupted worktree's recorded repository,
-  path and branch. If the session or safe location is missing, ask restarts the original task
-  from the beginning. Use `--wait` for recovery diagnostics on stderr and synchronous results,
+  path and branch. If the session or safe location is missing, ask may restart a standalone read when no hooks are active.
+  Writes, follow-ups and tasks with hooks are not restarted automatically; review the prior attempt and start a new task deliberately. Use `--wait` for recovery diagnostics on stderr and synchronous results,
   or `ask wait RUN` to collect the detached result.
 - **Completed:** ask explains that an explicit follow-up prompt is needed and exits without
   waiting for input. Use `RUN/TASK` with a prompt to follow up on one completed batch task.
@@ -137,7 +137,7 @@ working directory/worktree in private recovery files, including before a final r
 A rerun clears the previous attempt’s result and recovery metadata before starting, so recovery
 never falls back to an older session in the original task record. Live activity is ignored when
 the owner exits. An agent must report its session before interruption for recovery to use it;
-sudden termination before the next metadata poll (every 500ms) may require a restart.
+sudden termination before the next metadata poll (every 500ms) may prevent recovery.
 
 ## Inspecting a run
 
@@ -252,7 +252,7 @@ ask stop login-test-fail
 ```
 
 Use `ask continue RUN` without a prompt to finish a stopped or failed run, or only unfinished
-or failed batch tasks. Use `--wait` to see whether recovery uses the saved conversation or restarts.
+or failed batch tasks. Use `--wait` for recovery diagnostics; writes, follow-ups and tasks with hooks are not restarted automatically without a safe session.
 
 ## Cleaning up
 

@@ -87,6 +87,13 @@ func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, events string, starte
 	diff := false
 	m, e := agent.Parse(a.Paths, t.S("model"))
 	r := home.Object{}
+	if e == nil && t.B("write") && !t.B("worktree") {
+		var settings home.Object
+		settings, e = a.Paths.ReadSettings()
+		if e == nil && settings.B("worktree") {
+			e = home.Usage("writes require a worktree; a task hook cannot enable in-place write access")
+		}
+	}
 	if e == nil && t.B("worktree") {
 		var kept *home.WorktreeRecord
 		kept, e = KeptWorktree(a.Paths, t)

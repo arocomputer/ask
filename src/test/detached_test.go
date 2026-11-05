@@ -116,7 +116,7 @@ func TestDetached(t *testing.T) {
 		noMatch(t, out.stderr, "\x1b")
 		eq(t, s.ask("wait", strings.TrimSpace(out.stdout)).stdout, "fake: inspect notes\n")
 	})
-	t.Run("missing worktree recovery tells the detached caller it will restart", func(t *testing.T) {
+	t.Run("missing write worktree recovery refuses a detached restart", func(t *testing.T) {
 		s := fresh(t)
 		dir, git := s.repo()
 		id := launch(t, s, []string{"-w", "--worktree", "-C", dir, "hang"}, map[string]string{"FAKE_HANG": "hang"})
@@ -124,12 +124,10 @@ func TestDetached(t *testing.T) {
 		eq(t, s.ask("stop", id).code, 0)
 		git("worktree", "remove", "--force", s.calls()[0].s("cwd"))
 		out := s.ask("continue", id)
-		eq(t, out.code, 0)
-		eq(t, out.stdout, id+"\n")
-		match(t, out.stderr, `saved worktree is missing or changed; rerunning`)
-		eq(t, s.ask("wait", id).stdout, "fake: hang\n")
-		eq(t, s.calls()[1].s("session"), "")
-		eq(t, len(s.dirs()), 1)
+		eq(t, out.code, 2)
+		eq(t, out.stdout, "")
+		match(t, out.stderr, `saved worktree is missing or changed; review prior changes and conversation`)
+		eq(t, len(s.calls()), 1)
 	})
 	t.Run("partial recovery explains blockers before returning the batch ID", func(t *testing.T) {
 		s := fresh(t)

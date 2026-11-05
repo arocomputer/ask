@@ -120,6 +120,8 @@ so your own uncommitted work never shows up as the agent's.
 
 ## Working in a worktree
 
+Set `worktree` to `true` in settings (or run `ask settings set worktree on`) to require a separate worktree for every write task. A write outside a Git repository, an explicit in-place override, or a write follow-up to a run outside a worktree is refused. New worktrees start from the caller checkout's `HEAD`; uncommitted changes are not included.
+
 `--worktree` (with `--write`) gives the run its own git worktree and branch, so several write runs
 can work in separate checkouts in parallel:
 
@@ -265,7 +267,7 @@ ask continue "$id" --wait -w "Fix it."
 ```
 
 Without a prompt, `ask continue RUN` finishes stopped or failed work in a usable saved session,
-otherwise restarts. Add `--wait` for synchronous results and recovery diagnostics. Successful
+otherwise may restart a standalone read without hooks, but refuses unsafe retries. Add `--wait` for synchronous results and recovery diagnostics. Successful
 batch tasks stay untouched. Active runs get wait guidance; completed runs require an explicit
 follow-up prompt.
 Auth, refusal and cost blockers need resolution and an explicit prompt; see [Runs](runs.md).

@@ -64,7 +64,7 @@ func (d *draft) mainMenu(t *tui.Prompter, m *machine) error {
 			{Label: "Agents", Note: edited(agentsNote, len(d.install)+len(d.remove) > 0)},
 			{Label: "Model roles", Note: edited(settingText(d.settings, "roles"), d.changedSetting("roles"))},
 			{Label: "Defaults", Note: edited(defaults, d.changedSetting("model", "timeout", "jobs", "max_cost"))},
-			{Label: "Worktrees", Note: edited(settingText(d.settings, "worktrees"), d.changedSetting("worktrees", "branches"))},
+			{Label: "Worktrees", Note: edited(settingText(d.settings, "worktrees"), d.changedSetting("worktrees", "branches", "worktree"))},
 			{Label: "Apps", Note: edited(apps, len(d.skills) > 0 || d.hook != setup.HookOn())},
 		}
 		n := len(d.mustChanges())
@@ -311,6 +311,7 @@ func (d *draft) worktreesMenu(t *tui.Prompter) error {
 		items := []tui.Option{
 			{Label: "Folder", Note: settingText(d.settings, "worktrees")},
 			{Label: "Branch", Note: settingText(d.settings, "branches")},
+			{Label: "Writes", Note: settingText(d.settings, "worktree")},
 			{Label: "Back"},
 		}
 		i, e := t.Select("Worktrees", items, at)
@@ -323,6 +324,12 @@ func (d *draft) worktreesMenu(t *tui.Prompter) error {
 			e = d.chooseWorktrees(t)
 		case "Branch":
 			e = d.askSetting(t, "branches", "Branch name, with {name}", "ask/{name}")
+		case "Writes":
+			if d.settings.B("worktree") {
+				d.settings.Delete("worktree")
+			} else {
+				d.settings.Set("worktree", true)
+			}
 		case "Back":
 			return nil
 		}
