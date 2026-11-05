@@ -18,7 +18,7 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   const messages = transcript(s)
   const st = style()
   const out = (line = "") => process.stdout.write(line + "\n")
-  out(`${st.bold(s.id)} ${st.gray(`· ${s.dir}`)}`)
+  out(`${st.bold(s.id)} ${st.gray(`· ${s.dir}${s.worktree ? ` · on ${s.worktree.branch}` : ""}`)}`)
   s.turns.forEach((recorded, i) => {
     const t = i === s.turns.length - 1 ? status(s) : recorded
     const [title, ...more] = clean(t.prompt).split("\n")
@@ -43,6 +43,7 @@ function details(t: Turn): string[] {
     t.state === "running" ? `Running for ${duration(seconds)}` : t.state === "retrying" ? `Retrying after ${duration(seconds)}` : `${t.state[0].toUpperCase()}${t.state.slice(1)} ${ago(t.finished ?? t.started)} in ${duration(seconds)}`
   const parts = [t.model, t.write ? "write" : "read-only"]
   if (t.usage) parts.push(`${count(t.usage.input + t.usage.output)} tokens`)
+  if (t.commits) parts.push(`${t.commits} commit${t.commits === 1 ? "" : "s"}`)
   return [when, parts.join(" · ")]
 }
 

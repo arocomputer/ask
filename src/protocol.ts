@@ -8,12 +8,13 @@
 //   {"continue": ID}                             resume a stopped or failed turn
 //   {"stop": [ID, ...]}
 //   {"show": ID}                                 the session with the steps of its latest turn
-// TASK is {"prompt", "model"?, "write"?, "dir"?, "effort"?, "schema"?, "timeout"?}.
+// TASK is {"prompt", "model"?, "write"?, "worktree"?, "dir"?, "effort"?, "schema"?, "timeout"?}.
 //
 // Every response is {"tasks": [RESULT, ...]} with a "hint" when the caller should change how it
-// waits, or {"error": {"message", "hint"}} for a request ask can't carry out. RESULT is {"id", "state", "answer"?, "error"?, "changes"?, "retrying"?,
-// "activity"?, "resumed"?}; state is running, retrying, succeeded, failed or stopped. collect
-// restarts a turn whose worker was stopped, from where its transcript ends.
+// waits, or {"error": {"message", "hint"}} for a request ask can't carry out. RESULT is {"id",
+// "state", "answer"?, "error"?, "changes"?, "commits"?, "worktree"?, "retrying"?, "activity"?,
+// "resumed"?}; state is running, retrying, succeeded, failed or stopped. collect restarts a turn
+// whose worker was stopped, from where its transcript ends.
 
 import { rmSync, statSync } from "node:fs"
 import { resolve as absolute } from "node:path"
@@ -21,6 +22,7 @@ import { resolve as model, type Home, readJSON, type Config } from "./home.ts"
 import type { Failure } from "./loop.ts"
 import { alive, claim, create, latest, lock, now, open, reload, save, status, transcript, unlock, worker, type Change, type Session, type State } from "./sessions.ts"
 import { activity, steps } from "./steps.ts"
+import { present, slug, top, worktree } from "./git.ts"
 import { launch } from "./worker.ts"
 
 /** The protocol as `ask help requests` prints it. */
@@ -37,8 +39,8 @@ REQUESTS
       then report them all. Finished ones stay finished; collect the rest again. A task
       whose worker was stopped is restarted where it left off.
   {"continue": ID, "prompt": "...", "wait": seconds, ...}
-      Give a finished session its next prompt. It keeps the conversation. Takes TASK's
-      fields, except dir.
+      Give a finished session its next prompt. It keeps the conversation and its folder.
+      Takes TASK's fields, except dir and worktree.
   {"continue": ID, "wait": seconds}
       Without a prompt, resume a stopped or failed turn where it left off.
   {"stop": [ID, ...]}
@@ -50,6 +52,8 @@ TASK
   prompt     What to do (required)
   model      provider/model (default: config.json's model)
   write      true to let it edit files and run commands (default: read-only)
+  worktree   true to work on a new branch, ask/NAME, in its own checkout under
+             ~/.ask/worktrees, so your files stay untouched; implies write
   dir        Where it works (default: the current directory)
   effort     Reasoning effort, like low, medium or high
   schema     A JSON Schema its answer must match
@@ -61,6 +65,8 @@ RESPONSE
   answer     The subagent's answer, when it succeeded
   error      {"message", "hint"}, when it failed; hint says what to do next
   changes    Files a write task changed: [{"path", "change"}]
+  commits    How many commits it made, when it made any
+  worktree   {"path", "branch"} of a worktree task's checkout
   retrying   Why the provider is being retried, while it is
   activity   Its latest step, while it runs
   resumed    How many times ask restarted it after its worker was stopped. collect does
@@ -75,7 +81,7 @@ EXAMPLE
   EOF
 `
 
-export type Task = { prompt: string; model?: string; write?: boolean; dir?: string; effort?: string; schema?: object; timeout?: number }
+export type Task = { prompt: string; model?: string; write?: boolean; worktree?: boolean; dir?: string; effort?: string; schema?: object; timeout?: number }
 
 export type Request =
   | { start: Task[]; wait?: number }
@@ -90,6 +96,10 @@ export type Result = {
   answer?: string
   error?: Failure
   changes?: Change[]
+  /** Commits a write task made on top of where it started. */
+  commits?: number
+  /** The checkout and branch a worktree task works on. */
+  worktree?: { path: string; branch: string }
   /** Why the provider is being retried, while it is. */
   retrying?: string
   /** The latest step of a running task, like "read src/a.ts". */
@@ -115,7 +125,7 @@ export class Invalid extends Error {
   }
 }
 
-const taskKeys = ["prompt", "model", "write", "dir", "effort", "schema", "timeout"]
+const taskKeys = ["prompt", "model", "write", "worktree", "dir", "effort", "schema", "timeout"]
 const ops = ["start", "collect", "continue", "stop", "show"]
 
 /** Parses and carries out one request. Never throws: failures become `{"error"}`. */
@@ -142,7 +152,11 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       if (!Array.isArray(req.start) || !req.start.length) throw new Invalid("start takes a list of tasks", '{"start": [{"prompt": "..."}]}')
       const tasks = req.start.map((t, i) => task(t, `start[${i}]`))
       const ready: { t: Task; dir: string; model: string }[] = []
-      for (const [i, t] of tasks.entries()) ready.push({ t, dir: folder(t.dir, `start[${i}]`), model: await chosen(h, t.model) })
+      for (const [i, t] of tasks.entries()) {
+        const dir = folder(t.dir, `start[${i}]`)
+        if (t.worktree && !top(dir)) throw new Invalid(`start[${i}].worktree needs a git repository, and ${dir} is not in one`)
+        ready.push({ t, dir, model: await chosen(h, t.model) })
+      }
       const started: Session[] = []
       for (const r of ready) started.push(begin(h, r.t, r.dir, r.model))
       return wait === undefined ? started.map(result) : collect(started, wait)
@@ -152,9 +166,11 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       return collect(ids(req.collect, "collect").map((id) => find(h, id)), wait ?? 600)
     }
     case "continue": {
-      only(req, ["continue", "wait", ...taskKeys.filter((k) => k !== "dir")])
+      only(req, ["continue", "wait", ...taskKeys.filter((k) => k !== "dir" && k !== "worktree")])
       if (typeof req.continue !== "string") throw new Invalid("continue takes a session id", '{"continue": "k3f9a2", "prompt": "..."}')
       const found = find(h, req.continue)
+      if (found.worktree && !present(found.worktree))
+        throw new Invalid(`${found.id} worked in the worktree ${found.worktree.path}, which is gone`, "start a new task instead")
       const s = lost(found) ?? found
       const last = latest(s)
       const dead = running(s) && !alive(s)
@@ -215,6 +231,8 @@ export function result(s: Session): Result {
   if (t.answer !== undefined) r.answer = t.answer
   if (t.error) r.error = t.error
   if (t.changes?.length) r.changes = t.changes
+  if (t.commits) r.commits = t.commits
+  if (s.worktree) r.worktree = s.worktree
   if (t.retry) r.retrying = t.retry
   if (t.resumed) r.resumed = t.resumed
   if (t.state === "running" || t.state === "retrying") r.activity = activity(transcript(s))
@@ -279,16 +297,22 @@ function folder(dir: string | undefined, where: string): string {
   return full
 }
 
-/** Creates and launches a session for a task already checked. */
+/** Creates and launches a session for a task already checked, in a new worktree if it asks for one. */
 function begin(h: Home, t: Task, dir: string, model: string): Session {
-  const s = create(h, dir, {
-    prompt: t.prompt,
-    model,
-    write: t.write ?? false,
-    effort: t.effort,
-    schema: t.schema,
-    timeout: t.timeout ?? defaultTimeout(h),
-  })
+  const w = t.worktree ? worktree(dir, slug(t.prompt), h.worktrees) : undefined
+  const s = create(
+    h,
+    w?.dir ?? dir,
+    {
+      prompt: t.prompt,
+      model,
+      write: (t.write ?? false) || !!w,
+      effort: t.effort,
+      schema: t.schema,
+      timeout: t.timeout ?? defaultTimeout(h),
+    },
+    w && { path: w.path, branch: w.branch },
+  )
   try {
     launch(s)
   } catch (err) {
@@ -360,6 +384,7 @@ function task(v: unknown, where: string): Task {
   const t = v as Record<string, unknown>
   only(t, taskKeys, where)
   if (typeof t.prompt !== "string" || !t.prompt.trim()) throw new Invalid(`${where} needs a prompt`)
+  if (t.worktree !== undefined && typeof t.worktree !== "boolean") throw new Invalid(`${where}.worktree must be true or false`)
   for (const k of ["model", "dir", "effort"]) if (t[k] !== undefined && typeof t[k] !== "string") throw new Invalid(`${where}.${k} must be a string`)
   if (t.write !== undefined && typeof t.write !== "boolean") throw new Invalid(`${where}.write must be true or false`)
   if (t.schema !== undefined && (!t.schema || typeof t.schema !== "object" || Array.isArray(t.schema))) throw new Invalid(`${where}.schema must be a JSON Schema object`)

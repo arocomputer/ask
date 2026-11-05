@@ -4,16 +4,16 @@
 // record says `retrying` while a provider is being retried, and a write turn lists what it
 // changed. A turn whose prompt is already in the transcript is resumed from where it stopped.
 
-import { execFileSync, spawn } from "node:child_process"
-import { createHash } from "node:crypto"
-import { closeSync, openSync, readFileSync } from "node:fs"
+import { spawn } from "node:child_process"
+import { closeSync, openSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { connect } from "./catalog.ts"
+import { changes, snapshot } from "./git.ts"
 import { resolve, type Home } from "./home.ts"
 import { run } from "./loop.ts"
 import { withRetries } from "./provider.ts"
-import { latest, lock, now, save, saveTranscript, transcript, unlock, worker, type Change, type Session } from "./sessions.ts"
+import { latest, lock, now, save, saveTranscript, transcript, unlock, worker, type Session } from "./sessions.ts"
 
 /** Starts a detached worker for the session's latest turn and records it as the lock. */
 export function launch(s: Session) {
@@ -110,55 +110,11 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     t.error = r.error
   }
   if (before) {
-    const found = diff(before, snapshot(s.dir))
-    if (found) {
-      const merged = new Map((t.changes ?? []).map((c) => [c.path, c]))
-      for (const c of found) merged.set(c.path, c)
-      t.changes = [...merged.values()].sort((a, b) => a.path.localeCompare(b.path))
-    }
+    const found = changes(before)
+    const merged = new Map((t.changes ?? []).map((c) => [c.path, c]))
+    for (const c of found.changes) merged.set(c.path, c)
+    t.changes = [...merged.values()].sort((a, b) => a.path.localeCompare(b.path))
+    t.commits = (t.commits ?? 0) + found.commits
   }
   finish()
-}
-
-/** The dirty files of a repository, each with its status and a hash of its content. */
-function snapshot(dir: string): Map<string, string> | undefined {
-  let out: string
-  try {
-    out = execFileSync("git", ["-c", "core.fsmonitor=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
-      cwd: dir,
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      stdio: ["ignore", "pipe", "ignore"],
-      maxBuffer: 64 * 1024 * 1024,
-    }).toString()
-  } catch {
-    return undefined
-  }
-  const files = new Map<string, string>()
-  const entries = out.split("\0")
-  for (let i = 0; i < entries.length; i++) {
-    const e = entries[i]
-    if (e.length < 4) continue
-    const code = e.slice(0, 2)
-    const path = e.slice(3)
-    if (code[0] === "R" || code[0] === "C") i++
-    let hash = ""
-    try {
-      hash = createHash("sha1").update(readFileSync(join(dir, path))).digest("hex")
-    } catch {}
-    files.set(path, `${code}:${hash}`)
-  }
-  return files
-}
-
-/** What changed between two snapshots. Files that were already dirty count only if they changed again. */
-function diff(before: Map<string, string> | undefined, after: Map<string, string> | undefined): Change[] | undefined {
-  if (!before || !after) return undefined
-  const out: Change[] = []
-  for (const [path, v] of after) {
-    if (before.get(path) === v) continue
-    const code = v.slice(0, 2)
-    out.push({ path, change: code.includes("D") ? "deleted" : code === "??" || code.includes("A") ? "added" : "modified" })
-  }
-  for (const path of before.keys()) if (!after.has(path)) out.push({ path, change: "modified" })
-  return out.sort((a, b) => a.path.localeCompare(b.path))
 }

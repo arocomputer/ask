@@ -162,10 +162,32 @@ describe("cli", () => {
     assert.match(r.stdout, /^X Model     no default model\n\s+ask settings$/m)
   })
 
+  test("a worktree task works on its own branch and leaves the caller's files alone", async () => {
+    const { ask, project } = await setup([{ calls: [{ name: "write", args: { path: "new.txt", content: "hi" } }] }, { text: "Done." }])
+    for (const args of [["init", "-q"], ["add", "."], ["-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-qm", "start"]])
+      execFileSync("git", ["-C", project, ...args], { stdio: "ignore" })
+    const r = await ask({ start: [{ prompt: "Add a file", worktree: true }], wait: 30 })
+    const t = r.tasks[0]
+    assert.equal(t.worktree.branch, "ask/add-file")
+    assert.deepEqual(t.changes, [{ path: "new.txt", change: "added" }])
+    assert.equal(readFileSync(join(t.worktree.path, "new.txt"), "utf8"), "hi")
+    assert.throws(() => readFileSync(join(project, "new.txt")))
+  })
+
+  test("continue refuses a session whose worktree is gone", async () => {
+    const { ask, project } = await setup([{ text: "Done." }])
+    for (const args of [["init", "-q"], ["add", "."], ["-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-qm", "start"]])
+      execFileSync("git", ["-C", project, ...args], { stdio: "ignore" })
+    const first = await ask({ start: [{ prompt: "Look around", worktree: true }], wait: 30 })
+    execFileSync("git", ["-C", project, "worktree", "remove", "--force", first.tasks[0].worktree.path])
+    const r = await ask({ continue: first.tasks[0].id, prompt: "More" })
+    assert.match(r.error.message, /which is gone$/)
+  })
+
   test("a request ask can't carry out says what to send instead", async () => {
     const { run } = await setup([{ text: "unused" }])
     const r = await run([], JSON.stringify({ start: [{ prompt: "x", modle: "fake/m" }] }))
     assert.equal(r.code, 2)
-    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, model, write, dir, effort, schema, timeout" })
+    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, model, write, worktree, dir, effort, schema, timeout" })
   })
 })

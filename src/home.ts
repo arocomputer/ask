@@ -1,12 +1,13 @@
 // ask's home folder (~/.ask, or $ASK_HOME): config.json, auth.json with pasted keys, the
-// models.dev cache, and sessions. Files are written atomically and private to the user.
+// models.dev cache, sessions, and the worktrees tasks work in. Files are written atomically
+// and private to the user.
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { find, load, type Catalog, type Model } from "./catalog.ts"
 
-export type Home = { root: string; config: string; auth: string; catalog: string; sessions: string }
+export type Home = { root: string; config: string; auth: string; catalog: string; sessions: string; worktrees: string }
 
 export function home(root = process.env.ASK_HOME || join(homedir(), ".ask")): Home {
   return {
@@ -15,6 +16,7 @@ export function home(root = process.env.ASK_HOME || join(homedir(), ".ask")): Ho
     auth: join(root, "auth.json"),
     catalog: join(root, "cache", "models.json"),
     sessions: join(root, "sessions"),
+    worktrees: join(root, "worktrees"),
   }
 }
 

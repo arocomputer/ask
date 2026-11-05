@@ -13,8 +13,8 @@ import type { Message, Usage } from "./provider.ts"
 
 export type State = "running" | "retrying" | "succeeded" | "failed" | "stopped"
 
-/** A file a write turn changed: added, modified or deleted. */
-export type Change = { path: string; change: "added" | "modified" | "deleted" }
+export type { Change } from "./git.ts"
+import type { Change } from "./git.ts"
 
 /** One prompt and its outcome. */
 export type Turn = {
@@ -37,9 +37,12 @@ export type Turn = {
   /** How many times the turn was restarted after its worker was stopped. */
   resumed?: number
   changes?: Change[]
+  /** Commits a write turn made on top of where it started. */
+  commits?: number
 }
 
-export type Record = { id: string; created: string; dir: string; turns: Turn[] }
+/** session.json. `worktree` is the checkout and branch a worktree task works on. */
+export type Record = { id: string; created: string; dir: string; worktree?: { path: string; branch: string }; turns: Turn[] }
 
 export type Session = Record & { folder: string }
 
@@ -50,7 +53,7 @@ export function now(): string {
 }
 
 /** Creates a session folder with its first turn, marked running. */
-export function create(h: Home, dir: string, turn: Omit<Turn, "state" | "started">): Session {
+export function create(h: Home, dir: string, turn: Omit<Turn, "state" | "started">, worktree?: Record["worktree"]): Session {
   mkdirSync(h.sessions, { recursive: true, mode: 0o700 })
   for (;;) {
     const id = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join("")
@@ -61,7 +64,7 @@ export function create(h: Home, dir: string, turn: Omit<Turn, "state" | "started
       continue
     }
     const created = now()
-    const s: Session = { id, created, dir, turns: [{ ...turn, state: "running", started: created }], folder }
+    const s: Session = { id, created, dir, ...(worktree ? { worktree } : {}), turns: [{ ...turn, state: "running", started: created }], folder }
     save(s)
     return s
   }
