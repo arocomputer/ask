@@ -8,16 +8,17 @@ import { guide, handle } from "./protocol.ts"
 import { open } from "./sessions.ts"
 import { style } from "./term.ts"
 import { main as worker } from "./worker.ts"
+import * as doctor from "./cmd/doctor.ts"
 import * as models from "./cmd/models.ts"
 import * as sessions from "./cmd/sessions.ts"
-import * as setup from "./cmd/setup.ts"
+import * as settings from "./cmd/settings.ts"
 import * as show from "./cmd/show.ts"
 
 export const version = "3.0.0-dev"
 
 type Command = { help: string; run(h: ReturnType<typeof home>, argv: string[]): Promise<number> }
 
-const commands: Record<string, Command> = { setup, models, sessions, show }
+const commands: Record<string, Command> = { settings, doctor, models, sessions, show }
 
 function overview(): string {
   const b = style().bold
@@ -25,11 +26,12 @@ function overview(): string {
 
 ${b("USAGE")}
   ask < request.json    For agents: one JSON request on stdin, one JSON response on stdout
-  ask <command>         For people: set up, and look at what subagents did
+  ask <command>         For people: settings, and a look at what subagents did
 
 ${b("COMMANDS")}
-  setup:      Choose a provider, paste its key, pick a default model
-  models:     List the models you can use
+  settings:   Providers, keys, models and the default; the first run sets ask up
+  doctor:     Check that ask can run tasks, and say how to fix what can't
+  models:     List your models
   sessions:   List recent sessions
   show:       Show a session's steps and answer
 
@@ -41,8 +43,9 @@ ${b("REQUESTS")}
   {"show": "k3f9a2"}
 
 ${b("FILES")}
-  ~/.ask/config.json   {"model": "provider/model", "timeout": 900}
-  ~/.ask/auth.json     {"provider": {"api_key": "..."}}, written by ask setup
+  ~/.ask/config.json   {"model": "provider/model", "models": [...], "timeout": 900}
+  ~/.ask/auth.json     {"provider": {"api_key": "..."}}
+  Both are written by ask settings, and can be edited by hand.
 
 ${b("LEARN MORE")}
   ask help requests     Every request and response field

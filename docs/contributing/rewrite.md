@@ -36,10 +36,14 @@ variants, not by argument.
   `stop`, `show`. Every response is `{"tasks": [...]}` or `{"error": {"message", "hint"}}`.
   The library's `handle` takes the same object, and MCP will wrap it later. `ask help requests`
   documents it; `protocol.ts` defines it.
-- **The command line is only for people, and small:** `ask setup` (the one interactive command,
-  like `gh auth login`), `ask models`, `ask sessions`, `ask show`. Settings are files:
-  `config.json` for the model and timeout, `auth.json` for keys, or a provider's environment
-  variable. No command wraps editing them.
+- **The command line is only for people, and small:** `ask settings` (the one interactive
+  command: its first run sets ask up, later runs open a menu for the default model, chosen
+  models, providers and their keys, and the timeout), `ask doctor` (checks runtime, home,
+  catalog, model, key, worker and git, with a fix for each failure), `ask models`,
+  `ask sessions`, `ask show`. Settings live in `config.json` and `auth.json`, editable by hand,
+  or a provider's environment variable.
+- **One list control** for every choice: a title with the list's size, a `> search` line that
+  narrows it as you type, a scrolling window, and a key line; model lists toggle with a Save row.
 - **Looks like gh:** text in the terminal's own color, bold for headers and the subject of a
   line, gray for details, green ✓ / red X / yellow * only on state symbols, cyan only for what a
   prompt has selected. Color and prompts only on a terminal, honoring `NO_COLOR`; piped tables
@@ -56,9 +60,9 @@ variants, not by argument.
 - The worker's pipe handshake, fcntl locks and the container special case: one lock file holding
   the worker's pid.
 - The executable-extension contract, the `x` script, `guard.sh` (its rules become a test),
-  `install`/`remove`, and importing OpenCode's key in `ask setup`.
-- The flag commands `ask PROMPT`, `wait`, `continue`, `stop`, `config` and `auth`, and `--json`
-  on each: agents use requests, people use the four commands and the files.
+  `install`/`remove`, and importing OpenCode's key during setup.
+- The flag commands `ask PROMPT`, `wait`, `continue`, `stop`, `config`, `auth` and `setup`, and
+  `--json` on each: agents use requests, people use the commands above and the files.
 
 ## Fixed in the harness
 
@@ -76,7 +80,7 @@ variants, not by argument.
 1. **Engine.** Catalog, the three protocols, tools, loop, system prompt, as plain functions.
    Tests against fake provider servers, one behavior each.
 2. **Sessions, requests and the human CLI.** Session folders, a detached worker per turn; the
-   request protocol as a baseline; the four commands. Still to port: worktrees (a `worktree`
+   request protocol as a baseline; settings, doctor and the viewing commands. Still to port: worktrees (a `worktree`
    task field), and running turns in the host's process for the library.
 3. **Interface experiments.** Two or three variants of the request protocol, driven by Claude Code
    (Sonnet) and Codex on this server, with `experiments/fake2.py` as the subagent model.
@@ -89,7 +93,7 @@ variants, not by argument.
    - First real call per protocol, with an OpenCode Go API key in `~/.ask/auth.json`. (Solved:
      the old key in OpenCode's v1 `auth.json` was a leftover, inactive in OpenCode's credential
      store; OpenCode itself authenticates with an account sign-in.)
-   - **OpenCode sign-in:** `ask setup` signs in to the OpenCode account the way OpenCode does,
+   - **OpenCode sign-in:** `ask settings` signs in to the OpenCode account the way OpenCode does,
      with access and refresh tokens, and ask refreshes its own login. Never reuse OpenCode's
      stored tokens: two programs refreshing one login sign each other out. Find the flow from
      OpenCode's source and docs before building it; ship it labeled as relying on OpenCode's

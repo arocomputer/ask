@@ -5,7 +5,8 @@ import { providers, usable } from "../catalog.ts"
 import { catalog, credential, readJSON, type Config, type Home } from "../home.ts"
 import { count, style, table } from "../term.ts"
 
-export const help = `List the models ask can use: by default, those of the providers you have keys for.
+export const help = `List your models: those chosen in ask settings, else every model of the providers you have
+keys for. Name a provider to see all of its models; any of them works in a request.
 
 USAGE
   ask models [provider] [--refresh]
@@ -28,15 +29,21 @@ export async function run(h: Home, argv: string[]): Promise<number> {
     process.stderr.write(`${st.red("X")} No provider ${unknown} in the catalog\n`)
     return 2
   }
-  if (!ids.length) ids = providers(c).filter((p) => credential(h, p.id, p.env)).map((p) => p.id)
+  const cfg = readJSON<Config>(h.config, {})
+  let list = ids.flatMap((id) => usable(c, id))
   if (!ids.length) {
-    process.stderr.write(`No provider has a key yet. Run ${st.bold("ask setup")}, or name one: ${st.bold("ask models openai")}\n`)
+    const keyed = providers(c).filter((p) => credential(h, p.id, p.env)).map((p) => p.id)
+    list = keyed.flatMap((id) => usable(c, id))
+    if (cfg.models?.length) list = list.filter((m) => cfg.models!.includes(`${m.provider}/${m.id}`))
+  }
+  if (!list.length) {
+    process.stderr.write(`No models yet. Run ${st.bold("ask settings")}, or name a provider: ${st.bold("ask models openai")}\n`)
     return 1
   }
   const out = style()
-  const current = readJSON<Config>(h.config, {}).model
+  const current = cfg.model
   table(
-    ids.flatMap((id) => usable(c, id)).map((m) => {
+    list.map((m) => {
       const name = `${m.provider}/${m.id}`
       const context = m.context ? count(m.context) : ""
       return [

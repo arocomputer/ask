@@ -135,7 +135,7 @@ function elide(messages: Message[]): boolean {
 function describe(err: unknown): Failure {
   if (!(err instanceof ProviderError)) return { message: (err as Error)?.message ?? String(err) }
   if (overflowed(err)) return { message: `the conversation no longer fits the model's context: ${err.message}`, hint: "start a new session with a narrower task, or use a model with a larger context" }
-  if (err.status === 401 || err.status === 403) return { message: `the provider rejected the credential: ${err.message}`, hint: "check the key with ask setup" }
+  if (err.status === 401 || err.status === 403) return { message: `the provider rejected the credential: ${err.message}`, hint: "ask doctor checks the key; ask settings replaces it" }
   if (err.status === 429) return { message: `the provider is rate limiting or out of quota: ${err.message}`, hint: "wait and continue the session, or use another model" }
   if (err.status === 404) return { message: err.message, hint: "ask models lists the models each provider serves" }
   return { message: err.message }

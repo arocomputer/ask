@@ -36,7 +36,7 @@ async function setup(replies: Reply[]) {
   return { fake, home, project, run, ask }
 }
 
-describe("requests", () => {
+describe("cli", () => {
   test("a started task is collected with its answer", async () => {
     const { ask } = await setup([{ calls: [{ name: "read", args: { path: "port.txt" } }] }, { text: "Port 7341." }])
     const started = await ask({ start: [{ prompt: "Which port?" }] })
@@ -85,6 +85,14 @@ describe("requests", () => {
     execFileSync("git", ["init", "-q"], { cwd: project })
     const r = await ask({ start: [{ prompt: "Add a file", write: true }], wait: 30 })
     assert.deepEqual(r.tasks[0].changes, [{ path: "new.txt", change: "added" }])
+  })
+
+  test("doctor names what is broken and how to fix it", async () => {
+    const { run, home } = await setup([{ text: "ok" }])
+    writeFileSync(join(home, "config.json"), "{}")
+    const r = await run(["doctor"])
+    assert.equal(r.code, 1)
+    assert.match(r.stdout, /^X Model     no default model\n\s+ask settings$/m)
   })
 
   test("a request ask can't carry out says what to send instead", async () => {

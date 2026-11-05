@@ -75,7 +75,7 @@ describe("loop", () => {
       const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Go" })
       assert.equal(r.answer, undefined)
       assert.match(r.error!.message, /rejected the credential: Invalid credential/)
-      assert.match(r.error!.hint!, /ask setup/)
+      assert.match(r.error!.hint!, /ask doctor/)
     } finally {
       await fake.close()
     }

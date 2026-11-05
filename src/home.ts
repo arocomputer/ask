@@ -18,8 +18,12 @@ export function home(root = process.env.ASK_HOME || join(homedir(), ".ask")): Ho
   }
 }
 
-/** config.json: the default model and the turn timeout in seconds. */
-export type Config = { model?: string; timeout?: number }
+/**
+ * config.json: the default model, the models chosen in ask settings (which ask models lists and
+ * settings offers first; any catalog model still works in a request), and the turn timeout in
+ * seconds.
+ */
+export type Config = { model?: string; models?: string[]; timeout?: number }
 
 /** auth.json: a pasted key per provider, and optionally an endpoint replacing the catalog's. */
 export type Auth = Record<string, { api_key?: string; base_url?: string }>
@@ -65,7 +69,7 @@ export function catalog(h: Home, refresh = false): Promise<Catalog> {
  */
 export async function resolve(h: Home, name?: string): Promise<{ model: Model; key: string; baseURL?: string }> {
   const chosen = name || readJSON<Config>(h.config, {}).model
-  if (!chosen) throw new Error("no model chosen; run ask setup, or pass -m provider/model")
+  if (!chosen) throw new Error("no model chosen; run ask settings, or give the task a model")
   const model = find(await catalog(h), chosen)
   const cred = credential(h, model.provider, model.env)
   if (!cred) throw new Error(`no key for ${model.provider}; run ask auth login ${model.provider}`)
