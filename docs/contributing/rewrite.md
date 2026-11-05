@@ -96,6 +96,9 @@ variants, not by argument.
 5. **Sign-ins and Claude Code.** Built as designed below, tested against a fake OpenAI and a
    fake `claude`. Still to confirm with one real ChatGPT sign-in: how namespaced tool calls come
    back, and whether encrypted reasoning is accepted on the plan route.
+6. **Harnesses and extensions.** Built, not yet tested beyond the typecheck (see below):
+   Claude Code and Codex as harnesses behind one contract, `ask install` and `ask remove`,
+   extensions, handoff between harnesses, parent scoping, the agent skill, and key guidance.
 
 ## Phase 5: sign-ins
 
@@ -180,16 +183,53 @@ starts the CLI directly, to keep zero dependencies.
   disallowed, and the manual permission mode, so anything else is refused; git without optional
   locks or fsmonitor. Checked live: a request to write a file was refused. **Write:** the full
   tool set with `bypassPermissions`.
-- **Sessions:** one Claude session per ask session, `--session-id` then `--resume`; a turn whose
-  Claude session was never saved starts it afresh. A session can't move between Claude Code and
-  ask's loop.
+- **Sessions:** one Claude session per run of claude/ turns, `--session-id` then `--resume`; a
+  turn whose Claude session was never saved starts it afresh. Phase 6 lets a session move
+  between Claude Code and ask's loop.
 - **Steps:** the stream's tool calls become ask's steps (Read → read, Bash → shell), saved after
   each, with paths relative to the task's folder.
 
+## Phase 6: harnesses and extensions
+
+- **Two official harnesses, any number more.** `claude` and `codex` ship with ask and implement
+  the same `Harness` contract (`harness.ts`) an extension can. Each is off until `ask install
+  NAME`, which lists it in config.json's `extensions` and writes a `harnesses.NAME` entry
+  (`command`, `args` after ask's own, `env`). Installing the CLIs and signing in to them is
+  left to their docs. CLIs, not SDKs: the Agent SDK's terms rule out claude.ai sign-in for
+  products built on it, and both SDKs would add dependencies.
+- **Codex** runs `codex exec --json` with `--ignore-user-config`, `--ignore-rules`,
+  `approval_policy="never"` and a permission profile ask defines through `-c` (beta in Codex):
+  `:minimal`, the toolchains on PATH and the repository's shared .git readable, the workspace
+  readable or writable, temp folders writable for a write task, no network. Checked live on
+  0.166: reads outside are hidden, writes outside never land, a hook can't be planted, `.git`
+  stays read-only even when a rule allows it. The legacy `-s` sandbox reads the whole disk,
+  home included. Its sandbox can leave empty `.agents`, `.aws`, `.codex` mount points in
+  the workspace. Later turns `exec resume THREAD`.
+- **Claude Code hardening,** checked live on 2.1.318: `--restricted` confines the file tools to
+  the folder (reads and writes outside refused); `--permission-prompts none` refuses whatever
+  would prompt. Its Bash sandbox needs bubblewrap and socat on Linux and otherwise falls back
+  to running unsandboxed without a word, so ask asks for it, strictly
+  (`failIfUnavailable`, no unsandboxed retry, home unreadable), only where it can run, and says
+  so when it can't. Not `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`: on Linux it forces the sandbox on
+  every command, so without socat every command fails, and the sandbox leaves twenty empty
+  decoys (`.env*`, `package.json`, `node_modules`, …) in the folder. Both harnesses' sandboxes
+  can leave such decoys; ask removes the ones a run created that are still empty. Its `CODEX_*` markers, like Claude Code's,
+  are removed from the environment so a nested run doesn't think it is its caller.
+- **Handoff.** A harness continues its own session only while consecutive turns stay with it
+  (`harness: {name, session, turn}` in session.json). Otherwise the earlier conversation goes
+  along as text before the prompt, as OpenCode does, and the transcript stays in ask's form.
+- **Extensions** live in `~/.ask/extensions/NAME`, made by the first install: an ES module whose
+  default export adds a harness, tools for ask's loop, or both. Loaded once per process; one
+  that fails to load is reported by `ask doctor` and skipped.
+- **Parent scoping.** A session records `parent` (ASK_PARENT, else Claude Code's session, Codex's
+  thread, OpenCode's session) and `origin` (the repository or folder it came from).
+  `{"sessions": {}}` lists the caller's own; people's `ask sessions` lists this repository's.
+- **The skill** is written to `~/.claude/skills/ask` and `~/.codex/skills/ask` when those homes
+  exist, keeping a differing file as `.bak`.
+
 ## Not now
 
-MCP, remote hosts, the Homebrew binary, Claude and Codex as harnesses, parent scoping beyond
-what phase 3 needs.
+MCP, remote hosts.
 
 ## Risks
 

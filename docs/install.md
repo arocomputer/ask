@@ -1,7 +1,10 @@
 # Install
 
-The installer and Homebrew give you one self-contained binary. Through npm, ask runs on Node 24
-or newer. Git is needed for worktrees and for listing what a write task changed.
+The installer and Homebrew give you one self-contained binary, and on Linux `sandybox`, the
+small helper that sandboxes write tasks' commands. Through npm, ask runs on Node 24 or newer,
+and the package carries `sandybox` too. Git is needed for worktrees and for listing what a
+write task changed. Write tasks need Linux 5.13 or newer with Landlock on (the default on
+current Ubuntu, Debian and Fedora), or macOS; `ask doctor` says what this machine has.
 
 ## The installer
 
@@ -10,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | s
 ```
 
 It downloads the release archive for your system (macOS or Linux, Intel or ARM), checks it against
-the release's `checksums.txt`, and installs `ask` into `~/.local/bin`, saying so if that isn't on
+the release's `checksums.txt`, and installs `ask` (and on Linux `sandybox`) into `~/.local/bin`, saying so if that isn't on
 your `PATH`. It never edits your shell files. Options, after `sh -s --`:
 
 ```sh

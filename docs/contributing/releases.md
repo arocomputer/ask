@@ -38,7 +38,9 @@ tag starts the build and publication jobs:
    Maintainer-pushed tags pass the same gates.
 2. **release**: `.github/release/package.sh` compiles ask with Bun into one file for macOS and
    Linux (arm64 and amd64), in archives named `ask_vX.Y.Z_OS_ARCH.tar.gz`, with the version
-   from the tag.
+   from the tag. The Linux archives also hold `sandybox`, which `zig cc` compiles statically
+   from `native/sandybox.c` for each architecture into `native/build/`, where `npm run build`
+   picks it up for the npm package; the workflow installs zig with `pip install ziglang`.
    The archives and `checksums.txt` receive build provenance; the GitHub release uses the
    changelog section as its notes. The generated formula must pass Ruby syntax checking
    before publication.

@@ -87,6 +87,8 @@ class Ask < Formula
 
   def install
     bin.install "ask"
+    # The helper that sandboxes write tasks' commands on Linux.
+    bin.install "sandybox" if OS.linux?
   end
 
   def caveats

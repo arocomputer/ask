@@ -6,25 +6,31 @@
 
 import { realpathSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { home } from "./home.ts"
-import { guide, handle } from "./protocol.ts"
-import { open } from "./sessions.ts"
-import { style } from "./term.ts"
-import { version } from "./version.ts"
-import { main as worker } from "./worker.ts"
-import * as doctor from "./cmd/doctor.ts"
-import * as models from "./cmd/models.ts"
-import * as sessions from "./cmd/sessions.ts"
-import * as settings from "./cmd/settings.ts"
-import * as show from "./cmd/show.ts"
-import { Usage, type Command } from "./cmd/usage.ts"
+import { home } from "./base/home.ts"
+import { guide, handle } from "./sessions/protocol.ts"
+import { open } from "./sessions/store.ts"
+import { style } from "./base/term.ts"
+import { version } from "./base/version.ts"
+import { main as worker } from "./sessions/worker.ts"
+import * as doctor from "./commands/doctor.ts"
+import * as install from "./commands/install.ts"
+import * as models from "./commands/models.ts"
+import * as remove from "./commands/remove.ts"
+import * as sessions from "./commands/sessions.ts"
+import * as settings from "./commands/settings.ts"
+import * as show from "./commands/show.ts"
+import * as toolsCommand from "./commands/tools.ts"
+import { Usage, type Command } from "./commands/command.ts"
 
 
-const commands: Record<string, Command> = { settings, doctor, models, sessions, show }
+const commands: Record<string, Command> = { settings, doctor, models, sessions, show, tools: toolsCommand, install, remove }
 
 const environment = `ask reads these environment variables.
 
 ASK_HOME: where ask keeps its settings, keys, model catalog and sessions (default: ~/.ask)
+
+ASK_PARENT: the agent conversation calling ask, when ask can't tell by itself; the sessions
+request lists the sessions this conversation started
 
 NO_COLOR: set to any value to turn color off
 

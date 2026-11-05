@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { readdirSync, readFileSync } from "node:fs"
-import { join, relative } from "node:path"
+import { dirname, join, relative } from "node:path"
 import { describe, test } from "node:test"
 
 const root = join(import.meta.dirname, "..")
@@ -23,11 +23,35 @@ describe("rules", () => {
     assert.deepEqual(outside, [])
   })
 
-  test("the engine names no coding agent but Claude Code, and runs that only from claude.ts", () => {
-    const others = files.filter(({ text }) => /\b(Codex|Cursor|Copilot|Aider|Gemini CLI|codex)\b/.test(text)).map((f) => f.name)
+  test("the engine names no coding agent but the two harnesses it ships", () => {
+    const others = files.filter(({ text }) => /\b(Cursor|Copilot|Aider|Gemini CLI)\b/.test(text)).map((f) => f.name)
     assert.deepEqual(others, [])
-    const runs = files.filter(({ name, text }) => name !== "src/claude.ts" && /--session-id|--resume|disableAllHooks|stream-json/.test(text)).map((f) => f.name)
-    assert.deepEqual(runs, [])
+  })
+
+  test("each harness's command line lives only in its own file", () => {
+    const flags: Record<string, RegExp> = {
+      "src/harnesses/claude.ts": /--session-id|disableAllHooks|stream-json|--setting-sources/,
+      "src/harnesses/codex.ts": /--ignore-user-config|--skip-git-repo-check|approval_policy/,
+    }
+    const stray = Object.entries(flags).flatMap(([own, re]) => files.filter(({ name, text }) => name !== own && re.test(text)).map((f) => `${f.name} has ${own}'s flags`))
+    assert.deepEqual(stray, [])
+  })
+
+  test("each layer imports only from itself and the layers below it", () => {
+    // Lowest first. The entry points, cli.ts and index.ts, sit above them all.
+    const layers = ["base", "providers", "sandbox", "agent", "harnesses", "sessions", "commands"]
+    const rank = (file: string) => {
+      const top = relative(join(root, "src"), file).split("/")
+      return top.length === 1 ? layers.length : layers.indexOf(top[0])
+    }
+    const upward = files.flatMap(({ name, text }) => {
+      const from = join(root, name)
+      return [...text.matchAll(/^\s*(?:import|export)\s[^'"]*?from\s+["'](\.[^"']+)["']/gm)]
+        .map((m) => join(dirname(from), m[1]))
+        .filter((to) => to.startsWith(join(root, "src")) && rank(to) > rank(from))
+        .map((to) => `${name} imports ${relative(root, to)}`)
+    })
+    assert.deepEqual(upward, [])
   })
 
   test("every module says what it is for", () => {

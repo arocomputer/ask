@@ -118,7 +118,7 @@ jobs:
           [ "$result" = 'completed success' ] || { echo "CI on main ($commit) is '$result'; wait for it to pass." >&2; exit 1; }
       - run: bun install --frozen-lockfile
       - run: npm run check
-      - run: node --test 'test/*.test.ts'
+      - run: node --test 'test/**/*.test.ts'
       - run: bun test ./test/
       - run: shellcheck install.sh .github/release/*.sh
       - name: Check the workflows
@@ -144,7 +144,9 @@ jobs:
       - name: Build and verify archives and checksums
         env:
           TAG: ${{ github.ref_name }}
-        run: .github/release/package.sh "$TAG" dist
+        run: |
+          pip install --quiet ziglang==0.13.0
+          .github/release/package.sh "$TAG" dist
       - name: Check generated Homebrew formula syntax
         env:
           TAG: ${{ github.ref_name }}

@@ -55,9 +55,10 @@ and gateways) or Anthropic's Messages API. Read-only means the subagent is given
 write or run a command. Each turn runs in a background worker and saves its transcript after
 every step, so a worker stopped partway resumes where it left off.
 
-Two more ways to reach a model need no API key: sign in with ChatGPT to use your Plus or Pro
-plan (`chatgpt/MODEL`), or run your own installed Claude Code with its own sign-in
-(`claude/MODEL`).
+Some ways to reach a model need no API key: sign in with ChatGPT to use your Plus or Pro plan
+(`chatgpt/MODEL`), or run your own installed Claude Code or Codex, signed in its own way, as a
+harness (`ask install claude`, then `claude/MODEL`). A session can move between them and ask's
+own loop from one turn to the next. Extensions add more harnesses, or tools.
 
 <table>
   <tr>
@@ -68,8 +69,8 @@ plan (`chatgpt/MODEL`), or run your own installed Claude Code with its own sign-
     </td>
     <td width="33%" valign="top">
       <b>Safe by construction</b><br>
-      A read task has no tool that can write or run a command. A write task can work in its own
-      worktree, and every change it makes is listed.
+      A read task has no tool that can write or run a command. A write task's commands run in a
+      sandbox that keeps them to its folder and away from your secrets, and every change is listed.
     </td>
     <td width="33%" valign="top">
       <b>Small</b><br>
@@ -93,8 +94,8 @@ The installer and Homebrew put one self-contained binary on your `PATH`. As a li
 ## Docs
 
 `ask help` is the reference. The pages in [docs/](docs/README.md) cover [installing](docs/install.md),
-[settings](docs/settings.md), [requests](docs/requests.md), [sessions](docs/sessions.md) and
-[models](docs/models.md).
+[settings](docs/settings.md), [requests](docs/requests.md), [sessions](docs/sessions.md),
+[models](docs/models.md) and [harnesses and extensions](docs/extensions.md).
 
 <br>
 

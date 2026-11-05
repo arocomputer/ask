@@ -19,12 +19,13 @@
   },
   "files": [
     "dist/src",
+    "dist/native",
     "dist/package.json"
   ],
   "scripts": {
     "check": "tsc",
-    "test": "node --test 'test/*.test.ts' && bun test ./test/",
-    "build": "rm -rf dist && tsc --noEmit false --declaration --rewriteRelativeImportExtensions --outDir dist --rootDir .",
+    "test": "node --test 'test/**/*.test.ts' && bun test ./test/",
+    "build": "rm -rf dist && tsc --noEmit false --declaration --rewriteRelativeImportExtensions --outDir dist --rootDir . && mkdir -p dist/native && cp native/sandybox.c dist/native/ && (cp -R native/build dist/native/ 2>/dev/null || true)",
     "prepack": "npm run build"
   },
   "devDependencies": {

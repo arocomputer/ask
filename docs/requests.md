@@ -9,7 +9,8 @@ ask <<'EOF'
 EOF
 ```
 
-A request holds exactly one operation. Subagents work in the background, so a request returns as
+A request holds exactly one operation: `start`, `collect`, `continue`, `stop`, `show` or
+`sessions`. Subagents work in the background, so a request returns as
 soon as they have started, or once one has finished if it says how long to wait.
 
 ## start
@@ -53,7 +54,8 @@ any task whose worker was stopped (see [Sessions](sessions.md#resuming)).
 
 Gives a finished session its next prompt. The subagent keeps the whole conversation, the folder
 and the worktree. It takes a task's fields except `dir` and `worktree`, and keeps the last turn's
-model unless it names another.
+model unless it names another. Any model will do, including a move between ask's own loop and a
+[harness](extensions.md) like `claude/` or `codex/`: the new model gets the conversation so far.
 
 Without a prompt, `{"continue": "k3f9a2"}` resumes a stopped or failed turn where it left off. A
 running session can't be continued; collect it first.
@@ -75,6 +77,17 @@ Stops sessions. A stopped session can be continued or resumed.
 The session's latest turn, with `steps`: every tool call it made, like `read src/auth.ts:40` or
 `shell npm test`, and any that failed.
 
+## sessions
+
+```json
+{"sessions": {}}
+```
+
+Your sessions, newest first, each with its `task`: the first line of its first prompt. They are
+the sessions your own conversation started, when ask can tell which conversation is calling
+(see [Sessions](sessions.md#whose-sessions)); otherwise those started from the same repository,
+or folder outside one. `{"sessions": {"all": true}}` lists everyone's. At most 50.
+
 ## Responses
 
 Every response is a list of tasks:
@@ -91,11 +104,13 @@ Every response is a list of tasks:
 | `error` | It failed: `{"message", "hint"}`, where the hint says what to do next |
 | `changes` | A write task changed files: `[{"path", "change"}]`, `change` being added, modified or deleted |
 | `commits` | A write task made commits |
+| `reverted` | A write task changed git hooks or config, which ask put back: `[path, ...]` |
 | `worktree` | A worktree task: `{"path", "branch"}` |
 | `activity` | It is running: its latest step |
 | `retrying` | The provider is failing and being retried: why |
 | `resumed` | ask restarted it after its worker was stopped: how many times |
 | `steps` | With show: every step of the latest turn |
+| `task` | With sessions: the first line of its first prompt |
 
 A response may also carry a `hint`, when the caller should wait differently (see
 [Sessions](sessions.md#resuming)).

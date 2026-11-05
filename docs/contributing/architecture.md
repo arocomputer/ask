@@ -4,22 +4,38 @@ ask is TypeScript with no runtime dependencies, on Node 24 or Bun. It turns a JS
 sessions, runs each turn in a detached worker, and records what happened. The worker runs ask's
 own agent loop against a model provider.
 
-`src/` holds the engine, one module per purpose, one word per file; `src/cmd/` holds the commands
-for people. `test/` holds the tests, one file per area.
+`src/` is in layers, lowest first; a file imports only from its own layer and those below it,
+which `test/rules.test.ts` checks. `test/` mirrors `src/`, one file per area.
+
+| Layer | Holds |
+| --- | --- |
+| `base/` | Nothing particular to ask: `home` (the folder, its files and their shapes), `term`, `input`, `git`, `version` |
+| `providers/` | Reaching models: `catalog` (models.dev), `stream` (the transcript format, server-sent events, errors, retries), `responses`, `chat`, `anthropic` (one client per protocol), `chatgpt` (the ChatGPT sign-in) |
+| `sandbox/` | Confining commands: `policy` (what they may touch), `linux` (sandybox), `macos` (Seatbelt), `proxy` (the web, public addresses only), `confine` (support, and a sandbox for one turn) |
+| `agent/` | ask's own loop: `loop`, `tools`, `fetch`, `search` (ask's own web search: DuckDuckGo, its lite page, Mwmbl, Wikipedia), `system` (the prompt), `steps` (a turn's steps in a few words) |
+| `harnesses/` | Other agents: `harness` (the contract, running a CLI, history handoff, loading extensions), `claude`, `codex`, `extensions` (what is on, the calling conversation), `skill` |
+| `sessions/` | A request's life: `protocol` (the agent interface), `store` (session folders, turns, the lock), `worker` (running a turn, detached), `models` (which model and key a task uses) |
+| `commands/` | What people run: `settings`, `doctor`, `models`, `sessions`, `show`, `tools`, `install`, `remove`, and `command`, their shared shape |
+| `cli.ts`, `index.ts` | The entry points: the command, and the library |
+
+`native/sandybox.c` is the one file that isn't TypeScript: the Linux sandbox helper, built into
+`native/build/` (from source in a checkout, by `zig cc` for releases). The sandbox's design is
+[sandbox.md](sandbox.md).
 
 ## How a turn goes
 
 ```text
-ask < request.json                         cli.ts reads it; protocol.ts checks every task
+ask < request.json                         cli.ts reads it; sessions/protocol.ts checks every task
   │  protocol    start, collect, continue, stop, show; results and hints
   │  sessions    the folder, session.json, transcript.json, the lock
   │  worker      launch: a detached `ask __worker FOLDER`, its pid in the lock
   ▼
-ask __worker FOLDER                         worker.ts, in its own session of the system
+ask __worker FOLDER                         sessions/worker.ts, in its own session of the system
   ├─ loop        provider ⇄ tools, until an answer or a limit; saves after every step
   │    catalog       models.dev: which protocol and endpoint each model uses
   │    responses, chat, anthropic   one client per protocol, over provider.ts
-  │    tools         read, list, grep; write, edit, shell in a write turn
+  │    tools         read, list, grep, fetch, search; write, edit, shell in a write turn
+  │    sandbox       a write turn's commands: sandybox or Seatbelt, and the proxy
   │    system        the system prompt and the project's AGENTS.md
   └─ git         what a write turn changed; worktrees
   ▼
@@ -32,29 +48,6 @@ collect polls `session.json`, show reads `transcript.json`, stop signals the loc
 whose worker is gone is restarted from its transcript by the next collect, after claiming that
 restart with an atomic folder create.
 
-## Modules
-
-| Module | Purpose |
-| --- | --- |
-| `cli` | Dispatch, help pages, errors, exit status, the worker's entry |
-| `protocol` | The agent interface: requests, results, hints, `ask help requests` |
-| `sessions` | Session folders, turns, the lock, whether a turn is alive, restart claims |
-| `worker` | Launching a detached worker, and running a turn in it |
-| `loop` | The agent loop, interrupted tool calls, eliding old outputs |
-| `provider` | The transcript format, server-sent events, provider errors, retries |
-| `responses`, `chat`, `anthropic` | One protocol client each |
-| `catalog` | The models.dev catalog: loading, finding a model, connecting to it |
-| `tools` | The six tools and path confinement |
-| `system` | The system prompt |
-| `steps` | A turn's steps in a few words each |
-| `git` | Changes a write turn made, worktrees |
-| `home` | `~/.ask`, config.json, auth.json, credentials, the catalog with ChatGPT's models |
-| `claude` | Running a `claude/` turn with the user's Claude Code: finding it, its controls, reading its stream into steps |
-| `chatgpt` | Signing in with a ChatGPT plan: the sign-in, checking the ID token, renewing under a shared lock, signing out, the account's models |
-| `term`, `input` | Terminal output and interactive prompts |
-| `version` | The version, from package.json |
-| `cmd/*` | `settings`, `doctor`, `models`, `sessions`, `show` |
-
 ## Rules the layout keeps
 
 [`test/rules.test.ts`](../../test/rules.test.ts) checks these on every change:
@@ -62,8 +55,11 @@ restart with an atomic folder create.
 - **No runtime dependencies.** `package.json` lists only development tools.
 - **Only Node's built-ins.** The engine imports `node:` modules and its own files, and nothing
   that is particular to Bun, so it runs on both.
-- **One coding agent, in one place.** The only coding agent ask runs is Claude Code, for
-  `claude/` models, and how it runs it lives in `claude.ts` alone; no other is named.
+- **Each harness in one place.** ask ships two harnesses, Claude Code and Codex, and how each
+  is run (its command-line flags) lives in its own file, `claude.ts` or `codex.ts`. No other
+  coding agent is named; more come as extensions.
+- **Layers only look down.** A file imports from its own layer and the ones below it, never
+  above, so each layer can be understood, and tested, without the ones on top.
 - **Every module says what it is for.**
 
 Two more are kept by tests and review:

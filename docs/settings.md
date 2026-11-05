@@ -50,13 +50,12 @@ The models are your account's own, named `chatgpt/MODEL`. The sign-in renews its
 ChatGPT in `ask settings` signs out, ending the session with OpenAI too. One ChatGPT account at a
 time: sign out to switch.
 
-## Claude Code
+## Claude Code and Codex
 
-With [Claude Code](https://claude.com/claude-code) installed and signed in, choose **Claude Code**
-in `ask settings` to use its models as `claude/MODEL`. ask checks that Claude Code is signed in,
-then asks which models you want. It never signs in for Claude Code: if it isn't signed in, run
-`claude` and sign in with `/login`. See [Models](models.md#claude-code) for how the two Claude
-routes differ.
+Once `ask install claude` or `ask install codex` has turned a harness on, it is listed in
+`ask settings` as a provider. Choosing it checks that it is installed and signed in, then asks
+which models you want. ask never signs in for them: if one isn't signed in, sign in its own way
+(`claude`, then `/login`; `codex login`). See [Harnesses and extensions](extensions.md).
 
 ## The files
 
@@ -74,6 +73,10 @@ routes differ.
 - `models` are the models you chose; `ask models` lists them and `ask settings` offers them
   first. A request can still use any model in the catalog.
 - `timeout` is how many seconds a turn may run before it is stopped (default 900).
+- `tools` turns tools of ask's own loop off: `{"shell": false}`; see `ask tools` and
+  [turning tools off](extensions.md#turning-tools-off-and-replacing-them).
+- `extensions` and `harnesses` are what `ask install` turned on and how each harness runs; see
+  [Harnesses and extensions](extensions.md#changing-how-a-harness-runs).
 
 `~/.ask/auth.json`, mode 0600, holds pasted keys, and the ChatGPT sign-in under `chatgpt`:
 
@@ -81,9 +84,28 @@ routes differ.
 { "opencode-go": { "api_key": "..." } }
 ```
 
-For OpenCode, make a key in the [console](https://opencode.ai/console) under Account › Personal
-API keys (it starts `oc_sk_`), in a workspace with Go for `opencode-go`. OpenCode's free models
-only work inside OpenCode, so ask doesn't offer them.
+When it asks for a key, `ask settings` says where to make one and how it starts. For the
+common providers:
+
+| Provider | Where | Starts with |
+| --- | --- | --- |
+| OpenCode Go, OpenCode | [opencode.ai/console](https://opencode.ai/console), Account › Personal API keys (a workspace with Go for `opencode-go`) | `oc_sk_` |
+| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | `sk-` |
+| Anthropic | [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys) | `sk-ant-` |
+| OpenRouter | [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys) | `sk-or-` |
+| DeepSeek | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) | `sk-` |
+| xAI | [console.x.ai](https://console.x.ai), API Keys | `xai-` |
+| Mistral | [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) | |
+| Groq | [console.groq.com/keys](https://console.groq.com/keys) | `gsk_` |
+| Together AI | [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys) | |
+| Fireworks AI | [app.fireworks.ai/account/api-keys](https://app.fireworks.ai/account/api-keys) | `fw_` |
+| Cerebras | [cloud.cerebras.ai](https://cloud.cerebras.ai), API Keys | `csk-` |
+| Z.AI | [z.ai/manage-apikey/apikey-list](https://z.ai/manage-apikey/apikey-list) | |
+| Moonshot AI | [platform.kimi.ai/console/api-keys](https://platform.kimi.ai/console/api-keys) | `sk-` |
+| DeepInfra | [deepinfra.com/dash/api_keys](https://deepinfra.com/dash/api_keys) | |
+
+Other providers get a link to their docs. OpenCode's free models only work inside OpenCode, so
+ask doesn't offer them.
 
 A provider may also have `"base_url"` to send its requests somewhere other than the catalog's
 endpoint, such as a proxy.
@@ -102,14 +124,18 @@ variable. ask never reads another program's saved logins.
 ✓ Catalog   218 providers, updated about 2 hours ago
 ✓ Model     opencode-go/glm-5.3
 ✓ Key       OpenCode Go accepts the pasted key
+✓ claude    Claude Code 2.1.318 is signed in (claude.ai)
+✓ Sandbox   Landlock 6; no Unix sockets before Linux 7.1
 ✓ Worker    background tasks can start
 ✓ Git       git 2.47.3
 ```
 
-Each line is one thing a task needs. Anything broken is marked `X` with how to fix it under it,
+Each line is one thing a task needs; each installed harness gets a line of its own. Anything broken is marked `X` with how to fix it under it,
 and `ask doctor` then exits 1. The key check sends one tiny request.
 
 ## Environment
 
 - `ASK_HOME` moves `~/.ask`.
+- `ASK_PARENT` names the agent conversation calling ask, for one ask can't recognize by itself
+  (see [Sessions](sessions.md#whose-sessions)).
 - `NO_COLOR` turns color off; `CLICOLOR_FORCE` keeps it when output is piped.

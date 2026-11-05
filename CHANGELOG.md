@@ -36,16 +36,43 @@ earlier versions.
   OpenAI documents for open-source tools. It works from another device too: open the link
   anywhere and paste back the address the browser lands on. The models are the account's own,
   `chatgpt/MODEL`; the sign-in renews itself and signing out ends the session with OpenAI.
-- Run tasks with your own installed Claude Code as `claude/MODEL` (an alias like `sonnet`, or a
-  full id), signed in its own way; `anthropic/MODEL` stays ask's own loop with an API key. Each
-  run has no hooks, MCP servers, slash commands, repository settings, auto memory or background
-  tasks; a read-only task gets only Read, Grep and Glob. Its steps show like any task's, and
-  later turns resume the same Claude session.
+- Run tasks with your own installed Claude Code (`claude/MODEL`) or Codex (`codex/MODEL`),
+  signed in its own way, after `ask install claude` or `ask install codex`; installing and
+  signing in to them stays theirs. Each run is kept to the task: no hooks, MCP servers,
+  settings files or API keys; Claude Code's file tools stay in the task's folder and its
+  write tasks run only in its sandbox; Codex's commands can't read your home folder or reach
+  the network. Change how each runs under `"harnesses"` in config.json.
+- Run every command of a write task in ask's own sandbox: it writes only the task's folder,
+  can't read your home folder, gets no secrets from the environment, can't reach your agents,
+  Docker or other programs, and reaches the web through a proxy that refuses private
+  addresses. On Linux it's Landlock, through `sandybox`, a small helper that comes with ask; on
+  macOS, the system's sandbox. Nothing needs installing, and a write task is refused where
+  there is no sandbox. Git hooks and config a task changes are put back and reported as
+  `reverted`.
+- Give every task `fetch`, which reads a web page as text, public addresses only, and
+  `search`, ask's own web search, free and with no key: titles, addresses and snippets from
+  DuckDuckGo, falling back to its lite page, Mwmbl and Wikipedia when one turns searches away. Claude
+  Code and Codex keep their own.
+- Turn any of a subagent's tools off, or back on, with `ask tools off NAME` (or `"tools"` in
+  config.json), and replace any of them with an extension's tool of the same name; `ask tools`
+  lists them all and where each comes from.
+- Keep environment files (`.env`, `.env.local`, ...) out of `read` and `grep`, and out of
+  Codex's reach; their examples stay readable.
+- Move a session between ask's own loop and any harness from one turn to the next: the new one
+  gets the conversation so far.
+- Install extensions that add a harness or tools with `ask install PATH|URL`, and undo any
+  install with `ask remove`.
+- Teach Claude Code and Codex to use ask with `ask install skill`.
+- List the calling conversation's own sessions with `{"sessions": {}}`, or everyone's with
+  `"all": true`; `ask sessions` lists this repository's, or everyone's with `--all`.
+- Say where to make a key, and how it starts, for the common providers in `ask settings`, and
+  reach xAI, Mistral, Groq, Together AI, Cerebras, DeepInfra and Perplexity models, which had
+  no endpoint before.
 - Don't offer OpenCode's free models, which answer 403 outside OpenCode, and say where to make an
   OpenCode key.
 - Install with the installer, Homebrew, or `npm install -g @arocomputer/ask` on Node 24 or newer.
 - Remove the flag commands (`ask PROMPT`, `wait`, `continue`, `stop`, `setup`, `config`), the
-  extensions and their contract, prices and cost limits, `models.json`, `ask clean`, and the
+  old extensions and their contract, prices and cost limits, `models.json`, `ask clean`, and the
   import of other programs' keys.
 
 ## v0.3.1 · 2026-11-02

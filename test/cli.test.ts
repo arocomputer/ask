@@ -24,15 +24,15 @@ async function setup(replies: Reply[]) {
   writeFileSync(join(home, "cache", "models.json"), JSON.stringify(catalog))
   writeFileSync(join(home, "config.json"), JSON.stringify({ model: "fake/m" }))
   writeFileSync(join(home, "auth.json"), JSON.stringify({ fake: { api_key: "k" } }))
-  const run = (args: string[], input = "") =>
+  const run = (args: string[], input = "", env: NodeJS.ProcessEnv = {}) =>
     new Promise<{ code: number; stdout: string; stderr: string }>((done) => {
-      const child = execFile(process.execPath, [cli, ...args], { cwd: project, env: { ...process.env, ASK_HOME: home, NO_COLOR: "1" } }, (err, stdout, stderr) =>
+      const child = execFile(process.execPath, [cli, ...args], { cwd: project, env: { ...process.env, ASK_HOME: home, NO_COLOR: "1", ...env } }, (err, stdout, stderr) =>
         done({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
       )
       child.stdin!.end(input)
     })
   /** Sends one JSON request and returns the parsed response. */
-  const ask = async (request: object) => JSON.parse((await run([], JSON.stringify(request))).stdout)
+  const ask = async (request: object, env: NodeJS.ProcessEnv = {}) => JSON.parse((await run([], JSON.stringify(request), env)).stdout)
   return { fake, home, project, run, ask }
 }
 
@@ -167,6 +167,15 @@ describe("cli", () => {
     const [state, task, id, started] = line.split("\t")
     assert.deepEqual([state, task, id], ["succeeded", "First line", tasks[0].id])
     assert.ok(!Number.isNaN(Date.parse(started)))
+  })
+
+  test("the sessions request lists the calling conversation's own sessions, or everyone's", async () => {
+    const { ask } = await setup([{ text: "ok" }])
+    const mine = await ask({ start: [{ prompt: "Mine\nmore" }], wait: 30 }, { ASK_PARENT: "agent:a" })
+    await ask({ start: [{ prompt: "Theirs" }], wait: 30 }, { ASK_PARENT: "agent:b" })
+    const own = await ask({ sessions: {} }, { ASK_PARENT: "agent:a" })
+    assert.deepEqual(own.tasks.map((t: any) => [t.id, t.task]), [[mine.tasks[0].id, "Mine"]])
+    assert.equal((await ask({ sessions: { all: true } }, { ASK_PARENT: "agent:a" })).tasks.length, 2)
   })
 
   test("a word ask doesn't know is an error, never a prompt", async () => {

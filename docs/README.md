@@ -11,3 +11,4 @@ up and look at what the subagents did. `ask help` is the reference for every com
 | [Requests](requests.md) | How agents use ask: starting, collecting, continuing and stopping tasks |
 | [Sessions](sessions.md) | Turns, write tasks, worktrees, resuming, what the subagent is told |
 | [Models](models.md) | Model names, the catalog, the three protocols, effort |
+| [Harnesses and extensions](extensions.md) | Claude Code and Codex, `ask install`, the agent skill, writing an extension |

@@ -3,7 +3,7 @@
 
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
-import type { Protocol } from "../src/provider.ts"
+import type { Protocol } from "../src/providers/stream.ts"
 
 /**
  * One model turn to play back: text, tool calls, or an HTTP error. A reply with `when` answers a
@@ -99,7 +99,7 @@ function encode(protocol: Protocol, r: Reply, turn: number): [string, object][] 
         ["message_stop", { type: "message_stop" }],
       ]
     }
-    case "claude":
+    case "harness":
       return []
   }
 }

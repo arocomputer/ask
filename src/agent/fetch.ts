@@ -1,0 +1,123 @@
+// The fetch tool: reads a web page for the model, in ask's own process, so read-only tasks can
+// look things up without a shell; `download` is how search reads its results page too. Only http and https to public addresses: each host, the
+// first and every redirect, is resolved and checked like the sandbox's proxy does, and the
+// connection goes to the address that was checked. HTML comes back as text; the download and
+// the text are both bounded.
+
+import { request as http, type IncomingMessage } from "node:http"
+import { request as https } from "node:https"
+import { reach } from "../sandbox/proxy.ts"
+import type { Tool } from "./tools.ts"
+
+const downloadLimit = 2 * 1024 * 1024
+const textLimit = 48 * 1024
+const redirects = 5
+
+/**
+ * One request to the checked address of `url`'s host, keeping the name for TLS and the Host
+ * header: a GET, or with `form`, a POST of it.
+ */
+async function get(url: URL, signal?: AbortSignal, form?: string): Promise<IncomingMessage> {
+  const target = await reach(url.hostname)
+  if ("refused" in target) throw new Error(target.refused)
+  const secure = url.protocol === "https:"
+  return new Promise((done, fail) => {
+    const req = (secure ? https : http)(
+      {
+        host: target.address,
+        port: url.port || (secure ? 443 : 80),
+        path: url.pathname + url.search,
+        method: form === undefined ? "GET" : "POST",
+        servername: url.hostname,
+        headers: {
+          host: url.host,
+          "user-agent": "ask (https://github.com/arocomputer/ask)",
+          accept: "text/html, text/plain, application/json, */*;q=0.5",
+          ...(form === undefined ? {} : { "content-type": "application/x-www-form-urlencoded", "content-length": String(Buffer.byteLength(form)) }),
+        },
+        signal,
+        timeout: 30_000,
+      },
+      done,
+    )
+    req.on("timeout", () => req.destroy(new Error("timed out after 30 seconds")))
+    req.on("error", fail)
+    req.end(form)
+  })
+}
+
+/** HTML as readable text: no scripts, styles or tags, entities decoded, blank runs collapsed. */
+export function text(html: string): string {
+  const entities: Record<string, string> = {
+    amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", mdash: "—", ndash: "–", hellip: "…",
+    lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”", middot: "·", copy: "©", reg: "®", trade: "™", times: "×",
+  }
+  return html
+    .replace(/<(script|style|noscript|svg|head)\b[\s\S]*?<\/\1>/gi, "")
+    .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6]|pre|section|article)>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "- ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(#x?[0-9a-f]+|\w+);/gi, (m, e: string) =>
+      e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (entities[e.toLowerCase()] ?? m),
+    )
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n\s*/g, "\n\n")
+    .trim()
+}
+
+/**
+ * Downloads `url` with GET, or POSTs `form` to it, following redirects (as GETs), each host
+ * checked; at most 2 MiB. What search and fetch both read pages through.
+ */
+export async function download(href: string, signal?: AbortSignal, form?: string): Promise<{ status: number; url: URL; type: string; body: Buffer; cut: boolean }> {
+  let url: URL
+  try {
+    url = new URL(href)
+  } catch {
+    throw new Error("url must be an absolute http or https address")
+  }
+  for (let hop = 0; ; hop++) {
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("only http and https addresses")
+    const res = await get(url, signal, hop === 0 ? form : undefined)
+    const status = res.statusCode ?? 0
+    if (status >= 300 && status < 400 && res.headers.location) {
+      res.resume()
+      if (hop >= redirects) throw new Error(`more than ${redirects} redirects`)
+      url = new URL(res.headers.location, url)
+      continue
+    }
+    const chunks: Buffer[] = []
+    let size = 0
+    let cut = false
+    for await (const chunk of res as AsyncIterable<Buffer>) {
+      size += chunk.length
+      if (size > downloadLimit) {
+        cut = true
+        res.destroy()
+        break
+      }
+      chunks.push(chunk)
+    }
+    return { status, url, type: String(res.headers["content-type"] ?? ""), body: Buffer.concat(chunks), cut }
+  }
+}
+
+export const fetch: Tool = {
+  name: "fetch",
+  description:
+    "Read a web page or file over http or https, such as documentation. HTML comes back as plain text. Only public addresses; nothing on this machine or the local network.",
+  parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"], additionalProperties: false },
+  readonly: true,
+  async run(args, { signal }) {
+    const { status, url, type, body, cut: big } = await download(String(args.url ?? ""), signal)
+    let cut = big
+    if (!/^(text\/|application\/(json|xml|javascript|x-yaml|yaml)|[^;]*\+(json|xml))/i.test(type) && body.includes(0))
+      return `${status} ${url.href}\n${type || "binary content"}, ${body.length} bytes; not text`
+    let out = /html/i.test(type) ? text(body.toString("utf8")) : body.toString("utf8")
+    if (out.length > textLimit) {
+      out = out.slice(0, textLimit)
+      cut = true
+    }
+    return `${status} ${url.href}\n\n${out}${cut ? "\n\n[cut: the page is longer]" : ""}`
+  },
+}

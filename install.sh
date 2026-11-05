@@ -90,18 +90,26 @@ if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
   fail "checksum mismatch for $archive; refusing to install"
 fi
 
-tar -xzf "$work/$archive" -C "$work" ask
-if [ ! -f "$work/ask" ] || [ -L "$work/ask" ]; then
-  fail "$archive has no ask binary"
-fi
+# On Linux, sandybox comes with ask: the helper that sandboxes write tasks' commands.
+members=ask
+[ "$os" = linux ] && members="ask sandybox"
+# shellcheck disable=SC2086 # members is a word list on purpose
+tar -xzf "$work/$archive" -C "$work" $members
+for m in $members; do
+  if [ ! -f "$work/$m" ] || [ -L "$work/$m" ]; then
+    fail "$archive has no $m binary"
+  fi
+done
 got=$("$work/ask" --version 2>/dev/null || true)
 # Releases before v0.4.0 print the bare tag; later ones print "ask version X.Y.Z".
 [ "$got" = "$version" ] || [ "$got" = "ask version ${version#v}" ] || fail "$archive says it is \"$got\", not $version"
 
 mkdir -p "$dir"
-cp "$work/ask" "$dir/.ask.next"
-chmod 755 "$dir/.ask.next"
-mv -f "$dir/.ask.next" "$dir/ask"
+for m in $members; do
+  cp "$work/$m" "$dir/.$m.next"
+  chmod 755 "$dir/.$m.next"
+  mv -f "$dir/.$m.next" "$dir/$m"
+done
 echo "Installed $dir/ask"
 
 case ":$PATH:" in
