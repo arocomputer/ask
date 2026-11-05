@@ -30,7 +30,7 @@ they may change.
   `ASK_CONTRACT`, now `2`. A change that could break one changes that number and is called out in
   the changelog with what to do.
 - **Run records stay readable.** Records written by a release are pinned in ask's tests
-  (`test/fixtures/`) and never rewritten; newer versions must keep showing and continuing them.
+  (`src/test/fixtures/`) and never rewritten; newer versions must keep showing and continuing them.
 
 JSON uses Go's `encoding/json`. Records keep the documented field order; JSON answers retain
 agent key order. Parser diagnostics, insignificant whitespace, number spelling in ask's own

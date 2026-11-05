@@ -7,12 +7,12 @@ cd "$(dirname "$0")"
 usage() {
     cat <<'EOF'
 usage: ./x [command] [args...]
-  check              Default; Go formatting, vet and tests, offline Baymax integration checks, shellcheck and architectural guards
+  check              Default; Go formatting, vet and tests, offline integration checks, shellcheck and architectural guards
   fmt [--check]      Format Go sources, or check without writing
   lint               Run go vet
   test [args...]     Forward arguments to go test (default: ./...)
   build [args...]    Forward arguments to go build (default: ./...)
-  baymax [names...]  Offline packaged-agent integration checks (node is an alias)
+  integration [names...]  Offline packaged-agent integration checks
   shell | guard      Shellcheck or architectural guards
   audit              Network vulnerability audit, separate from check
   dev [args...]      Build and run ask from this checkout
@@ -41,7 +41,7 @@ case "$command" in
         ./x fmt --check
         ./x lint
         ./x test
-        ./x baymax
+        ./x integration
         ./x shell
         ./x guard
         ;;
@@ -65,9 +65,9 @@ case "$command" in
         if [ "$#" -eq 0 ]; then set -- ./...; fi
         go build "$@"
         ;;
-    # Baymax owns offline adapter and real-ask integration checks; node is the old alias.
-    baymax|node)
-        exec node test/baymax/runner.mjs "$@"
+    # Offline adapter and real-ask integration checks.
+    integration)
+        exec node src/test/integration/runner.mjs "$@"
         ;;
     shell)
         command -v shellcheck >/dev/null 2>&1 || { echo "shell: shellcheck is not on PATH" >&2; exit 2; }
@@ -77,7 +77,7 @@ case "$command" in
     # Needs the network for the vulnerability database; CI and releases run it, not pre-commit.
     audit) go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./... ;;
     dev)
-        go build -o "${TMPDIR:-/tmp}/ask-dev" ./cmd/ask
+        go build -o "${TMPDIR:-/tmp}/ask-dev" .
         exec "${TMPDIR:-/tmp}/ask-dev" "$@"
         ;;
     hooks)

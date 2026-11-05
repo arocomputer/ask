@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { syncBuiltinESMExports } from 'node:module';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { offline, pollJson, readJson, readJsonl } from '../../../test/baymax/helper.mjs';
+import { offline, pollJson, readJson, readJsonl } from '../../../src/test/integration/helper.mjs';
 import { createActivity } from '../lib/activity.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));

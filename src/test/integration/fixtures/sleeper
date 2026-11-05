@@ -1,0 +1,12 @@
+#!/usr/bin/env node
+/* A controlled process tree for testing ask shutdown; never calls a provider. */
+const { spawn } = require('node:child_process');
+const { writeFileSync } = require('node:fs');
+if (process.argv[2] === 'models') {
+  process.stdout.write('slow\n');
+} else {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  child.on('spawn', () => writeFileSync(process.env.INTEGRATION_PIDS, JSON.stringify([process.pid, child.pid])));
+  process.stdin.resume();
+  setInterval(() => {}, 1000);
+}

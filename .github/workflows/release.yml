@@ -99,7 +99,7 @@ jobs:
             for arch in amd64 arm64; do
               target="ask_${TAG}_${os}_${arch}"
               mkdir -p "dist/$target"
-              GOOS="$os" GOARCH="$arch" ./x build -trimpath -ldflags "-s -w -X main.version=${TAG}" -o "dist/$target/ask" ./cmd/ask
+              GOOS="$os" GOARCH="$arch" ./x build -trimpath -ldflags "-s -w -X main.version=${TAG}" -o "dist/$target/ask" .
               cp LICENSE "dist/$target/"
               tar -C "dist/$target" -czf "dist/$target.tar.gz" ask LICENSE
               rm -r "dist/$target"

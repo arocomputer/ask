@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Move Go implementation packages and binary tests into `src/`, with the entry point at
+  `main.go`. Build from the repository root and install with
+  `go install github.com/arocomputer/ask@latest`. Bundled adapters stay in `packages/`.
+- Rename the offline adapter runner to `./x integration [AGENT...]`; remove the `baymax`
+  and `node` aliases.
+
 - Supply agents an optional private per-task `ASK_EVENTS` JSONL file, preserved across retries
   and hook follow-ups, independently of final answers and `ASK_REPORT` metadata.
 - Show bounded recent task activity with `ask show`, stream it with `--follow`, or read

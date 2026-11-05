@@ -40,7 +40,7 @@ again. Each release updates the formula, [`ask.rb`](../ask.rb), so
 Go 1.26 or newer can build and install ask (also required for the source build below):
 
 ```sh
-go install github.com/arocomputer/ask/cmd/ask@latest
+go install github.com/arocomputer/ask@latest
 ```
 
 Put `$(go env GOPATH)/bin` on your `PATH`.
@@ -58,7 +58,7 @@ archive's build provenance can be verified with
 ```sh
 git clone https://github.com/arocomputer/ask
 cd ask
-go build -o ask ./cmd/ask
+go build -o ask .
 mkdir -p ~/.local/bin
 cp ask ~/.local/bin/ask
 ```

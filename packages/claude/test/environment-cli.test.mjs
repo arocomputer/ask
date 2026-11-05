@@ -1,13 +1,13 @@
 /* Optional real-CLI contract check. All HTTP responses and credentials are local fixtures;
- * no real model or account is used. Normal Baymax runs need only the CLI simulator. */
+ * no real model or account is used. Normal Integration runs need only the CLI simulator. */
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { isolated } from '../../../test/baymax/integration.mjs';
-import { runProcess } from '../../../test/baymax/helper.mjs';
+import { isolated } from '../../../src/test/integration/integration.mjs';
+import { runProcess } from '../../../src/test/integration/helper.mjs';
 
 const cli = process.env.ASK_TEST_CLAUDE_BIN;
 test('real Claude preserves config auth, instructions and hooks while controlling MCP and skills', {

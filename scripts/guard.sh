@@ -8,11 +8,15 @@ fail=0
 bad() { printf 'guard: FAIL: %s\n' "$1" >&2; fail=1; }
 
 # Production Go sources only.
-prod_go() { find cmd internal packages docs -name '*.go' -not -name '*_test.go'; }
+prod_go() {
+    printf '%s\n' main.go
+    find src -path src/test -prune -o -name '*.go' -not -name '*_test.go' -print
+    find packages docs -name '*.go' -not -name '*_test.go'
+}
 
 # 1. Terminal dependencies stay in presentation packages; execution stays standard-library only.
 if prod_go | xargs grep -nE '^[[:space:]]*(import[[:space:]]+|[[:alnum:]_]+[[:space:]]+)?"[[:alnum:]_.-]+\.[[:alnum:]_.-]+/' \
-    | grep -vE 'internal/(tui|status)/|"github.com/arocomputer/ask/' | grep .; then
+    | grep -vE 'src/(tui|status)/|"github.com/arocomputer/ask/' | grep .; then
     bad "external Go dependency outside terminal presentation packages"
 fi
 
@@ -25,16 +29,16 @@ for dir in packages/*/agents; do
     [ "$name" = continue ] && continue
     agents=${agents:+$agents|}$name
 done
-if grep -rnE --include='*.go' --exclude='*_test.go' --exclude-dir=setup "[{(,=] *\"($agents)\"" internal \
+if grep -rnE --include='*.go' --exclude='*_test.go' --exclude-dir=setup --exclude-dir=test "[{(,=] *\"($agents)\"" main.go src \
     | grep -v '`' | grep .; then
-    bad "an official agent's name is used as a value outside internal/setup"
+    bad "an official agent's name is used as a value outside src/setup"
 fi
 
 # 3. home (paths and records), tui (prompts) and update (releases) are leaves: everything may
 #    build on them, and they build on nothing of ask's (docs/contributing/architecture.md).
 for leaf in home tui update; do
-    if grep -l '"github.com/arocomputer/ask/internal/' "internal/$leaf"/*.go | grep .; then
-        bad "internal/$leaf imports another ask package"
+    if grep -l '"github.com/arocomputer/ask/src/' "src/$leaf"/*.go | grep .; then
+        bad "src/$leaf imports another ask package"
     fi
 done
 

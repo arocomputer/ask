@@ -6,6 +6,6 @@
 
 - `./x check` —
 
-<!-- Covers Go formatting, vet/tests, offline Baymax, ShellCheck, and guards.
+<!-- Covers Go formatting, vet/tests, offline integration, ShellCheck, and guards.
      Add focused test commands and results; state failures, skips, or limitations.
      Update affected docs and CHANGELOG.md for user-visible changes. -->

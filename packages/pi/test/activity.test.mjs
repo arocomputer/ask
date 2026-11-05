@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { offline, readJson, readJsonl } from '../../../test/baymax/helper.mjs';
+import { offline, readJson, readJsonl } from '../../../src/test/integration/helper.mjs';
 const agent = fileURLToPath(new URL('../agents/pi', import.meta.url));
 const fake = fileURLToPath(new URL('./bin/pi', import.meta.url));
 const native = fileURLToPath(new URL('./fixtures/activity.jsonl', import.meta.url));

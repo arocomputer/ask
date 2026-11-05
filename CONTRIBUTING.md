@@ -12,15 +12,15 @@ shellcheck for `./x shell`.
 ./x check     # before a pull request; CI runs the same command
 ```
 
-`./x` defaults to `check`: Go formatting and vet, Go tests, offline Baymax integration
+`./x` defaults to `check`: Go formatting and vet, Go tests, offline adapter integration
 checks, shellcheck and architectural guards. It does not rewrite sources. Network dependency
 audits stay separate in `./x audit`. `./x --help` lists targets; `./x test` and `./x build`
-forward Go arguments, for example `./x test ./test -run TestRuns`.
+forward Go arguments, for example `./x test ./src/test -run TestRuns`.
 
 - [AGENTS.md](AGENTS.md): commands, where things live, conventions.
 - [docs/contributing/architecture.md](docs/contributing/architecture.md): how a task runs, the
   packages, and the rules the layout keeps.
-- [test/README.md](test/README.md): the tests, the fake agent, and which file covers what.
+- [src/test/README.md](src/test/README.md): the tests, the fake agent, and which file covers what.
 - [docs/contributing/releases.md](docs/contributing/releases.md): cutting a release.
 
 Dependabot opens one weekly pull request for dependency and GitHub Actions updates. Review changes and required checks before merging.

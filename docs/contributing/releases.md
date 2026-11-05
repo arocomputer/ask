@@ -30,12 +30,12 @@ tag starts the build and publication jobs:
    formula needs no commit.
 4. **install**: a real `install.sh` install of the release on both systems.
 
-When the run record format changed, pin a record from the release in `test/fixtures/run-vX.Y.Z/`.
+When the run record format changed, pin a record from the release in `src/test/fixtures/run-vX.Y.Z/`.
 
 ## Where people get it
 
 - `curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh`: `install.sh` from main, which downloads
   the latest release and checks its checksum.
 - `brew install`: from `ask.rb` at the top of this repository, which Homebrew reads as a tap.
-- `go install github.com/arocomputer/ask/cmd/ask@latest`.
+- `go install github.com/arocomputer/ask@latest`.
 - `ask update`, for a direct install.

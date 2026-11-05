@@ -1,6 +1,6 @@
 // Package packages holds the official agent packages, built into ask: each folder here
 // is a package that ask install NAME writes to ~/.ask/packages/ask/packages/NAME.
-// Baymax runs their adapter tests and real-ask integration checks with simulated CLIs.
+// ./x integration runs their adapter tests and real-ask integration checks with simulated CLIs.
 package packages
 
 import "embed"

@@ -61,15 +61,15 @@ an installed agent always matches the ask running it.
 ## Working on one
 
 ```sh
-./x baymax                    # every official agent, offline through real ask
-./x baymax claude              # one harness, adapter tests and integration
+./x integration           # every official agent, offline through real ask
+./x integration claude    # one harness, adapter tests and integration
 cd packages/claude && node --test
 ```
 
 The agents use Node.js built-ins only. A change to what users see goes in that folder's
 `README.md` and in `CHANGELOG.md`.
 
-[Baymax](../docs/contributing/baymax.md) replaces the old package-test loop (`./x node` remains
-an alias) and shares test process/report plumbing. Tests need no installed coding CLIs,
+[Integration checks](../docs/contributing/integration.md) share test process/report plumbing.
+Tests need no installed coding CLIs,
 credentials or running agents; harness-specific assertions and simulators remain beside each
 package. A pass verifies covered simulator contracts, not live provider compatibility.
