@@ -74,6 +74,7 @@ func fresh(t testing.TB) *setup {
 		"PATH": os.Getenv("PATH"), "HOME": tmp, "ASK_HOME": s.home, "FAKE_LOG": filepath.Join(tmp, "calls.jsonl"),
 		"OPENAI_API_KEY": "test-key", "OPENAI_BASE_URL": s.provider.URL(),
 	}
+	t.Cleanup(s.settle)
 	ext := filepath.Join(s.home, "agent", "extensions", "fake")
 	s.write(filepath.Join(ext, "extension.json"), `{"harness": {"prefix": "fake", "command": "fake"}}`)
 	if e := os.Symlink(fakeBin, filepath.Join(ext, "fake")); e != nil {
@@ -104,6 +105,18 @@ func (s *setup) read(path string) string {
 		s.t.Fatal(e)
 	}
 	return string(b)
+}
+
+// settle stops every session still running, so no worker writes into the temporary folder
+// while the test framework removes it.
+func (s *setup) settle() {
+	entries, _ := os.ReadDir(filepath.Join(s.home, "agent", "sessions"))
+	for _, d := range entries {
+		id := d.Name()[strings.LastIndex(d.Name(), "-")+1:]
+		cmd := exec.Command(askBin, "stop", id)
+		cmd.Env = []string{"HOME=" + s.tmp, "ASK_HOME=" + s.home, "PATH=" + os.Getenv("PATH")}
+		_ = cmd.Run()
+	}
 }
 
 // config writes config.json.
