@@ -83,6 +83,19 @@ describe("cli", () => {
     assert.equal(fake.requests.length, 2)
   })
 
+  test("once a task has been restarted, collect waits for all of them", async () => {
+    const { ask, home, fake } = await setup([
+      { when: "fast", text: "quick" },
+      { when: "slow", text: "late", delay: 1_500 },
+    ])
+    const { tasks } = await ask({ start: [{ prompt: "fast" }, { prompt: "slow" }] })
+    while (fake.requests.length < 2) await new Promise((ok) => setTimeout(ok, 20))
+    const { pid } = JSON.parse(readFileSync(join(home, "sessions", tasks[1].id, "lock"), "utf8"))
+    process.kill(pid, "SIGKILL")
+    const r = await ask({ collect: tasks.map((t: any) => t.id), wait: 30 })
+    assert.deepEqual(r.tasks.map((t: any) => t.state), ["succeeded", "succeeded"])
+  })
+
   test("continue without a prompt resumes a stopped turn", async () => {
     const { ask, fake } = await setup([{ when: "Task", text: "Done.", delay: 3_000 }])
     const { tasks } = await ask({ start: [{ prompt: "Task" }] })
