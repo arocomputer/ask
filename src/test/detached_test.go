@@ -238,8 +238,8 @@ printf 'private answer\n'`)
 		eq(t, s.ask("wait", id).stdout, "private answer\n")
 		r := open(t, s, id)
 		log := filepath.Join(r.Dir, "worker.log")
-		until(t, func() bool { return strings.Contains(s.read(log), "finished") })
-		eq(t, s.read(log), "started\nfinished\n")
+		until(t, func() bool { return strings.Contains(s.read(log), "succeeded") })
+		eq(t, s.read(log), "running\nsucceeded\n")
 		for _, path := range []string{r.Dir, log, filepath.Join(r.Dir, "tasks.json"), filepath.Join(r.Dir, "results.json")} {
 			info, err := os.Stat(path)
 			if err != nil || info.Mode().Perm()&0077 != 0 {

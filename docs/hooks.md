@@ -44,10 +44,10 @@ isn't a JSON object changes nothing; ask notes it and carries on. Only an explic
 `fail`, a string, stops a task; any other value is noted and ignored. Every note and follow-up shows as a status line:
 
 ```text
-ask add-sub-function-calc · started · Haiku 4.5 · write · ~/code/calc
+ask add-sub-function-calc · running · Haiku 4.5 · write · ~/code/calc
 ask add-sub-function-calc · note · hook verify · go test ./... fails
 ask add-sub-function-calc · follow-up · hook verify · `go test ./...` fails after your change. Fix it:
-ask add-sub-function-calc · ok · Haiku 4.5 · 21.4s · 1 file changed · 203.7k in · 1.0k out · $0.07
+ask add-sub-function-calc · succeeded · Haiku 4.5 · 21.4s · 1 file changed · 203.7k in · 1.0k out · $0.07
 Fixed: Add was returning `a - b` instead of `a + b`.
 ```
 

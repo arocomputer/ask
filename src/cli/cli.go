@@ -165,7 +165,11 @@ func main(argv []string, version string) (int, error) {
 		fmt.Fprintln(os.Stdout, version)
 		return 0, nil
 	}
-	packages.Refresh(p)
+	if err := packages.Refresh(p); err != nil {
+		for _, line := range strings.Split(err.Error(), "\n") {
+			fmt.Fprintln(os.Stderr, "ask: warning: "+line)
+		}
+	}
 	if len(argv) == 0 {
 		if stdinTerminal() {
 			printHelp(overview(agent.New(p)))

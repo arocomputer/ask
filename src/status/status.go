@@ -132,7 +132,7 @@ func EventLine(r *runs.Run, e runs.Event) string {
 		if t.B("continues") {
 			continues = "follow-up " + t.S("continues")
 		}
-		text := line(ref, "started", e.Started.Name, access, where, continues, "id "+r.ID)
+		text := line(ref, "running", e.Started.Name, access, where, continues, "id "+r.ID)
 		for _, note := range e.Started.Notes {
 			first, _, _ := strings.Cut(note.Text, "\n")
 			first = SafeText(first)
@@ -169,7 +169,7 @@ func Done(r home.Object) string {
 		note += "; follow up with ask continue " + r.S("run") + " PROMPT"
 	}
 	if r.B("ok") {
-		outcome = "ok"
+		outcome = "succeeded"
 		note = r.S("note")
 	}
 	changed := ""
@@ -208,24 +208,20 @@ func BatchStart(r *runs.Run, jobs, todo int) string {
 	if jobs > todo {
 		jobs = todo
 	}
-	return line(r.Label(), "started", fmt.Sprintf("batch of %d", len(r.Tasks)), resume, fmt.Sprintf("%d at a time", jobs), "id "+r.ID)
+	return line(r.Label(), "running", fmt.Sprintf("batch of %d", len(r.Tasks)), resume, fmt.Sprintf("%d at a time", jobs), "id "+r.ID)
 }
 
 // BatchEnd prints outcome counts, elapsed time and summed usage.
 func BatchEnd(r *runs.Run, seconds float64) string {
-	ok := 0
 	all := []any{}
 	for _, x := range r.Results {
-		if x.B("ok") {
-			ok++
-		}
 		all = append(all, x.Get("usage"))
 	}
 	usage := Usage(batchUsage(all))
 	if usage != "" {
 		usage = "reported: " + usage
 	}
-	return line(r.Label(), fmt.Sprintf("%d/%d ok", ok, len(r.Tasks)), Duration(seconds), usage)
+	return line(r.Label(), resultCounts(r.Results), Duration(seconds), usage)
 }
 
 // batchUsage sums a batch's task usage, leaving out cost unless every task that reported usage
@@ -246,13 +242,30 @@ func batchUsage(list []any) any {
 
 // BatchSaved reports a recorded batch's result count without inventing elapsed wall time.
 func BatchSaved(r *runs.Run) string {
-	ok := 0
-	for _, result := range r.Results {
-		if result.B("ok") {
-			ok++
+	return line(r.Label(), resultCounts(r.Results))
+}
+
+func resultCounts(results []home.Object) string {
+	succeeded, failed, stopped := 0, 0, 0
+	for _, result := range results {
+		switch {
+		case result == nil:
+			stopped++
+		case result.B("ok"):
+			succeeded++
+		default:
+			failed++
 		}
 	}
-	return line(r.Label(), fmt.Sprintf("%d/%d ok", ok, len(r.Tasks)))
+	return counts(succeeded, failed, stopped)
+}
+
+func counts(succeeded, failed, stopped int) string {
+	text := fmt.Sprintf("%d succeeded · %d failed", succeeded, failed)
+	if stopped > 0 {
+		text += fmt.Sprintf(" · %d stopped", stopped)
+	}
+	return text
 }
 
 // when renders a saved UTC timestamp relative to the caller's local clock.
@@ -291,33 +304,23 @@ func Table(list []*runs.Run, now time.Time, color bool) string {
 	rows := [][]string{}
 	for _, r := range list {
 		done := []home.Object{}
-		okCount := 0
-		for _, result := range r.Results {
-			if result != nil {
-				done = append(done, result)
-				if result.B("ok") {
-					okCount++
-				}
-			}
-		}
 		single := len(r.Tasks) == 1
-		state := ""
 		owner := runs.Owner(r)
 		pending, known := runs.Pending(r, owner)
-		switch {
-		case owner != 0:
-			state = "running"
-		case known && len(pending) > 0:
-			state = "stopped"
-		case len(done) < len(r.Tasks):
-			state = "stopped"
-		case single:
-			state = "failed"
-			if done[0].B("ok") {
-				state = "ok"
+		record := Record(r, owner, pending, known)
+		state := record.State
+		succeeded, failed, stopped := 0, 0, 0
+		for i, task := range record.Tasks {
+			switch task.State {
+			case "succeeded":
+				succeeded++
+				done = append(done, r.Results[i])
+			case "failed":
+				failed++
+				done = append(done, r.Results[i])
+			case "stopped":
+				stopped++
 			}
-		default:
-			state = fmt.Sprintf("%d/%d ok", okCount, len(r.Tasks))
 		}
 		first := r.Tasks[0]
 		model := fmt.Sprintf("%d tasks", len(r.Tasks))
@@ -358,6 +361,9 @@ func Table(list []*runs.Run, now time.Time, color bool) string {
 		}
 		if state == "stopped" {
 			about = "continue: ask continue " + r.Label()
+		}
+		if !single {
+			state += " · " + counts(succeeded, failed, stopped)
 		}
 		id := "" // a named run's ID reaches it after a follow-up takes over the name
 		if r.Name != "" {
@@ -431,15 +437,13 @@ func IsTerminal(file *os.File) bool {
 
 // ColorStatus marks successful and failed outcomes without changing visible text.
 func ColorStatus(text, status string) string {
+	status, _, _ = strings.Cut(status, " · ")
 	code := ""
-	if status == "ok" {
+	if status == "succeeded" {
 		code = "32"
 	}
 	if status == "failed" || status == "stopped" {
 		code = "31"
-	}
-	if strings.HasSuffix(status, " ok") {
-		code = "32"
 	}
 	if status == "note" || status == "follow-up" {
 		code = "2"

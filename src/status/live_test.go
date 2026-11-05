@@ -16,6 +16,16 @@ import (
 
 // TestFrame pins running rows with usage so far, queued and final rows, and a footer with total usage.
 func TestFrame(t *testing.T) {
+	t.Run("stopped work is distinct from failed work in rows and totals", func(t *testing.T) {
+		s := LiveState{Batch: true, Header: "batch", Rows: []LiveRow{
+			{Ref: "run/a", State: "stopped"},
+			{Ref: "run/b", State: "failed", Reason: "failure"},
+		}}
+		got := strings.Join(Frame(s, time.Time{}, 0, 100, 24, false, false), "\n")
+		if !strings.Contains(got, "stopped") || !strings.Contains(got, "0 succeeded · 1 failed · 1 stopped") {
+			t.Fatal(got)
+		}
+	})
 	t.Run("a named foreground run includes its stable ID", func(t *testing.T) {
 		s := LiveState{Rows: []LiveRow{{Ref: "named-run", RunID: "abc123", State: "running"}}}
 		got := strings.Join(Frame(s, time.Now(), 0, 100, 24, false, false), "\n")
@@ -32,10 +42,10 @@ func TestFrame(t *testing.T) {
 	got := Frame(s, now, 0, 100, 24, false, true)
 	want := []string{
 		"ask abc123 · batch of 3",
-		"⠋ a  Small One  read · /tmp · 0:02 · 1.2k in · 30 out · $0.05",
+		"⠋ a  Small One  running · read · /tmp · 0:02 · 1.2k in · 30 out · $0.05",
 		"· b  Big        queued",
-		"✗ c  Big        quota exceeded",
-		"0/3 ok · 1 failed · 0:02 · reported: 1.2k in · 30 out",
+		"✗ c  Big        failed · quota exceeded",
+		"0 succeeded · 1 failed · 0:02 · reported: 1.2k in · 30 out",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("%#v", got)
@@ -44,13 +54,27 @@ func TestFrame(t *testing.T) {
 	if !strings.HasPrefix(color[3], "\x1b[31m✗\x1b[0m") {
 		t.Fatalf("colors: %#v", color)
 	}
-	s.Rows[0].State = "ok"
-	s.Rows[0].Final = "ask abc123/a · ok · Small One · 2.0s"
+	s.Rows[0].State = "succeeded"
+	s.Rows[0].Final = "ask abc123/a · succeeded · Small One · 2.0s"
 	if !strings.HasPrefix(Frame(s, now, 0, 100, 24, true, true)[1], "\x1b[32m✓\x1b[0m") {
 		t.Fatal("missing green success")
 	}
 	if !strings.HasPrefix(Frame(s, now, 0, 100, 24, false, false)[1], "+ a  Small One") {
 		t.Fatal("missing ASCII marks")
+	}
+}
+
+func TestLiveStop(t *testing.T) {
+	l := &Live{state: LiveState{Rows: []LiveRow{
+		{State: "running"}, {State: "queued"}, {State: "failed"}, {State: "succeeded"},
+	}}, done: make(chan struct{})}
+	l.program = tea.NewProgram(&liveModel{width: 100, height: 24}, tea.WithInput(nil), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
+	go func() { defer close(l.done); _, _ = l.program.Run() }()
+	l.Finish("", true)
+	for i, want := range []string{"stopped", "stopped", "failed", "succeeded"} {
+		if got := l.state.Rows[i].State; got != want {
+			t.Fatalf("row %d: got %s, want %s", i, got, want)
+		}
 	}
 }
 
@@ -85,7 +109,7 @@ func TestLiveBatchFinishPrintsTotals(t *testing.T) {
 	l := &Live{state: LiveState{Batch: true}, done: make(chan struct{})}
 	l.program = tea.NewProgram(&liveModel{width: 80, height: 24}, tea.WithInput(nil), tea.WithOutput(w), tea.WithoutSignalHandler())
 	go func() { defer close(l.done); _, _ = l.program.Run() }()
-	l.Finish("ask run · 2/2 ok · 10 in · 5 out · $0.02", false)
+	l.Finish("ask run · 2 succeeded · 0 failed · 10 in · 5 out · $0.02", false)
 	w.Close()
 	b, _ := io.ReadAll(r)
 	if !strings.Contains(string(b), "10 in · 5 out · $0.02") {
@@ -124,7 +148,7 @@ func TestLiveActivity(t *testing.T) {
 }
 
 func TestFrameKeepsRunHandle(t *testing.T) {
-	row := LiveRow{Ref: "review-fix", Name: "Model", State: "ok", Final: "ask review-fix · ok · Model · 10s · 100k in · 50k cache read · branch some-very-long-branch"}
+	row := LiveRow{Ref: "review-fix", Name: "Model", State: "succeeded", Final: "ask review-fix · succeeded · Model · 10s · 100k in · 50k cache read · branch some-very-long-branch"}
 	got := Frame(LiveState{Rows: []LiveRow{row}}, time.Now(), 0, 50, 24, false, false)[0]
 	if !strings.Contains(got, "review-fix") {
 		t.Fatalf("run handle was clipped: %q", got)
@@ -138,7 +162,7 @@ func TestFramePrioritizesActiveRowsInLargeBatches(t *testing.T) {
 	}
 	rows[9] = LiveRow{Ref: "batch/active", State: "running", Name: "Model", Started: time.Now()}
 	got := strings.Join(Frame(LiveState{Batch: true, Header: "batch", Rows: rows}, time.Now(), 0, 80, 5, false, false), "\n")
-	if !strings.Contains(got, "active") || !strings.Contains(got, "0/10 ok") {
+	if !strings.Contains(got, "active") || !strings.Contains(got, "0 succeeded · 0 failed") {
 		t.Fatalf("active task or footer hidden: %s", got)
 	}
 }

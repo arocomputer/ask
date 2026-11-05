@@ -185,6 +185,17 @@ func Remove(p home.Paths, name string) (string, error) {
 		}
 		return "", home.Usage("%s matches %s; name one in full", name, strings.Join(names, " and "))
 	}
+	dir := matches[0].Path
+	if filepath.Dir(dir) == filepath.Dir(BuiltinDir(p, "x")) && Builtin(filepath.Base(dir)) {
+		lock, err := lockBuiltin(p, filepath.Base(dir))
+		if err != nil {
+			return "", err
+		}
+		defer lock.Close()
+		if err := recoverBuiltin(dir); err != nil {
+			return "", err
+		}
+	}
 	if e := os.RemoveAll(matches[0].Path); e != nil {
 		return "", e
 	}

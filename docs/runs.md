@@ -7,8 +7,8 @@ Add `--wait` to execute synchronously and return the answer/result instead.
 Status lines use the name:
 
 ```text
-ask login-test-fail · started · Sonnet 5.5 · read · ~/code/app
-ask login-test-fail · ok · Sonnet 5.5 · 14.2s · 31.0k in · 812 out · $0.09
+ask login-test-fail · running · Sonnet 5.5 · read · ~/code/app
+ask login-test-fail · succeeded · Sonnet 5.5 · 14.2s · 31.0k in · 812 out · $0.09
 ```
 
 `RUN` in commands is a placeholder for that name or the run's id. Use the name printed by your
@@ -26,7 +26,7 @@ read, said and did. `--continue RUN` and `-c RUN` remain supported script aliase
 
 ```sh
 ask --wait -m claude:sonnet-5.5 "Why does the login test fail?"
-# ask login-test-fail · ok · Sonnet 5.5 · 48.0s · ...
+# ask login-test-fail · succeeded · Sonnet 5.5 · 48.0s · ...
 ask continue login-test-fail --wait -w "Fix it, then run the test."
 ask continue login-test-fail --wait "Now add a test for the expired-token case."
 ```
@@ -113,15 +113,18 @@ In a git repository, `ask runs` lists the runs that worked in it: in its main ch
 its worktrees. Elsewhere it lists every run.
 
 ```text
-RUN                       ID      STARTED  STATUS   MODEL       TIME   TASK
-login-test-fail           b7x01q  2m ago   ok       Sonnet 5.5  2:31   ↪ login-test-fail Fix it, then run the test.
-login-test-fail           k3f9a2  5m ago   ok       Sonnet 5.5  48.0s  Why does the login test fail?
-summarize-public-api-src  p81c0d  24m ago  2/3 ok   3 tasks            Summarize the public API in src/.
-find-bugs-internal-runs   x7d2e1  Sep 30   stopped  5 tasks            continue: ask continue find-bugs-internal-runs
+RUN                       ID      STARTED  STATUS                                      MODEL       TIME   TASK
+login-test-fail           b7x01q  2m ago   succeeded                                   Sonnet 5.5  2:31   ↪ login-test-fail Fix it, then run the test.
+login-test-fail           k3f9a2  5m ago   succeeded                                   Sonnet 5.5  48.0s  Why does the login test fail?
+summarize-public-api-src  p81c0d  24m ago  failed · 2 succeeded · 1 failed              3 tasks            Summarize the public API in src/.
+find-bugs-internal-runs   x7d2e1  Sep 30   stopped · 0 succeeded · 0 failed · 5 stopped  5 tasks            continue: ask continue find-bugs-internal-runs
 ```
 
 `--json` returns an array of run records with `run_id`, optional `name`, `created`, `state` and
-`tasks`. Machine states are `running`, `success`, `failed` and `stopped`. Each task includes
+`tasks`. Machine states are `running`, `succeeded`, `failed` and `stopped`.
+The live scheduler shows `queued` only while it knows a task has not started. Saved pending
+state does not distinguish waiting from executing tasks, so machine listings conservatively
+report active unfinished work as `running`. Each task includes
 `task_id`, `state`, `model`, `dir` and `write`; batch tasks also include a one-based `position`.
 Usage, elapsed time and worktree metadata appear when available. The listing omits prompts,
 answers, sessions and error text; collect results with `ask wait ID --json`.
@@ -195,8 +198,8 @@ waiting; with synchronous `--wait` execution, Ctrl-C stops the agents. Detachmen
 provide automatic retries, crash recovery or a guarantee of model success.
 
 Private run records retain prompts, answers and agent errors. The private `worker.log` records
-fixed lifecycle messages without captured task output. If a worker dies or cannot save a
-result, `ask wait ID` reports stopped/incomplete work. An abrupt kill may leave descendants
+fixed lifecycle messages (`running`, `succeeded`, `failed` or `stopped`) without captured task
+output. If a worker dies or cannot save a result, `ask wait ID` reports stopped/incomplete work. An abrupt kill may leave descendants
 running or prevent a final log message; use `ask stop ID` for normal cancellation.
 
 ## Waiting for runs

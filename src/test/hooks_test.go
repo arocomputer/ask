@@ -149,6 +149,6 @@ fi`)
 		s := fresh(t)
 		s.hook("route", []string{"task"}, `echo '{"task":{"model":"fake:big","write":true}}'`)
 		r := s.ask("--wait", "-m", "fake:small", "go")
-		match(t, r.stderr, ` · started · Big · write · `)
+		match(t, r.stderr, ` · running · Big · write · `)
 	})
 }

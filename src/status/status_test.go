@@ -12,7 +12,7 @@ import (
 // TestStatusFormatting pins outcome order and cost precision for plain streams.
 func TestStatusFormatting(t *testing.T) {
 	result := home.Object{"run": "abc123", "ok": true, "name": "Sonnet 5.5", "seconds": 3.7, "usage": home.Object{"input": 32400, "output": 4, "cost": 0.04}}
-	if got := Done(result); got != "ask abc123 · ok · Sonnet 5.5 · 3.7s · 32.4k in · 4 out · $0.04" {
+	if got := Done(result); got != "ask abc123 · succeeded · Sonnet 5.5 · 3.7s · 32.4k in · 4 out · $0.04" {
 		t.Fatal(got)
 	}
 	result.Set("usage", home.Object{"input": 1, "output": 1, "cost": 0.0025})
@@ -41,9 +41,9 @@ func TestRunRecord(t *testing.T) {
 		state   string
 		tasks   string
 	}{
-		{"saved failure", 0, nil, false, "failed", "success,failed"},
-		{"retry running", 123, map[int]bool{1: true}, true, "running", "success,running"},
-		{"retry stopped", 0, map[int]bool{1: true}, true, "stopped", "success,stopped"},
+		{"saved failure", 0, nil, false, "failed", "succeeded,failed"},
+		{"retry running", 123, map[int]bool{1: true}, true, "running", "succeeded,running"},
+		{"retry stopped", 0, map[int]bool{1: true}, true, "stopped", "succeeded,stopped"},
 		{"owner preparing pending", 123, nil, false, "running", "running,running"},
 		{"owner outside PID namespace", -1, nil, false, "running", "running,running"},
 	} {
@@ -68,7 +68,17 @@ func TestBatchEndPartialCost(t *testing.T) {
 		{"ok": true, "usage": home.Object{"input": 10, "output": 5, "cost": 0.01}},
 		{"ok": true, "usage": home.Object{"input": 100, "output": 50}},
 	}}
-	if got := BatchEnd(r, 1); got != "ask abc123 · 2/2 ok · 1.0s · reported: 110 in · 55 out" {
+	if got := BatchEnd(r, 1); got != "ask abc123 · 2 succeeded · 0 failed · 1.0s · reported: 110 in · 55 out" {
+		t.Fatal(got)
+	}
+}
+
+func TestBatchOutcomeCounts(t *testing.T) {
+	r := &runs.Run{ID: "batch", Results: []home.Object{{"ok": true}, {"ok": false}, nil}}
+	if got := BatchSaved(r); got != "ask batch · 1 succeeded · 1 failed · 1 stopped" {
+		t.Fatal(got)
+	}
+	if got := BatchEnd(r, 1); got != "ask batch · 1 succeeded · 1 failed · 1 stopped · 1.0s" {
 		t.Fatal(got)
 	}
 }

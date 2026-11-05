@@ -15,8 +15,8 @@ func TestCompat(t *testing.T) {
 		}
 		shown := s.ask("show", "abc123")
 		eq(t, shown.stdout, "The token expiry is compared in seconds against milliseconds.\n")
-		match(t, shown.stderr, `(?m)^ask abc123 · ok · Fake 1\.0 · 41\.2s · 1 file changed · 52\.1k in · 2\.0k out · 40\.0k cache read · \$0\.31$`)
-		match(t, s.ask("runs").stdout, `(?m)^abc123 .* ok +Fake 1\.0 +41\.2s +Why does the login test fail\?$`)
+		match(t, shown.stderr, `(?m)^ask abc123 · succeeded · Fake 1\.0 · 41\.2s · 1 file changed · 52\.1k in · 2\.0k out · 40\.0k cache read · \$0\.31$`)
+		match(t, s.ask("runs").stdout, `(?m)^abc123 .* succeeded +Fake 1\.0 +41\.2s +Why does the login test fail\?$`)
 		followup := s.ask("--wait", "-c", "abc123", "Fix it.")
 		eq(t, followup.code, 0)
 		eq(t, s.calls()[0].s("session"), "s-fixture")
@@ -42,7 +42,7 @@ func TestCompat(t *testing.T) {
 		s := fresh(t)
 		s.hook("seen", []string{"task"}, `printf '{"note":"contract %s"}\n' "$ASK_CONTRACT"`)
 		r := s.ask("--wait", "-m", "fake:small", "go")
-		eq(t, s.calls()[0].s("contract"), "2")
-		match(t, r.stderr, `hook seen · contract 2`)
+		eq(t, s.calls()[0].s("contract"), "3")
+		match(t, r.stderr, `hook seen · contract 3`)
 	})
 }

@@ -7,6 +7,16 @@
   `go install github.com/arocomputer/ask@latest`. Bundled adapters stay in `packages/`.
 - Rename the offline adapter runner to `./x integration [AGENT...]`; remove the `baymax`
   and `node` aliases.
+- Preserve the previous bundled package during replacement, serialize concurrent writers, and
+  recover interrupted replacements. Automatic refresh failures warn without failing unrelated
+  commands; explicit installation failures still exit 1.
+- Propagate every settings/setup apply failure, including partial saves, through the exit status.
+  Independent successful changes remain applied; incomplete interactive saves no longer say saved.
+- Bump `ASK_CONTRACT` to 3 for consistent lifecycle states: `queued` where the live scheduler
+  knows work is waiting, `running`, `succeeded`, `failed`, and `stopped`. Status parsers should
+  replace `started`/`ok` and machine `success` with `running`/`succeeded`. Batch summaries always
+  include succeeded and failed counts, including zeros, with stopped work separate. Persisted
+  result `ok` booleans and historical run records are unchanged.
 
 - Supply agents an optional private per-task `ASK_EVENTS` JSONL file, preserved across retries
   and hook follow-ups, independently of final answers and `ASK_REPORT` metadata.

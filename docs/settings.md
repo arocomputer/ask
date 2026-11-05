@@ -70,6 +70,12 @@ ask settings set skills all
 `set` and `unset` print the same review on stderr; `--dry-run` stops there. Without a terminal,
 `ask settings` prints `get`, and `ask settings NAME` prints that agent's models with on or off.
 
+Saving exits 1 if any package removal, installation/readiness check, settings or models write,
+hook edit, skill write or saved-state reload fails. Independent operations are still attempted;
+successful changes stay applied, so a failed save can be partial. Errors identify the failed
+parts, and the interactive session does not report “saved” for an incomplete apply. The same
+failure handling applies to `ask setup --yes`.
+
 ## settings.json
 
 Your defaults are in `~/.ask/settings.json` (or `$ASK_HOME/settings.json`). Every key is optional;

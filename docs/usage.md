@@ -104,7 +104,7 @@ When a write run's directory is in a git repository, ask compares the repository
 and reports what the run changed: in the status line, and in full with `ask show RUN --json`.
 
 ```text
-ask fix-parser-bugs · ok · Sonnet 5.5 · 41.2s · 3 files changed, 1 commit · 52.1k in · 2.0k out · $0.31
+ask fix-parser-bugs · succeeded · Sonnet 5.5 · 41.2s · 3 files changed, 1 commit · 52.1k in · 2.0k out · $0.31
 ```
 
 ```json
@@ -128,8 +128,8 @@ ask --wait --model claude:sonnet-5.5 --write --worktree --directory ~/code/app "
 ```
 
 ```text
-ask add-rate-limiting-login · started · Sonnet 5.5 · write · worktree ~/.ask/worktrees/add-rate-limiting-login
-ask add-rate-limiting-login · ok · Sonnet 5.5 · 3:05 · 4 files changed · branch ask/add-rate-limiting-login · worktree ~/.ask/worktrees/add-rate-limiting-login · 120.4k in · 6.2k out
+ask add-rate-limiting-login · running · Sonnet 5.5 · write · worktree ~/.ask/worktrees/add-rate-limiting-login
+ask add-rate-limiting-login · succeeded · Sonnet 5.5 · 3:05 · 4 files changed · branch ask/add-rate-limiting-login · worktree ~/.ask/worktrees/add-rate-limiting-login · 120.4k in · 6.2k out
 ```
 
 The worktree starts from the repository's `HEAD`, at `~/.ask/worktrees/RUN`, on branch `ask/RUN`

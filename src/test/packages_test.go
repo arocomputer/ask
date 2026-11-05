@@ -4,11 +4,65 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // TestPackages pins ask install, update and remove: official agents, git packages, and the sources ask refuses.
 func TestPackages(t *testing.T) {
+	t.Run("refresh errors warn without breaking unrelated commands or losing the old package", func(t *testing.T) {
+		s := fresh(t)
+		parent := filepath.Join(s.home, "packages", "ask", "packages")
+		dir := filepath.Join(parent, "claude")
+		s.scriptAt(dir, "agents", "claude", "echo previous")
+		s.write(filepath.Join(dir, ".ask-version"), "old")
+		// A directory at the lock path makes replacement fail even when tests run as root.
+		s.mkdir(filepath.Join(parent, ".claude.lock"))
+		r := s.ask("runs")
+		eq(t, r.code, 0)
+		match(t, r.stderr, `ask: warning: refresh claude:`)
+		eq(t, s.read(filepath.Join(dir, "agents", "claude")), "#!/bin/sh\necho previous\n")
+		eq(t, s.read(filepath.Join(dir, ".ask-version")), "old")
+		eq(t, s.ask("install", "claude").code, 1)
+	})
+	t.Run("concurrent refresh and install wait for the same package lock", func(t *testing.T) {
+		s := fresh(t)
+		parent := filepath.Join(s.home, "packages", "ask", "packages")
+		dir := filepath.Join(parent, "claude")
+		s.scriptAt(dir, "agents", "claude", "echo previous")
+		s.write(filepath.Join(dir, ".ask-version"), "old")
+		s.script("agents", "claude", "echo local")
+		lock, err := os.OpenFile(filepath.Join(parent, ".claude.lock"), os.O_CREATE|os.O_RDWR, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer lock.Close()
+		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+			t.Fatal(err)
+		}
+		refresh := s.start([]string{"runs"}, "", nil)
+		install := s.start([]string{"install", "claude"}, "", nil)
+		select {
+		case out := <-refresh.done:
+			t.Fatalf("refresh bypassed the package lock: %+v", out)
+		case out := <-install.done:
+			t.Fatalf("install bypassed the package lock: %+v", out)
+		case <-time.After(150 * time.Millisecond):
+		}
+		eq(t, s.read(filepath.Join(dir, ".ask-version")), "old")
+		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+			t.Fatal(err)
+		}
+		eq(t, refresh.wait(t).code, 0)
+		eq(t, install.wait(t).code, 0)
+		if s.read(filepath.Join(dir, ".ask-version")) == "old" {
+			t.Fatal("waiting writers did not refresh the package")
+		}
+		eq(t, strings.Contains(s.read(filepath.Join(dir, "agents", "claude")), "previous"), false)
+		eq(t, exists(filepath.Join(parent, ".claude.previous")), false)
+		match(t, s.ask("packages").stdout, `(?m)^ask/packages/claude +agents: claude$`)
+	})
 	t.Run("update packages explicitly updates packages, not ask", func(t *testing.T) {
 		s := fresh(t)
 		got := s.ask("update", "packages")

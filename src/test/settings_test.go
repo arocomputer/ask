@@ -9,13 +9,23 @@ import (
 
 // TestSettings pins settings.json and ask settings: what each setting changes, the review before a save, and bad values.
 func TestSettings(t *testing.T) {
+	t.Run("a partial skill save exits one and keeps successful changes", func(t *testing.T) {
+		s := fresh(t)
+		s.write(filepath.Join(s.tmp, ".codex", "skills"), "blocked")
+		r := s.ask("settings", "set", "skills", "claude-code,codex")
+		eq(t, r.code, 1)
+		match(t, r.stderr, `✗ .*\.codex/skills`)
+		match(t, s.read(filepath.Join(s.tmp, ".claude", "skills", "ask", "SKILL.md")), `name: ask`)
+		noMatch(t, r.stderr, `(?m)^✓ saved$`)
+		eq(t, s.ask("setup", "--yes").code, 1)
+	})
 	t.Run("settings choose the default model, worktree folders and branch names", func(t *testing.T) {
 		s := fresh(t)
 		dir, git := s.repo()
 		s.write(filepath.Join(s.home, "settings.json"), `{"model": "fake:big", "worktrees": "`+s.tmp+`/wt/ask-{name}", "branches": "agents/{name}"}`)
 		r := s.run([]string{"--wait", "-w", "--worktree", "-C", dir, "go"}, "", map[string]string{"FAKE_WRITE": "b.txt=new"})
 		eq(t, r.code, 0)
-		match(t, r.stderr, ` · started · Big · write · worktree ~/wt/ask-go · id [a-z0-9]{6}\n`)
+		match(t, r.stderr, ` · running · Big · write · worktree ~/wt/ask-go · id [a-z0-9]{6}\n`)
 		match(t, r.stderr, ` · branch agents/go · `)
 		git("rev-parse", "--verify", "-q", "refs/heads/agents/go")
 		s.write(filepath.Join(s.home, "settings.json"), `{"jobs": 0}`)

@@ -18,7 +18,7 @@ func TestGit(t *testing.T) {
 		result := objects(t, r.stdout)[0]
 		jsonEqual(t, result["changes"], []object{{"path": "b.txt", "change": "added"}})
 		eq(t, result.n("commits"), 0.0)
-		match(t, r.stderr, ` · ok · Fake 1\.0 · [\d.]+s · 1 file changed · `)
+		match(t, r.stderr, ` · succeeded · Fake 1\.0 · [\d.]+s · 1 file changed · `)
 	})
 	t.Run("a write run that commits reports its commits and the files they changed", func(t *testing.T) {
 		s := fresh(t)

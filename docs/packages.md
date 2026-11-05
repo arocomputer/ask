@@ -30,8 +30,16 @@ ask: installed ask/packages/claude: agents: claude
 ask: claude is ready: 4 models, see ask models
 ```
 
-An installed official package always matches the ask that runs it: when ask updates, its
-packages update with it. `ask remove claude` removes one.
+ask refreshes installed official packages to match its build, without the network. Replacements
+are serialized per package across ask processes. Each new tree is assembled beside the installed
+one, which is kept as a backup until promotion succeeds. Failed promotion restores the previous
+installation; an interrupted replacement is recovered on the next invocation. If restoration
+fails, the error names the retained backup for manual recovery. Hidden staging directories,
+backups and lock files are not discoverable packages.
+
+Automatic refresh failures warn on stderr and let the requested command continue with the
+previous installation when available. Explicit `ask install NAME` or `ask update packages`
+reports installation failures with exit 1. `ask remove claude` removes one.
 
 Installing these packages does not install their CLIs or Node.js. The official agents need
 Node.js 18 or newer and an authenticated CLI (Opencode needs a connected provider); see

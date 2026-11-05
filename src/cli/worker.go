@@ -254,7 +254,7 @@ func runWorker() int {
 		if reportError != nil {
 			return reportError
 		}
-		if _, err := fmt.Fprintln(log, "started"); err != nil {
+		if _, err := fmt.Fprintln(log, "running"); err != nil {
 			return err
 		}
 		if err := json.NewEncoder(reply).Encode(launchReply{ID: r.ID}); err != nil {
@@ -280,6 +280,6 @@ func runWorker() int {
 			return 1
 		}
 	}
-	_, _ = fmt.Fprintln(log, "finished")
+	_, _ = fmt.Fprintln(log, "succeeded")
 	return 0
 }

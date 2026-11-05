@@ -17,7 +17,7 @@ type RunRecord struct {
 }
 
 // TaskRecord identifies a task independently of its possibly numeric ID. Position is
-// one-based and present only in batches. State is running, stopped, failed or success.
+// one-based and present only in batches. State is running, stopped, failed or succeeded.
 type TaskRecord struct {
 	TaskID    string               `json:"task_id"`
 	Position  int                  `json:"position,omitempty"`
@@ -35,9 +35,9 @@ type TaskRecord struct {
 // earlier attempt and must never appear completed, even after an interrupted retry.
 // An active owner without matching pending state is conservatively still running.
 func Record(r *runs.Run, owner int, pending map[int]bool, known bool) RunRecord {
-	out := RunRecord{RunID: r.ID, Name: r.Name, Created: r.Created, State: "success", Tasks: make([]TaskRecord, len(r.Tasks))}
+	out := RunRecord{RunID: r.ID, Name: r.Name, Created: r.Created, State: "succeeded", Tasks: make([]TaskRecord, len(r.Tasks))}
 	for i, t := range r.Tasks {
-		x := TaskRecord{TaskID: t.S("id"), State: "success", Model: t.S("model"), Dir: t.S("dir"), Write: t.B("write"), Continues: t.S("continues")}
+		x := TaskRecord{TaskID: t.S("id"), State: "succeeded", Model: t.S("model"), Dir: t.S("dir"), Write: t.B("write"), Continues: t.S("continues")}
 		if len(r.Tasks) > 1 {
 			x.Position = i + 1
 		}
@@ -57,7 +57,7 @@ func Record(r *runs.Run, owner int, pending map[int]bool, known bool) RunRecord 
 				x.Write = *saved.Write
 			}
 		}
-		if x.State == "stopped" || x.State == "failed" && out.State == "success" {
+		if x.State == "stopped" || x.State == "failed" && out.State == "succeeded" {
 			out.State = x.State
 		}
 		out.Tasks[i] = x

@@ -172,7 +172,7 @@ func printRunResult(r *runs.Run, record status.RunRecord, i int) (int, error) {
 	out := runResult{RunID: r.ID, Name: r.Name, State: record.State}
 	results := make([]home.Object, len(r.Tasks))
 	for at, task := range record.Tasks {
-		if task.State == "success" || task.State == "failed" {
+		if task.State == "succeeded" || task.State == "failed" {
 			results[at] = r.Results[at]
 		}
 	}
@@ -184,7 +184,7 @@ func printRunResult(r *runs.Run, record status.RunRecord, i int) (int, error) {
 		out.Results = saved
 	}
 	fmt.Fprintln(os.Stdout, home.JSON(out, true))
-	if out.State != "success" {
+	if out.State != "succeeded" {
 		return 1, nil
 	}
 	return 0, nil

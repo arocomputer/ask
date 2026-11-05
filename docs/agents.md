@@ -15,6 +15,11 @@ one of the same name. An agent named `claude` gives you models `claude:...`.
 ## The contract
 
 An agent is any executable: a shell script, Node, Python, a binary.
+`ASK_CONTRACT=3` identifies the current public contract (see [Compatibility](compatibility.md)).
+User status and machine lifecycle state use `running`, `succeeded`, `failed` and `stopped`;
+`queued` is shown only when the live scheduler knows work is waiting. Agent exit codes and
+persisted result `ok` booleans are unchanged. Batch summaries include explicit succeeded and
+failed counts, including zeros; interrupted work is counted separately as stopped.
 
 ### Listing models: `NAME models`
 
@@ -253,11 +258,11 @@ Run inside ask's own repository:
 
 ```text
 $ ask --wait --model claude:haiku-4.5 "Which file decides how ask formats its status lines? One sentence."
-ask file-decides-ask-formats · ok · Haiku 4.5 · 8.5s · 94.7k in · 439 out · $0.08
+ask file-decides-ask-formats · succeeded · Haiku 4.5 · 8.5s · 94.7k in · 439 out · $0.08
 The file `src/status/status.go` formats ask's status lines, including event lines, completion
 status, and batch summaries.
 $ ask continue file-decides-ask-formats --wait "Which function in it formats the usage part, like '31.0k in · 812 out'?"
-ask file-decides-ask-formats · ok · Haiku 4.5 · 6.0s · 34.9k in · 362 out · $0.08
+ask file-decides-ask-formats · succeeded · Haiku 4.5 · 6.0s · 34.9k in · 362 out · $0.08
 The `Usage` function formats token usage and optional cost in the pattern "input in · output out".
 ```
 

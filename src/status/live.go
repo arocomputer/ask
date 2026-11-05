@@ -112,7 +112,7 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 	for _, r := range s.Rows {
 		idWidth = min(max(idWidth, length(taskID(r.Ref))), 16)
 	}
-	ok, failed := 0, 0
+	succeeded, failed, stopped := 0, 0, 0
 	for _, r := range s.Rows {
 		state := r.State
 		style := ""
@@ -134,29 +134,36 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 			if u := Usage(r.Usage); u != "" {
 				text += " · " + u
 			}
-		case "ok", "failed":
-			if state == "ok" {
+		case "succeeded", "failed", "stopped":
+			if state == "succeeded" {
 				style = "32"
 				mark = "+"
 				if utf8 {
 					mark = "✓"
 				}
-				ok++
+				succeeded++
 			} else {
 				style = "31"
 				mark = "x"
 				if utf8 {
 					mark = "✗"
 				}
-				failed++
+				if state == "stopped" {
+					stopped++
+				} else {
+					failed++
+				}
 			}
 			text = strings.TrimPrefix(r.Final, "ask "+r.Ref+" · "+state+" · ")
 			text = strings.TrimPrefix(text, r.Name+" · ")
 			if text == "" {
 				text = r.Reason
 			}
-		default:
+		case "queued":
 			text = "queued"
+		}
+		if state != "queued" && state != "" {
+			text = state + " · " + text
 		}
 		if s.Batch {
 			text = fmt.Sprintf("%s %-*s  %-*s  %s", mark, idWidth, ClipLine(taskID(r.Ref), idWidth), nameWidth, r.Name, text)
@@ -193,10 +200,7 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 		}
 	}
 	if s.Batch {
-		footer := fmt.Sprintf("%d/%d ok", ok, len(s.Rows))
-		if failed > 0 {
-			footer += fmt.Sprintf(" · %d failed", failed)
-		}
+		footer := counts(succeeded, failed, stopped)
 		footer += " · " + Clock(now.Sub(s.Started))
 		all := []any{}
 		for _, r := range s.Rows {
@@ -241,7 +245,7 @@ func NewLive(r *runs.Run, header string, batch bool) *Live {
 		row := LiveRow{Ref: runs.Ref(r, i), RunID: r.ID, Name: t.S("model"), State: "queued"}
 		if result := r.Results[i]; result.B("ok") {
 			row.Name = result.S("name")
-			row.State = "ok"
+			row.State = "succeeded"
 			row.Final = Done(result)
 			row.Usage = result.Get("usage")
 		}
@@ -343,7 +347,7 @@ func (l *Live) Update(e runs.Event, name, note string) {
 		row.Name = e.Result.S("name")
 		row.State = "failed"
 		if e.Result.B("ok") {
-			row.State = "ok"
+			row.State = "succeeded"
 		}
 		row.Final = Done(e.Result)
 	default:
@@ -367,9 +371,9 @@ func (l *Live) Finish(summary string, stopped bool) {
 		for i := range l.state.Rows {
 			row := &l.state.Rows[i]
 			if row.State == "running" || row.State == "queued" {
-				row.State = "failed"
+				row.State = "stopped"
 				row.Final = ""
-				row.Reason = "stopped"
+				row.Reason = ""
 			}
 		}
 	}

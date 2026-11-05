@@ -340,9 +340,10 @@ func walkthrough(p home.Paths, t *tui.Prompter, m *machine, d *draft) error {
 	if e != nil {
 		return e
 	}
+	ready := true
 	for i, a := range official {
 		if picked[i] {
-			installAgent(p, t.Say, a.Name)
+			ready = installAgent(p, t.Say, a.Name) && ready
 		}
 	}
 	if entries, _ := agent.New(p).Catalog(d.models); len(entries) > 0 {
@@ -376,6 +377,9 @@ func walkthrough(p home.Paths, t *tui.Prompter, m *machine, d *draft) error {
 	saved, e := d.review(t)
 	if e != nil {
 		return e
+	}
+	if !ready {
+		return fmt.Errorf("some agents could not be made ready; changes already applied are kept")
 	}
 	if !saved {
 		fmt.Fprint(t.Out, t.Dim("The agents above stay installed; nothing else was saved. Run ask setup again whenever you like.")+"\r\n")

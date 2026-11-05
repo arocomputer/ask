@@ -3,10 +3,13 @@ package packages
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	official "github.com/arocomputer/ask/packages"
 	"github.com/arocomputer/ask/src/home"
@@ -98,18 +101,98 @@ func writeBuiltin(p home.Paths, name string) error {
 	if e != nil {
 		return e
 	}
-	if e = os.RemoveAll(dir); e != nil {
-		return e
+	return replaceBuiltin(dir, tmp)
+}
+
+// replaceBuiltin retains the old tree until the new tree is in place. A fixed backup name
+// lets the next writer recover if this process exits between the two renames.
+// The caller holds the package lock.
+func replaceBuiltin(dir, tmp string) error {
+	backup := filepath.Join(filepath.Dir(dir), "."+filepath.Base(dir)+".previous")
+	hadOld := false
+	if err := os.Rename(dir, backup); err == nil {
+		hadOld = true
+	} else if !os.IsNotExist(err) {
+		return err
 	}
-	return os.Rename(tmp, dir)
+	if err := os.Rename(tmp, dir); err != nil {
+		if hadOld {
+			if restore := os.Rename(backup, dir); restore != nil {
+				return fmt.Errorf("%w; previous installation remains at %s; restore failed: %v", err, backup, restore)
+			}
+		}
+		return err
+	}
+	if err := os.RemoveAll(backup); err != nil {
+		return fmt.Errorf("installed replacement, but could not remove backup %s: %w", backup, err)
+	}
+	return nil
+}
+
+// lockBuiltin serializes the check, recovery and replacement across ask processes. The lock
+// file stays in place: unlinking it would let later writers lock a different inode.
+func lockBuiltin(p home.Paths, name string) (*os.File, error) {
+	dir := BuiltinDir(p, name)
+	if err := os.MkdirAll(filepath.Dir(dir), 0755); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(dir), "."+name+".lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+// recoverBuiltin restores an interrupted replacement, or removes its backup after promotion.
+func recoverBuiltin(dir string) error {
+	backup := filepath.Join(filepath.Dir(dir), "."+filepath.Base(dir)+".previous")
+	if _, err := os.Lstat(backup); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		if err := os.Rename(backup, dir); err != nil {
+			return fmt.Errorf("restore previous installation from %s: %w", backup, err)
+		}
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return os.RemoveAll(backup)
 }
 
 // InstallBuiltin installs a built-in package, or brings an installed copy up to this build.
 func InstallBuiltin(p home.Paths, name string) (string, error) {
+	return installBuiltin(p, name, false)
+}
+
+func installBuiltin(p home.Paths, name string, onlyInstalled bool) (string, error) {
+	if !Builtin(name) {
+		return "", home.Usage("no official agent %q", name)
+	}
+	lock, err := lockBuiltin(p, name)
+	if err != nil {
+		return "", err
+	}
+	defer lock.Close()
 	dir := BuiltinDir(p, name)
+	if err := recoverBuiltin(dir); err != nil {
+		return "", err
+	}
 	label, _ := filepath.Rel(p.Packages, dir)
 	_, e := os.Stat(dir)
+	if e != nil && !os.IsNotExist(e) {
+		return "", e
+	}
 	existed := e == nil
+	if !existed && onlyInstalled {
+		return "", nil
+	}
 	if existed && current(p, name) {
 		return label + ": up to date", nil
 	}
@@ -122,12 +205,25 @@ func InstallBuiltin(p home.Paths, name string) (string, error) {
 	return "installed " + label + ": " + Contents(dir), nil
 }
 
-// Refresh rewrites every installed built-in package that another ask build wrote, so official
-// agents always match the ask that runs them. Errors leave the old copy in place.
-func Refresh(p home.Paths) {
+// Refresh brings installed built-ins up to this build and recovers interrupted replacements.
+// Errors identify each package; callers may warn and continue using the previous installation.
+func Refresh(p home.Paths) error {
+	var failures []error
 	for _, name := range Builtins() {
-		if _, e := os.Stat(BuiltinDir(p, name)); e == nil && !current(p, name) {
-			writeBuiltin(p, name)
+		dir := BuiltinDir(p, name)
+		_, err := os.Lstat(dir)
+		if os.IsNotExist(err) {
+			_, err = os.Lstat(filepath.Join(filepath.Dir(dir), "."+name+".previous"))
+			if os.IsNotExist(err) {
+				continue
+			}
+		}
+		if err == nil {
+			_, err = installBuiltin(p, name, true)
+		}
+		if err != nil {
+			failures = append(failures, fmt.Errorf("refresh %s: %w", name, err))
 		}
 	}
+	return errors.Join(failures...)
 }

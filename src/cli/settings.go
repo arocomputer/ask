@@ -177,12 +177,14 @@ func (d *draft) changes() ([]tui.Change, error) {
 func (d *draft) mustChanges() []tui.Change { c, _ := d.changes(); return c }
 
 // apply saves the draft, saying how each part went, and starts a new draft from the result. It
-// returns false when an agent it installed isn't ready.
+// returns false if any operation fails, including readiness checks or reloading saved state.
+// Independent operations still run; partial application is not rolled back.
 func (d *draft) apply(say func(string, string)) bool {
 	ready := true
 	for name := range d.remove {
 		if line, e := packages.Remove(d.p, "ask/packages/"+name); e != nil {
 			say("✗", e.Error())
+			ready = false
 		} else {
 			say("✓", line)
 		}
@@ -192,11 +194,14 @@ func (d *draft) apply(say func(string, string)) bool {
 	}
 	fail := func(e error) {
 		if e != nil {
+			ready = false
 			say("✗", e.Error())
 		}
 	}
 	fail(d.p.WriteSettings(d.settings))
-	if saved, _ := d.p.ReadModels(); home.ModelsText(saved) != home.ModelsText(d.models) {
+	if saved, e := d.p.ReadModels(); e != nil {
+		fail(e)
+	} else if home.ModelsText(saved) != home.ModelsText(d.models) {
 		fail(d.p.WriteModels(d.models))
 	}
 	if d.hook != setup.HookOn() {
@@ -207,8 +212,12 @@ func (d *draft) apply(say func(string, string)) bool {
 			fail(setup.WriteSkill(h))
 		}
 	}
-	if next, e := newDraft(d.p); e == nil {
-		*d = *next
+	if ready {
+		if next, e := newDraft(d.p); e == nil {
+			*d = *next
+		} else {
+			fail(e)
+		}
 	}
 	return ready
 }
@@ -230,7 +239,9 @@ func (d *draft) review(t *tui.Prompter) (bool, error) {
 	if e != nil || !yes {
 		return false, e
 	}
-	d.apply(t.Say)
+	if !d.apply(t.Say) {
+		return false, fmt.Errorf("could not apply all changes; some changes may already be saved")
+	}
 	t.Say("✓", "saved")
 	return true, nil
 }
@@ -329,7 +340,9 @@ func settingsCommand(p home.Paths, opts home.Object, words []string) (int, error
 		if opts.B("--dry-run") {
 			return 0, nil
 		}
-		d.apply(func(mark, text string) { fmt.Fprintln(os.Stderr, mark+" "+text) })
+		if !d.apply(func(mark, text string) { fmt.Fprintln(os.Stderr, mark+" "+text) }) {
+			return 1, nil
+		}
 		return 0, nil
 	}
 	if len(words) > 1 {

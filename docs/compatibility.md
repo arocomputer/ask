@@ -27,7 +27,7 @@ they may change.
 - **Additions are allowed.** New result fields, report fields, environment variables,
   events and options can appear in any release. Ignore what you don't know.
 - **A breaking change bumps the contract version.** Every agent, hook and command gets
-  `ASK_CONTRACT`, now `2`. A change that could break one changes that number and is called out in
+  `ASK_CONTRACT`, now `3`. A change that could break one changes that number and is called out in
   the changelog with what to do.
 - **Run records stay readable.** Records written by a release are pinned in ask's tests
   (`src/test/fixtures/`) and never rewritten; newer versions must keep showing and continuing them.
@@ -39,8 +39,13 @@ records and malformed Unicode handling are not byte-level contracts.
 The public names remain `run` for a recorded invocation, `task` for one unit in a batch,
 `model` for an `agent:id`, and `follow-up` for a continuation. Existing command, option,
 result and record field names remain stable except for the detached-first CLI transition
-described below. Status lines now put `started`, `ok` or
-`failed` directly after the run id, followed by the model display name; hook lines use
+described below. Contract 3 uses `running`, `succeeded`, `failed` and `stopped` for lifecycle
+status; the live scheduler also uses `queued` while it knows a task is waiting. Machine
+`state` values use `succeeded` instead of `success`; plain starts use `running` instead of
+`started`, and completions use `succeeded` instead of `ok`. Update status parsers accordingly.
+Persisted result `ok` booleans and historical run records retain their format. Batch summaries
+include explicit succeeded and failed counts, including zeros; stopped work is counted separately.
+Task status is followed by the model display name; hook lines use
 `note` or `follow-up`; optional coarse progress uses `activity · CATEGORY`. The `-c` and
 `--continue` options remain supported script aliases for conversation follow-ups; batch `--resume`
 remains an alias for recovering unfinished or failed tasks. Use `ask continue RUN "prompt"` for

@@ -140,6 +140,10 @@ uses the stream as the whole prompt. Input must reach EOF before launch.
 task ` + "`--json`" + ` / ` + "`--schema FILE`" + ` instead constrain the agent's answer, while launch still prints ID.
 Failed single tasks emit no plain answer; JSON result data retains failure details. A validation
 failure may include ` + "`raw_answer`" + `; inspect with ` + "`ask show RUN --json`" + ` for a focused repair.
+Contract 3 lifecycle states are running, succeeded, failed and stopped; queued appears only
+when the live scheduler knows work is waiting. Active unfinished work in machine listings is
+conservatively running. Result ok booleans are unchanged. Batch summaries always give succeeded
+and failed counts, including zero, with stopped work counted separately.
 Status and errors go to stderr. Result collection exits 1 for failed/stopped work, 2 for usage
 errors; inspect the exit status even when JSON is emitted. Pipelines usually report only their
 last command's status.

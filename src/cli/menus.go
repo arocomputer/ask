@@ -90,12 +90,13 @@ func (d *draft) mainMenu(t *tui.Prompter, m *machine) error {
 			e = d.appsMenu(t, m)
 		case "Review and save":
 			_, e = d.review(t)
-			if e == nil {
-				m, e = survey(d.p)
+			if e != nil {
+				return e
 			}
+			m, e = survey(d.p)
 		case "Done":
-			if e = d.finish(t); e == nil {
-				return nil
+			if e = d.finish(t); !errors.Is(e, errBack) {
+				return e
 			}
 		}
 		if errors.Is(e, tui.ErrInterrupted) {
