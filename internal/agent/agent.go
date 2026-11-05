@@ -231,7 +231,13 @@ func exitText(r process.Result) string {
 // While the agent runs, progress (if not nil) gets usage and coarse activity snapshots each poll.
 // The user-facing title goes as ASK_TITLE; max_cost goes as ASK_MAX_COST, and ask stops the
 // agent once its reported cost passes it; the session survives, so a follow-up continues the work.
-func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Progress)) home.Object {
+// events is an optional pre-created private append-only JSONL path, supplied as ASK_EVENTS.
+// Adapters append complete UTF-8 lines of at most 16 KiB (including the newline): objects with
+// type message, reasoning, tool or tool_result, string text and optional string tool. They must
+// truncate oversized payloads safely, omit hidden reasoning and suppress obvious credential
+// values; this is not comprehensive redaction. Event errors must not prevent a final answer.
+// Readers advance byte offsets only past complete lines, retaining partial tails for later reads.
+func (a *Registry) Run(m Model, prompt string, t home.Object, events string, progress func(Progress)) home.Object {
 	work, err := os.MkdirTemp("", "ask-")
 	if err != nil {
 		return home.O("ok", false, "note", err.Error())
@@ -242,6 +248,9 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(Prog
 		access = "write"
 	}
 	vars := map[string]string{"ASK_MODEL": m.ID, "ASK_EFFORT": m.Effort, "ASK_ACCESS": access, "ASK_REPORT": filepath.Join(work, "report.json")}
+	if events != "" {
+		vars["ASK_EVENTS"] = events
+	}
 	if title := t.S("title"); title != "" {
 		vars["ASK_TITLE"] = title
 	}

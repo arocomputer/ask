@@ -638,7 +638,7 @@ type Event struct {
 }
 
 // withHooks applies refusal and result decisions, allowing at most three session follow-ups.
-func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, report func(Event)) (final home.Object) {
+func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref, events string, report func(Event)) (final home.Object) {
 	var worktree *git.Worktree
 	defer func() {
 		if worktree == nil {
@@ -676,7 +676,7 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 		}
 		report(Event{Kind: "activity", Activity: p.Activity})
 	}
-	result := task.Run(a, t, h, started, progress)
+	result := task.Run(a, t, h, events, started, progress)
 	if process.Stopping() {
 		return nil
 	}
@@ -724,7 +724,7 @@ func withHooks(a *agent.Registry, h *hooks.Hooks, t home.Object, ref string, rep
 		next.Set("session", result.Get("session"))
 		earlier = result.Get("usage")
 		following = true
-		nextResult := task.Run(a, next, h, started, progress)
+		nextResult := task.Run(a, next, h, events, started, progress)
 		if process.Stopping() {
 			return nil
 		}
@@ -879,7 +879,7 @@ func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report fu
 				activity := ""
 				saved := recoveryRecord{}
 				var saveError error
-				result := withHooks(a, h, tasks[i], Ref(r, i), func(e Event) {
+				result := withHooks(a, h, tasks[i], Ref(r, i), eventsFile(r, i), func(e Event) {
 					e.Index = i
 					changed := e.Kind == "start"
 					if e.Kind == "start" {

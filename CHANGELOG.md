@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Supply agents an optional private per-task `ASK_EVENTS` JSONL file, preserved across retries
+  and hook follow-ups, independently of final answers and `ASK_REPORT` metadata.
+
 - Fix detached launches with relative `ASK_HOME`, remove fresh unadmitted records on SIGTERM,
   preserve usage error exit status, and report name-hook notes and recovery decisions on stderr
   before admission. Concurrent launches choose unique matching run and worktree names atomically.
