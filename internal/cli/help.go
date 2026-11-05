@@ -312,7 +312,7 @@ Options
 Output
   stdout   The available answer/result; --json includes recorded result data.
            --after returns run_id, state, events, next_cursor and has_more.
-  stderr   Recent activity (up to 100 events / 64 KiB), status and errors.
+  stderr   Recent activity (up to 100 events / 32 KiB), status and errors.
            Legacy agents fall back to coarse status. Obvious credential values
            are suppressed in activity; this is not comprehensive redaction.
 

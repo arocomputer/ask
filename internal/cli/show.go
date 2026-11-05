@@ -21,8 +21,8 @@ import (
 
 const (
 	activityLineLimit   = 16 * 1024 // includes the terminating newline
-	activityReadLimit   = 256 * 1024
-	activityRecentLimit = 64 * 1024
+	activityReadLimit   = 64 * 1024
+	activityRecentLimit = 32 * 1024
 	activityEventLimit  = 100
 )
 
@@ -131,7 +131,15 @@ func readActivity(r *runs.Run, index int, cursor int64, recent bool) (activityPa
 	}
 	b = b[:n]
 	readEnd := cursor + int64(n)
+	var startsAtLine bool
 	if recent && cursor > 0 {
+		var prev [1]byte
+		if _, err := f.ReadAt(prev[:], cursor-1); err != nil {
+			return out, err
+		}
+		startsAtLine = prev[0] == '\n'
+	}
+	if recent && cursor > 0 && !startsAtLine {
 		// The window may begin inside a record; never parse its suffix as JSON.
 		cut := bytes.IndexByte(b, '\n')
 		if cut < 0 {

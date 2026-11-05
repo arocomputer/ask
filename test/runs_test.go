@@ -58,6 +58,21 @@ func TestRuns(t *testing.T) {
 		eq(t, waited["result"].(map[string]any)["answer"], "final answer")
 		eq(t, s.read(filepath.Join(dir, "events-0.jsonl")), events.String())
 	})
+	t.Run("activity snapshot keeps a record at the exact window boundary", func(t *testing.T) {
+		s := fresh(t)
+		dir := filepath.Join(s.home, "runs", "20260101T000000000-view00-boundary")
+		s.json(filepath.Join(dir, "tasks.json"), []object{{"id": "one", "prompt": "p", "model": "fake:small"}})
+		s.json(filepath.Join(dir, "results.json"), []object{{"ok": true, "answer": "done"}})
+		first := `{"type":"message","text":"at-boundary"}` + "\n"
+		line := `{"type":"message","text":"` + strings.Repeat("x", 16000) + "\"}\n"
+		prefix := `{"type":"message","text":"` + strings.Repeat("y", 32*1024-len(first)-2*len(line)-29) + "\"}\n"
+		window := first + line + line + prefix
+		if len(window) != 32*1024 {
+			t.Fatalf("window length: %d", len(window))
+		}
+		s.write(filepath.Join(dir, "events-0.jsonl"), "{}\n"+window)
+		match(t, s.ask("show", "boundary").stderr, `at-boundary`)
+	})
 	t.Run("activity cursors paginate complete records and leave partial UTF-8 tails for every reader", func(t *testing.T) {
 		s := fresh(t)
 		dir := filepath.Join(s.home, "runs", "20260101T000000000-view02-cursor")
@@ -153,11 +168,11 @@ func TestRuns(t *testing.T) {
 		data := strings.Repeat(line, 40)
 		s.write(filepath.Join(dir, "events-0.jsonl"), data)
 		cursor, count := 0, 0
-		for range 5 {
+		for range 20 {
 			page := obj(t, s.ask("show", "bytes", "--after", strconv.Itoa(cursor)).stdout)
 			count += len(page["events"].([]any))
 			next := int(page.n("next_cursor"))
-			if next-cursor > 256*1024 || next <= cursor {
+			if next-cursor > 64*1024 || next <= cursor {
 				t.Fatalf("bad page: %v", page)
 			}
 			cursor = next
@@ -173,7 +188,10 @@ func TestRuns(t *testing.T) {
 		s.write(filepath.Join(dir, "events-0.jsonl"), data+`{"type":"message","text":"`+strings.Repeat("x", 6000))
 		first := obj(t, s.ask("show", "bytes", "--after", "0").stdout)
 		eq(t, first.b("has_more"), true)
-		last := obj(t, s.ask("show", "bytes", "--after", strconv.Itoa(int(first.n("next_cursor")))).stdout)
+		last := first
+		for last.b("has_more") {
+			last = obj(t, s.ask("show", "bytes", "--after", strconv.Itoa(int(last.n("next_cursor")))).stdout)
+		}
 		eq(t, last.b("has_more"), false)
 		eq(t, last.n("next_cursor"), float64(len(data)))
 	})
@@ -204,6 +222,7 @@ func TestRuns(t *testing.T) {
 		s := fresh(t)
 		s.localAgent("gate", `cat >/dev/null
 printf '{"activity":"running commands"}' > "$ASK_REPORT"
+printf '%s\n%s' '{"type":"message","text":"existing-event"}' '{"type":"tool_result","text":"new-' >> "$ASK_EVENTS"
 touch "$HOME/ready"
 while [ ! -e "$HOME/release" ]; do sleep 0.05; done
 echo final-answer`)
@@ -217,8 +236,6 @@ echo final-answer`)
 		eq(t, fallback.code, 0)
 		match(t, fallback.stderr, `running · running commands`)
 		path := filepath.Join(s.home, "runs", s.latest(), "events-0.jsonl")
-		initial := "{\"type\":\"message\",\"text\":\"existing-event\"}\n"
-		s.write(path, initial+`{"type":"tool_result","text":"new-`)
 		interrupted := s.start([]string{"show", id, "--follow"}, "", nil)
 		reader := s.start([]string{"show", id, "--follow"}, "", nil)
 		time.Sleep(350 * time.Millisecond)
