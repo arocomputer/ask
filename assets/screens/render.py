@@ -22,7 +22,7 @@ def render(lines, path):
     x0, y0 = (W - WINDOW_W) // 2, (H - WINDOW_H) // 2
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">',
-        '<rect width="100%" height="100%" fill="#f5a04b"/>',
+        '<rect width="100%" height="100%" fill="#f08a2c"/>',
         '<defs><filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">'
         '<feGaussianBlur stdDeviation="35"/></filter></defs>',
         f'<g transform="translate({x0} {y0})">',
