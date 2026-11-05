@@ -16,10 +16,10 @@ fi
 tag=$1
 sums=$2
 case $tag in
-  *[!v0-9.]* | '') echo 'formula.sh: invalid release tag' >&2; exit 1 ;;
+  *[!v0-9.rc-]* | '') echo 'formula.sh: invalid release tag' >&2; exit 1 ;;
 esac
-printf '%s\n' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || {
-  echo 'formula.sh: expected stable vX.Y.Z without leading zeros' >&2
+printf '%s\n' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$' || {
+  echo 'formula.sh: expected vX.Y.Z or vX.Y.Z-rc.N without leading zeros' >&2
   exit 1
 }
 if [ ! -f "$sums" ] || [ ! -r "$sums" ]; then

@@ -1,55 +1,51 @@
 # ask
 
-Hands tasks to coding agents, one task or a batch in parallel. Each coding agent is reached through
-an agent: an executable in `~/.ask/agents` or a package. ask's core (`src/`) knows nothing about
-any of them; the official agents live in `packages/` and are built into the binary. Go 1.26 or
-newer; terminal presentation uses Bubble Tea and Lip Gloss, while execution uses the standard
-library only. The official agents use Node.js 18+, built-ins only.
+Hands a task to a subagent and returns a session ID. ask's own harness runs the task against a
+model provider; an extension's harness (Claude Code or Codex) can run it instead. Go 1.26 or newer,
+standard library only; the harnesses use Node.js 18+, built-ins only.
 
 ## Commands
 
 ```sh
-./x check                            # Go, integration, shell, workflows, formula syntax and guard
-./x integration copilot               # offline integration checks for Copilot
-./x test ./src/test -run 'TestRuns'    # one feature; add /subtest_name for one behavior
-./x dev runs                         # build this checkout and run it
-./x hooks                            # once per clone: gofmt and vet before each commit
-./x release vX.Y.Z                  # prepare a changelog PR, then dispatch the checked main commit
+./x                                     # every offline check, as CI runs it
+./x test ./internal/test -run TestSessions  # one feature; add /subtest_name for one behavior
+./x baymax claude                       # one built-in extension's tests, against a fake CLI
+./x dev sessions                        # build this checkout and run it
+./x install                             # build this checkout into ~/.local/bin
+./x hooks                               # once per clone: gofmt and vet before each commit
+./x release vX.Y.Z                      # prepare a changelog PR, then dispatch the checked main commit
 ```
 
-`ask help` and `ask help COMMAND` are the contract for flags and output. Prefer these forms in
-guidance and examples; `--help` and `-h` remain supported aliases.
+`ask help` and `ask help COMMAND` are the contract for flags and output.
 
 ## Where things live
 
-- `main.go`: entry point only; holds the release version.
-- `src/`: ask itself, one package per purpose. The map and the layering rules are in
-  [docs/contributing/architecture.md](docs/contributing/architecture.md).
-- `src/test/`: black-box tests of the binary against a fake agent, one file per feature. How they work
-  and which file covers what: [src/test/README.md](src/test/README.md).
-- `packages/`: the official agents ([packages/README.md](packages/README.md)).
-- `docs/`: user docs, built into ask for `ask docs`. `docs/contributing/` is for people working on
-  ask and is not built in.
-- `.github/checks/`: architectural guards (the rules below that grep can check).
-- `.github/release/`: release preparation, packaging and formula generation
-  ([docs/contributing/releases.md](docs/contributing/releases.md)). `install.sh` is the installer
-  people run; `ask.rb` is the Homebrew formula each release regenerates.
+- `main.go`: the binary; holds the release version.
+- `internal/cmd/NAME/`: one package per command, its `Help` page and its `Run`; `cmd/root`
+  dispatches, `cmd/worker` is the detached side of a turn.
+- `internal/cmdutil/`: what commands share. `internal/harness`, `provider`, `sessions`,
+  `extension`, `git`, `process`, `term`, `config`: the core, one package per purpose. The map and the
+  layering rules are in [docs/contributing/architecture.md](docs/contributing/architecture.md).
+- `internal/test/`: black-box tests of the binary against a fake provider and a fake harness,
+  one file per feature ([internal/test/README.md](internal/test/README.md)).
+- `extensions/`: the two extensions ask ships ([extensions/README.md](extensions/README.md)).
+- `.github/brand/`: the logo, lockup, wordmark, the README hero (`screen.png`) and `render.py`.
+- `docs/`: user docs. `docs/contributing/` is for people working on ask.
+- `.github/checks/`: architectural guards. `.github/release/`: release preparation, packaging
+  and formula generation ([docs/contributing/releases.md](docs/contributing/releases.md)).
 
 ## Conventions
 
-- Fewest moving parts. Terminal dependencies belong in `tui` and `status`; no configuration
-  beyond what a change needs.
-- Nothing about a particular agent goes in `src/`; it belongs in an agent, official ones in
-  `packages/`. An official agent uses only the contract any agent could. The agent, hook and
-  command contracts change only as `docs/compatibility.md` says: additions are free, a breaking
-  change bumps `ASK_CONTRACT`. Files in `src/test/fixtures/` are never rewritten.
-- Grow by need: a new hook event or contract field only when a real use needs it.
-- Names say what a thing covers: a file is named for its feature or command, never for how it came
-  about (no `bugs_test.go`, no `misc.go`).
+- Fewest moving parts. No dependencies, no daemon, no configuration beyond what a change needs.
+- One word per file and folder; `_test` is the only suffix, and Go's own `_linux`/`_darwin`.
+- Nothing about a particular coding agent goes in `internal/`; it belongs in its extension,
+  which uses only the contract any extension could. The contract changes only as
+  `docs/compatibility.md` says: additions are free, a breaking change bumps `ASK_CONTRACT`.
+- Grow by need: a new tool, config key or contract field only when a real use needs it.
+  Extensions add executables, never code inside ask.
 - Document package purpose, public contracts and non-obvious reasons. Omit comments that repeat
   names or code. Update the comments and docs a change touches.
-- One test per behavior change, as a subtest in its feature's file. Never call a network or a real
-  model in a test.
-- A user-visible change gets a `CHANGELOG.md` entry under `## Unreleased` at the top (add the
-  heading when it's missing) and an update to `docs/`; every help topic's footer names its page.
-  A release that changed the run record format pins one in `src/test/fixtures/run-vX.Y.Z/`.
+- One test per behavior change, as a subtest in its feature's file. Never call a network or a
+  real model in a test.
+- A user-visible change gets a `CHANGELOG.md` entry under `## Unreleased` at the top and an
+  update to `docs/`.

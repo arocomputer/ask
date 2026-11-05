@@ -1,151 +1,89 @@
-# ask
+<p align="center">
+  <img src=".github/brand/screen.png" alt="ask: a read-only session finds a bug, and a second turn in the same session fixes it" width="700">
+</p>
 
-**Every model, as a subagent.** Hand tasks to your coding agents, on any model they run, from your
-terminal or from another agent. One task or many at once, recorded, with live usage.
+<p align="center">
+  <b>Subagents for your agents.</b> One command hands a task to a subagent that reads, searches and
+  edits your project. It works in the background, recorded, with live activity and exact usage.
+</p>
 
-![ask investigating a login failure and following up with a fix](assets/screens/hero.svg)
-
-ask works with the coding agent CLIs you already use. Each task runs in a real agent conversation,
-gets a stable ID and a name, and is saved in `~/.ask/runs`, so you can inspect it, wait for it, or
-continue it later.
-
-## Install
-
-macOS and Linux:
+<p align="center">
+  <a href="https://github.com/arocomputer/ask/releases/latest"><img src="https://img.shields.io/github/v/release/arocomputer/ask?style=flat-square&color=f2611d&label=release" alt="Release"></a>
+  <a href="https://github.com/arocomputer/ask/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/arocomputer/ask/ci.yml?branch=main&style=flat-square&color=f2611d&label=ci" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-f2611d?style=flat-square" alt="MIT"></a>
+</p>
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh
 ```
 
-Homebrew:
-
-```sh
-brew tap arocomputer/ask https://github.com/arocomputer/ask
-brew install ask
-```
-
-With Go 1.26 or newer:
-
-```sh
-go install github.com/arocomputer/ask@latest
-```
-
-One binary; no additional UI runtime to install. `ask update` keeps a curl install current.
-More in [Install](docs/install.md).
-
 ## Start
 
-Install and authenticate at least one coding agent CLI: Claude Code, Codex, OpenCode, or another
-[supported harness](packages/README.md). The official ask agents need Node.js 18 or newer.
-`ask setup` installs the agents; it does not install or sign in to the CLIs.
-
-Then, in a project directory:
-
 ```sh
-ask setup                                        # connect the coding agents you have
-ask models                                       # choose an available agent:model id
-id=$(ask -m claude:sonnet-5.5 "Why does the login test fail?")
-ask wait "$id"                                   # block and print the answer
-ask continue "$id" --wait -w "Fix it, then run the test."
+ask setup                                   # a provider key, a default model, the ask skill
+id=$(ask "Why does the login test fail?")   # a read-only session; prints its ID
+ask wait "$id"                              # the answer
+ask continue "$id" -w "Fix it, then run the test."
 ```
 
-`ask setup` finds supported CLIs, installs the agents you pick, and shows changes to defaults and
-app integrations before saving them. Each agent keeps its own login. The examples use Claude Code;
-choose a model from `ask models` for your installation. Model ids look like `claude:opus-5.5`,
-`codex:gpt-6.1-sol`, or `opencode:deepseek-4.1-flash`. `-m` / `--model` selects a model or
-configured role, and `-w` / `--write` allows edits and commands. Runs are read-only by default.
+A session works in the background. The launch prints only its ID, `ask wait ID` prints the
+answer, `ask show ID` shows what it is doing right now, and `ask continue ID` adds a turn that
+remembers everything the session read, said and did. `-w` allows edits and commands, `-m`
+picks a model, `--wait` prints the answer instead of the ID, `--json` prints records.
 
-A launch detaches and prints only the run's stable ID. Exit 0 means accepted, not finished. Add
-`--wait` to run synchronously and return the answer. With a default model configured, you can also
-pipe a prompt directly:
+ask talks to the model itself, through OpenAI, OpenCode Console, OpenCode Go or any endpoint
+that speaks the same protocol. It owns the loop, the tools and the transcript, so read-only is
+enforced by the tools on offer, every tool call is recorded, and usage is exact. Claude Code and
+Codex can run sessions too, as built-in extensions (`ask install claude`, then
+`-m claude:sonnet-5.5`), with their own login.
 
-```sh
-git diff | ask          # detach and print the run ID
-git diff | ask --wait   # return the answer
-```
-
-Status and errors go to stderr. With a default model configured in `ask settings`, `ask "prompt"`
-and `ask run "prompt"` use it. See [Usage](docs/usage.md).
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <b>Made for agents</b><br>
+      Stable IDs, one JSON record per command, bounded pages of activity, and sessions scoped to
+      the conversation that started them.
+    </td>
+    <td width="33%" valign="top">
+      <b>Safe by construction</b><br>
+      A read session has no tool that can write or run a command. Write sessions can work in
+      their own git worktree and branch, and every change is listed.
+    </td>
+    <td width="33%" valign="top">
+      <b>Yours to extend</b><br>
+      An extension is a folder of executables: a harness for another coding agent, tools for
+      the model, or your own <code>ask</code> commands. One Go binary, no dependencies, no daemon.
+    </td>
+  </tr>
+</table>
 
 ## Many at once
 
-`ask batch FILE` launches parallel tasks and returns one stable batch ID. `ask batch --wait FILE`
-returns the result array synchronously. `ask show ID` inspects current state; `ask wait ID` blocks
-for completion.
-
-For scripts, `ask runs --json` lists machine-readable state and `ask wait ID --json` returns result
-data, including failures. Check the exit status: wait returns 1 for failed or stopped work.
-
-## Follow-ups and worktrees
-
-Every run is named and recorded, with time, changes and usage when reported.
-`ask continue RUN "prompt"` continues the same agent conversation, keeping the model and access
-unless you change them. Without a prompt, it finishes stopped or failed work in a usable saved
-conversation, or explains what needs an explicit prompt. `ask stop ID` cancels work; interrupting
-`ask wait` only stops waiting.
-
-Use `--worktree` with `--write` to give a run its own Git worktree and branch, so several write
-runs can work in parallel. ask keeps the worktree when it changed something, ready to review and
-merge. See [Runs](docs/runs.md) and [Usage](docs/usage.md#working-in-a-worktree).
-
-## Settings
-
-`ask settings` holds every control: agents and their models, defaults, cost limits, worktrees, and
-the apps that use ask. Nothing is written until you have seen the change.
-
 ```sh
-ask settings
-ask settings set max_cost 2
-ask settings set worktree on
+a=$(ask "Review src/auth for races.")
+b=$(ask -m opencode-go/glm-5.3 "Summarize the public API.")
+ask wait "$a" "$b"          # the first to finish; stderr says which
+ask sessions                # yours, most recently active first
+ask stop "$b"
 ```
 
-A cost limit stops a run when reported cost passes it; a model call or step can take it over.
-See [Settings](docs/settings.md) for every key and the review before saving.
-
-## Make it yours
-
-ask stays small by delegating to pieces you can replace.
-
-- **Agents** — reach any coding agent CLI through a small executable. The official ones are built
-  in: `ask install claude`.
-- **Hooks** — change tasks and check results: add context, guard writes, run the tests, and hand
-  failures back.
-- **Commands** — build your own `ask NAME` workflows, like a review by three models.
-- **Packages** — share agents, hooks and commands: `ask install owner/repo`. Your own files always
-  win.
-
-Agents in Claude Code, Codex, OpenCode, Cursor and Pi can hand work to ask too. `ask setup` gives
-them the ask skill, and Claude Code names each ask run in its task list. See [Hosts](docs/hosts.md).
-
-## Documentation
-
-`ask help` is the quick reference; `ask help COMMAND` shows one command's options. `ask docs` lists
-every page and `ask docs PAGE` shows one offline, matching your version. Browse the
-[docs index](docs/README.md) on GitHub.
-
-- **Get started:** [Install](docs/install.md) · [Setup](docs/setup.md) · [Settings](docs/settings.md)
-- **Run tasks:** [Usage](docs/usage.md) · [Runs](docs/runs.md) · [Batches](docs/batches.md) ·
-  [Bench](docs/bench.md) · [Models](docs/models.md)
-- **Extend ask:** [Agents](docs/agents.md) · [Hooks](docs/hooks.md) · [Commands](docs/commands.md) ·
-  [Packages](docs/packages.md)
-- **Reference:** [Hosts](docs/hosts.md) · [Environment](docs/environment.md) ·
-  [Compatibility](docs/compatibility.md)
-
-## Contributing
-
-ask is built to stay small: the core knows nothing about any particular agent, and the official
-agents use only the public contract.
+## Install
 
 ```sh
-./x check
+curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh            # macOS and Linux
+brew tap arocomputer/ask https://github.com/arocomputer/ask && brew install ask
+go install github.com/arocomputer/ask@latest             # Go 1.26 or newer
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and
-[docs/contributing/architecture.md](docs/contributing/architecture.md) for how a task runs. The
-offline integration suite checks packaged harnesses, writing behavior and package lifecycle through
-the real ask binary: `./x integration`, or `./x integration copilot` for one harness. See
-[Integration](docs/contributing/integration.md).
+The Claude Code and Codex extensions need Node.js 18 or newer; ask itself needs nothing.
 
-## License
+## Docs
 
-MIT. See [LICENSE](LICENSE).
+`ask help` and `ask help COMMAND` are the reference. The pages in [docs/](docs/README.md) cover
+[install](docs/install.md), [setup](docs/setup.md), [usage](docs/usage.md),
+[sessions](docs/sessions.md), [models](docs/models.md), [config](docs/config.md),
+[extensions](docs/extensions.md) and [compatibility](docs/compatibility.md).
+
+<br>
+
+<p align="center"><sub>MIT · <a href="https://github.com/arocomputer/ask">github.com/arocomputer/ask</a></sub></p>
