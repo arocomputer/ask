@@ -1,12 +1,12 @@
 # Rewriting ask in TypeScript
 
-A working plan, not a description of shipped behavior. Delete it once the rewrite lands.
+A working plan, not a description of shipped behavior. Delete it once the rewrite lands; what
+remains open is phase 5.
 
 ## Thesis
 
-The engine is known: ask's own loop, a handful of tools, sessions on disk. It ports from the Go
-version, which stays in the tree as the reference until parity, minus the redundancy listed
-below.
+The engine is known: ask's own loop, a handful of tools, sessions on disk. It is ported from the
+Go version, now removed (it is in git history), minus the redundancy listed below.
 
 The interface an agent uses is not known. Research and two experiments say the doorway (flags,
 JSON, MCP) is a wash; what moves time, tokens and correctness is how an agent waits for work
@@ -81,14 +81,18 @@ variants, not by argument.
 
 1. **Engine.** Catalog, the three protocols, tools, loop, system prompt, as plain functions.
    Tests against fake provider servers, one behavior each.
-2. **Sessions, requests and the human CLI.** Session folders, a detached worker per turn; the
-   request protocol as a baseline; settings, doctor and the viewing commands. Still to port: worktrees (a `worktree`
-   task field), and running turns in the host's process for the library.
+2. **Sessions, requests and the human CLI.** Done: session folders, a detached worker per turn,
+   the request protocol, `ask settings`, `ask doctor`, `ask models`, `ask sessions`, `ask show`.
+   The library's `handle` uses the same detached workers: a second way to run turns in the
+   host's process would have to match stopping, resuming and crash handling, and no host needs
+   it yet.
 3. **Interface experiments.** Done (`.handoff/experiments/phase3/results.md`). Ids stay; names
    showed no benefit. `start` keeps its optional `wait`. Codex ends every background process
    when a command ends, so turns resume from their transcript, collect waits for every task
    once that is seen, and the response says to wait longer.
-4. **Lock.** Write the winner's protocol, docs and changelog. Port the Go black-box tests' intent.
+4. **Lock.** Done: worktree tasks, change tracking that counts commits, the Go tests' intent
+   ported, the project's rules as a test, the Go tree removed, CI and release on Node and Bun,
+   an npm package, and the docs, AGENTS.md and changelog rewritten.
 5. **Real providers and sign-ins**, alongside 3.
    - First real call per protocol, with an OpenCode Go API key in `~/.ask/auth.json`. (Solved:
      the old key in OpenCode's v1 `auth.json` was a leftover, inactive in OpenCode's credential
@@ -107,7 +111,7 @@ what phase 3 needs.
 
 ## Risks
 
-- A rewrite throws away a tested core; the Go tree stays until parity.
+- A rewrite throws away a tested core; the Go version is in git history, before 0e9249c.
 - Three protocols triple the surface that can drift from what providers actually accept; only
   real calls prove them, and none has succeeded yet.
 - Driver runs spend the owner's Claude and Codex quota: about 50 to 60 runs for phase 3.

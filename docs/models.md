@@ -1,66 +1,40 @@
 # Models
 
-A model is `provider/model` for ask's own harness, or `harness:model` for an external
-[harness](extensions.md#harnesses), either with an optional `#effort`:
+A model is named `provider/model`, as the [models.dev](https://models.dev) catalog names it:
+`opencode-go/glm-5.3`, `openai/gpt-5.5`, `anthropic/claude-sonnet-5-5`. A name without its
+provider gets a suggestion. `ask models` lists the models you chose in `ask settings`, or every
+model of the providers you have keys for; `ask models PROVIDER` lists all of that provider's.
 
-```text
-opencode-go/glm-5.3
-openai/gpt-5.5#high
-claude:sonnet-5.5
-```
+## The catalog
 
-- **provider** is an endpoint ask's own harness talks to. The built-in providers are `openai`,
-  `opencode` (OpenCode Console) and `opencode-go`; any other endpoint that speaks the OpenAI
-  Responses protocol is a provider once it has a `base_url` in [auth.json](config.md#authjson).
-  OpenCode's endpoints serve every text model through that protocol, Claude and Gemini included.
-- **harness** is the prefix an installed extension serves, such as `claude` or `codex`.
-- **model** is the model as the provider or harness names it. Native names are passed to the
-  API as typed; harness names are lowercased.
-- **effort** is passed on: as the reasoning effort for a native session, as `ASK_EFFORT` to a harness.
+ask downloads models.dev's catalog once a day into `~/.ask/cache/models.json`, and uses the copy
+it has when the network is down. For each model, the catalog says how to reach it: the endpoint,
+and which kind of API it speaks. ask speaks three:
 
-`-m` chooses the model for one session; `model` in [config.json](config.md) is the default.
-Without either, ask picks one for the first provider you have a credential for: its default
-(`glm-5.3` on OpenCode Go, `gpt-5.5` on OpenAI and OpenCode Console), or for a provider of your
-own, the first model you declare for it in models.json. A launch on a terminal says which model it picked.
+- OpenAI's **Responses** API, for OpenAI's models and gateways that offer it.
+- **Chat completions**, which most providers and gateways serve.
+- Anthropic's **Messages** API, for Anthropic's models and gateways that offer it.
 
-A model named without its provider fails with a suggestion, like `did you mean
-opencode-go/glm-5.3?`.
+A gateway can serve different models through different APIs, and ask follows the catalog for
+each. Models that can't call tools, or that need an API ask doesn't speak (such as Google's
+native one), are left out.
 
-## The model list
+Every conversation is kept in one format, so a session can switch models, even between APIs, in
+a later turn with `"model"`.
 
-```sh
-ask models             # provider/model and harness:model, with a display name
-ask models --refresh   # download the models.dev listing again
-ask models --json
-```
+## Effort
 
-For each provider you have a credential for, `ask models` lists the models you declare and a
-cached snapshot of [models.dev](https://models.dev), fetched by `ask setup` or `--refresh` into
-`~/.ask/cache/models.json`. Then come each harness's models: those you declare under its prefix,
-and those it lists itself. The list is advisory: any model a provider accepts works whether or
-not it is listed, and a listed model is not a promise that your account can use it.
+`"effort"` asks a reasoning model to think more or less: `low`, `medium` or `high`. It becomes
+the Responses API's reasoning effort, chat completions' `reasoning_effort`, or a thinking budget
+for the Messages API.
 
-## models.json
+## Usage
 
-Declare the models you use, with a display name, or with prices so ask shows cost:
+Each turn records the tokens it used: input, output, and the part of the input the provider
+served from its cache. ask asks providers to cache the conversation where they let it, since
+every step resends it. Prices aren't tracked; limits are the turn's `timeout` and 100 steps.
 
-```json
-{
-  "opencode-go": {
-    "glm-5.3": "GLM 5.3",
-    "kimi-k3": { "name": "Kimi K3", "input": 3, "output": 15, "cached": 0.3, "context": 262144 }
-  },
-  "claude": { "sonnet-5.5": "Sonnet 5.5" }
-}
-```
+## Long conversations
 
-Keys are providers or harness prefixes, then model ids. Prices are USD per million tokens. A
-declared model replaces the fetched entry with the same id, keeping the fetched name and prices
-it does not set. ask never writes this file.
-
-## Cost
-
-A native session's cost is the declared or fetched prices applied to the exact token counts the
-provider reported, including the cached part of the input. A model without prices shows tokens
-only. `--max-cost` and `max_cost` in config stop a turn once its cost passes the limit; without
-prices there is nothing to compare, so set a `timeout` too.
+When a conversation no longer fits the model's context, ask shortens older tool outputs and tries
+again before failing with a hint to start a narrower task or use a larger model.

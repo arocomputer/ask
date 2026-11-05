@@ -1,83 +1,80 @@
 # Architecture
 
-ask is one Go binary with no dependencies beyond the standard library. It turns a command line
-into a session, executes each turn in a detached worker, and records what happened. The worker
-runs the turn with ask's own harness against a model provider, or hands it to an external
-harness, an extension, through a small executable contract.
+ask is TypeScript with no runtime dependencies, on Node 24 or Bun. It turns a JSON request into
+sessions, runs each turn in a detached worker, and records what happened. The worker runs ask's
+own agent loop against a model provider.
 
-`main.go` builds the binary, `internal/`
-holds the packages, one per command under `internal/cmd/`, and `internal/cmdutil` is what the
-commands share. Files and folders are one word.
+`src/` holds the engine, one module per purpose, one word per file; `src/cmd/` holds the commands
+for people. `test/` holds the tests, one file per area.
 
 ## How a turn goes
 
 ```text
-ask "task"   or   ask continue ID "next"    the launcher
-  │  cmd/run, cmd/continue   resolve the model, read the prompt, create the session or add a turn
-  │  cmd/worker              start the worker, print the ID once it holds the lock
+ask < request.json                         cli.ts reads it; protocol.ts checks every task
+  │  protocol    start, collect, continue, stop, show; results and hints
+  │  sessions    the folder, session.json, transcript.json, the lock
+  │  worker      launch: a detached `ask __worker FOLDER`, its pid in the lock
   ▼
-ask __worker FOLDER                         detached, in its own session
-  │  sessions     the lock, session.json, transcript.json, events.jsonl
-  ├─ harness      the loop: provider ⇄ tools, until an answer or a limit
-  │    provider       one streaming request per model call (the OpenAI Responses protocol)
-  │    tools          read, list, grep; write, edit, shell in a write turn; extension tools
-  └─ extension    or: start an extension's harness under the contract, read its report
-  │  git          what a write turn changed; worktrees
+ask __worker FOLDER                         worker.ts, in its own session of the system
+  ├─ loop        provider ⇄ tools, until an answer or a limit; saves after every step
+  │    catalog       models.dev: which protocol and endpoint each model uses
+  │    responses, chat, anthropic   one client per protocol, over provider.ts
+  │    tools         read, list, grep; write, edit, shell in a write turn
+  │    system        the system prompt and the project's AGENTS.md
+  └─ git         what a write turn changed; worktrees
   ▼
-session.json: the turn succeeded, failed or stopped    cmd/wait, cmd/show, cmd/sessions read it
+session.json: the turn succeeded, failed or stopped     collect, show and ask sessions read it
 ```
 
-The launcher prints the ID only after the worker holds the session's lock, so an ID always
-names work that is under way. Everything else reads the folder: `wait` polls `session.json`,
-`show` reads `events.jsonl` by byte cursor, `stop` signals the lock's owner.
+The launcher records a "starting" lock before it spawns the worker and the worker's pid right
+after, so a turn always has a live owner or is visibly lost. Everything else reads the folder:
+collect polls `session.json`, show reads `transcript.json`, stop signals the lock's pid. A turn
+whose worker is gone is restarted from its transcript by the next collect, after claiming that
+restart with an atomic folder create.
 
-## Packages
+## Modules
 
-| Package | Purpose |
+| Module | Purpose |
 | --- | --- |
-| `cmd/root` | Dispatch, exit status and help rendering |
-| `cmd/run`, `cmd/wait`, `cmd/show`, `cmd/continue`, `cmd/stop`, `cmd/sessions`, `cmd/models`, `cmd/config`, `cmd/setup`, `cmd/clean` | One command each: its `Help` page and its `Run` |
-| `cmd/install` | `ask install`, `ask remove` and `ask extensions` |
-| `cmd/worker` | The detached side of a turn, and `Launch`, which `run` and `continue` share |
-| `cmdutil` | Option parsing, model resolution, the model catalog, prompt and limits, the result record, session scoping, waiting and printing |
-| `harness` | The agent loop (`harness.go`), the tools (`tools.go`) and the system prompt (`prompt.go`) |
-| `provider` | The provider interface, the known endpoints, the OpenAI client, the models.dev snapshot, declared models and pricing |
-| `sessions` | Sessions and their turns, folders, the lock, events |
-| `extension` | Manifests, finding harnesses, tools and commands, running a harness under the contract, installing |
-| `git` | Changes a write session made, worktrees, whether a branch landed |
-| `process` | Process groups, timeouts, signals; Linux parent-death signals |
-| `term` | Terminal styles, status lines, tables |
-| `config` | The home layout, config.json, credentials, atomic JSON |
-| `test` | Black-box tests of the binary against a fake provider and a fake harness |
-
-`extensions/` holds the two extensions ask ships, embedded in the binary and written to
-`~/.ask/agent/extensions/NAME/` by `ask install`.
+| `cli` | Dispatch, help pages, errors, exit status, the worker's entry |
+| `protocol` | The agent interface: requests, results, hints, `ask help requests` |
+| `sessions` | Session folders, turns, the lock, whether a turn is alive, restart claims |
+| `worker` | Launching a detached worker, and running a turn in it |
+| `loop` | The agent loop, interrupted tool calls, eliding old outputs |
+| `provider` | The transcript format, server-sent events, provider errors, retries |
+| `responses`, `chat`, `anthropic` | One protocol client each |
+| `catalog` | The models.dev catalog: loading, finding a model, connecting to it |
+| `tools` | The six tools and path confinement |
+| `system` | The system prompt |
+| `steps` | A turn's steps in a few words each |
+| `git` | Changes a write turn made, worktrees |
+| `home` | `~/.ask`, config.json, auth.json, credentials |
+| `term`, `input` | Terminal output and interactive prompts |
+| `version` | The version, from package.json |
+| `cmd/*` | `settings`, `doctor`, `models`, `sessions`, `show` |
 
 ## Rules the layout keeps
 
-[`.github/checks/guard.sh`](../../.github/checks/guard.sh) checks these on every change:
+[`test/rules.test.ts`](../../test/rules.test.ts) checks these on every change:
 
-- **No dependencies.** The standard library and ask's own packages only; `go.mod` lists none.
-- **No particular coding agent in `internal/`.** Only `cmd/setup`, which offers the built-in
-  extensions for the CLIs it finds, names them as values. Anything specific to a coding agent
-  lives in its extension under `extensions/`.
-- **Leaves.** `config` and `provider` import nothing of ask's; everything may build on them.
-- **Commands share through `cmdutil`**, never each other; `worker` is the one exception.
-- **Every package says what it is for.**
-- **The built-in extensions use Node.js built-ins only**, like any extension someone could
-  write, and keep identical copies of `writer.mjs`.
+- **No runtime dependencies.** `package.json` lists only development tools.
+- **Only Node's built-ins.** The engine imports `node:` modules and its own files, and nothing
+  that is particular to Bun, so it runs on both.
+- **No particular coding agent in the engine.** ask works for any agent that can run a command.
+- **Every module says what it is for.**
 
 Two more are kept by tests and review:
 
-- **Contracts change only as [compatibility.md](../compatibility.md) says.** Additions are free;
-  a breaking change bumps `ASK_CONTRACT`.
-- **Grow by need.** A new tool, config key or contract field arrives with the use that needs it.
-  Extensions add executables, never code inside ask: a harness, tools, commands and notes, each
-  declared in `extension.json`. The system prompt is ask's own, followed by the project's
-  `AGENTS.md`; there is no global instructions file.
+- **Grow by need.** A new tool, request field or setting arrives with the use that needs it.
+- **The request protocol changes carefully.** New fields are free; changing or removing one breaks
+  every agent that uses it.
 
 ## Trying a development build
 
-`./x dev` builds this checkout and runs it with your normal `ASK_HOME`; `./x install` puts the
-build in `~/.local/bin`. To keep development runs apart from your own, set `ASK_HOME` to a
-scratch folder for that shell.
+```sh
+bun install
+bun src/cli.ts doctor      # or node src/cli.ts
+npm run check && npm test  # the typecheck, then the tests under Node and Bun
+```
+
+Set `ASK_HOME` to a scratch folder to keep a development build away from your sessions.

@@ -1,10 +1,6 @@
 <p align="center">
-  <img src=".github/brand/screen.png" alt="ask: a read-only session finds a bug, and a second turn in the same session fixes it" width="700">
-</p>
-
-<p align="center">
-  <b>Subagents for your agents.</b> One command hands a task to a subagent that reads, searches and
-  edits your project. It works in the background, recorded, with live activity and exact usage.
+  <b>Subagents for your agents.</b> One request hands tasks to subagents that read, search and
+  edit your project in the background, and returns their answers.
 </p>
 
 <p align="center">
@@ -15,74 +11,86 @@
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh
+ask settings
 ```
 
-## Start
+## For agents
+
+An agent sends one JSON request on stdin and reads one JSON response on stdout:
 
 ```sh
-ask setup                                   # a provider key, a default model, the ask skill
-id=$(ask "Why does the login test fail?")   # a read-only session; prints its ID
-ask wait "$id"                              # the answer
-ask continue "$id" -w "Fix it, then run the test."
+ask <<'EOF'
+{"start": [{"prompt": "Where is the retry logic?"}, {"prompt": "List the API routes"}], "wait": 100}
+EOF
 ```
 
-A session works in the background. The launch prints only its ID, `ask wait ID` prints the
-answer, `ask show ID` shows what it is doing right now, and `ask continue ID` adds a turn that
-remembers everything the session read, said and did. `-w` allows edits and commands, `-m`
-picks a model, `--wait` prints the answer instead of the ID, `--json` prints records.
+```json
+{"tasks": [
+  {"id": "k3f9a2", "state": "succeeded", "answer": "The retry logic is in src/client/retry.ts:14 ..."},
+  {"id": "p0q8zz", "state": "running", "activity": "grep router in src"}
+]}
+```
 
-ask talks to the model itself, through OpenAI, OpenCode Console, OpenCode Go or any endpoint
-that speaks the same protocol. It owns the loop, the tools and the transcript, so read-only is
-enforced by the tools on offer, every tool call is recorded, and usage is exact. Claude Code and
-Codex can run sessions too, as built-in extensions (`ask install claude`, then
-`-m claude:sonnet-5.5`), with their own login.
+`start` returns once the first task finishes, or right away without `wait`. `collect` waits for
+more, `continue` gives a finished session its next prompt or resumes a stopped one, `stop` stops
+one, and `show` lists its steps. A task can `write`, and work in its own git `worktree` and
+branch. Every response is small, and an error says what to send instead. `ask help requests` is
+the reference; [docs/requests.md](docs/requests.md) explains it.
+
+## For people
+
+```sh
+ask settings      # providers, keys, your models and the default
+ask doctor        # check that ask can run tasks, and how to fix what can't
+ask models        # the models you can use
+ask sessions      # what subagents did, newest first
+ask show k3f9a2   # one session's steps and answer
+```
+
+## How it works
+
+ask runs its own agent loop and talks to the model directly. The [models.dev](https://models.dev)
+catalog says how to reach each model: OpenAI's Responses API, chat completions (most providers
+and gateways) or Anthropic's Messages API. Read-only means the subagent is given no tool that can
+write or run a command. Each turn runs in a background worker and saves its transcript after
+every step, so a worker stopped partway resumes where it left off.
 
 <table>
   <tr>
     <td width="33%" valign="top">
       <b>Made for agents</b><br>
-      Stable IDs, one JSON record per command, bounded pages of activity, and sessions scoped to
-      the conversation that started them.
+      One JSON request starts many tasks and returns the first answer. Results are small, and
+      errors and hints say what to do next.
     </td>
     <td width="33%" valign="top">
       <b>Safe by construction</b><br>
-      A read session has no tool that can write or run a command. Write sessions can work in
-      their own git worktree and branch, and every change is listed.
+      A read task has no tool that can write or run a command. A write task can work in its own
+      worktree, and every change it makes is listed.
     </td>
     <td width="33%" valign="top">
-      <b>Yours to extend</b><br>
-      An extension is a folder of executables: a harness for another coding agent, tools for
-      the model, or your own <code>ask</code> commands. One Go binary, no dependencies, no daemon.
+      <b>Small</b><br>
+      TypeScript with no runtime dependencies, on Node 24 or Bun. No daemon, no configuration
+      beyond a model and its key.
     </td>
   </tr>
 </table>
 
-## Many at once
-
-```sh
-a=$(ask "Review src/auth for races.")
-b=$(ask -m opencode-go/glm-5.3 "Summarize the public API.")
-ask wait "$a" "$b"          # the first to finish; stderr says which
-ask sessions                # yours, most recently active first
-ask stop "$b"
-```
-
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh            # macOS and Linux
+curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh     # macOS and Linux
 brew tap arocomputer/ask https://github.com/arocomputer/ask && brew install ask
-go install github.com/arocomputer/ask@latest             # Go 1.26 or newer
+npm install -g @arocomputer/ask                                                      # Node 24 or newer
 ```
 
-The Claude Code and Codex extensions need Node.js 18 or newer; ask itself needs nothing.
+The installer and Homebrew put one self-contained binary on your `PATH`. As a library,
+`import { handle } from "@arocomputer/ask"` takes the same requests as the command line.
 
 ## Docs
 
-`ask help` and `ask help COMMAND` are the reference. The pages in [docs/](docs/README.md) cover
-[install](docs/install.md), [setup](docs/setup.md), [usage](docs/usage.md),
-[sessions](docs/sessions.md), [models](docs/models.md), [config](docs/config.md),
-[extensions](docs/extensions.md) and [compatibility](docs/compatibility.md).
+`ask help` is the reference. The pages in [docs/](docs/README.md) cover [installing](docs/install.md),
+[settings](docs/settings.md), [requests](docs/requests.md), [sessions](docs/sessions.md) and
+[models](docs/models.md).
 
 <br>
 

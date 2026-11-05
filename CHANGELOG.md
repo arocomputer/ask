@@ -2,49 +2,40 @@
 
 ## Unreleased
 
-ask 2 is a rewrite around its own harness. It does not read ask 1's runs; see
-`docs/compatibility.md` for what changed.
+ask is rewritten in TypeScript around its own agent loop. Agents use it through JSON requests,
+and the command line is for setting it up and looking at sessions. It does not read the runs of
+earlier versions.
 
-- Run sessions with ask's own agent loop against OpenAI, OpenCode Console, OpenCode Go or any
-  endpoint speaking the OpenAI Responses protocol: `-m opencode-go/glm-5.3`, or a provider with a
-  `base_url` in auth.json. ask owns the tools (read, list, grep; write, edit and shell for `-w`),
-  the transcript, the activity and the exact usage. Read-only is enforced by the tools on offer,
-  tool paths stay in the session's directory, and commands never see provider credentials.
-- Make a session one conversation with one ID: `ask continue ID "..."` adds a turn, `ask wait`
-  returns the latest, and without a prompt `continue` resumes an interrupted turn.
-- Scope `ask sessions` and bare `ask wait` to the conversation that started them, read from
-  `ASK_PARENT`, `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, else to the repository it was
-  started in; `--all` shows every session.
-- Add extensions: folders in `~/.ask/agent/extensions/` whose `extension.json` adds a harness
-  (`claude:sonnet-5.5`), tools for ask's own harness, `ask NAME` commands, and notes on their
-  tools. `ask install` takes a built-in name (claude, codex), a folder or a git repository;
-  `ask remove` and `ask extensions` manage them.
-- Name a model `provider/model` for ask's own harness and `harness:model` for an external one.
-  Declare names and prices in `~/.ask/models.json`; the models.dev listing is cached in
-  `~/.ask/cache/`.
-- Lay out `~/.ask` as `config.json`, `auth.json`, `models.json`, `cache/` and `agent/` (sessions,
-  worktrees, extensions), creating nothing until it is used. `ask config` replaces `ask settings`.
-- Print one result record with `--json` from `wait`, `show`, `sessions` and `--wait` launches.
-- Accept a launch as one JSON object on stdin: `echo '{"prompt": "...", "write": true}' | ask
-  --json`, or `{"session": ID, "prompt": "..."}` to add a turn. `--schema` also takes the schema
-  inline.
-- Make `ask setup` ask which provider to use, OpenCode Go, OpenCode Zen, OpenAI or another
-  OpenAI-compatible endpoint, then only that provider's key, unechoed, and a default model from
-  its list.
-- Pick a model when none is chosen: the default of the first provider with a credential, or the
-  first model declared for a provider of your own. A model named without its provider gets a suggestion, like `did you mean
-  opencode-go/glm-5.3?`.
-- Render status, tables and help cleanly: colored states with `✓ ✗ ! -` symbols, bold
-  IDs, dimmed details and uppercase sections on a terminal; plain stable lines and
-  tab-separated lists when piped. A running session shows an orange spinner that turns while
-  `ask wait` waits, and a launch on a terminal prints one line instead of the ID twice. Help
-  pages split common flags from advanced ones, and changes are confirmed with `✓`.
-- Add `ask setup` as plain prompts, offering the keys OpenCode already holds.
-- Keep Claude Code and Codex as built-in extensions under contract 4, without their environment
-  policy; the Claude harness no longer refuses the `opusplan` alias.
-- Remove run names, batches, hooks, model roles, `environment.json`, `ask title`, `ask bench`,
-  the settings screen, `ask update`, `ask docs` and sixteen bundled agents. The binary has no
-  dependencies.
+- Hand work to ask as one JSON request on stdin, with one JSON response on stdout: `start` many
+  tasks at once, optionally waiting for the first to finish; `collect`, `continue`, `stop` and
+  `show`. Results are small, and a request ask can't carry out says what to send instead. `ask
+  help requests` and `docs/requests.md` describe it; the library's `handle` takes the same
+  requests.
+- Run every task with ask's own agent loop, talking to the model directly over OpenAI's
+  Responses API, chat completions or Anthropic's Messages API, as the models.dev catalog says for
+  each model. Name models `provider/model`. Read-only tasks get only `read`, `list` and `grep`;
+  write tasks also get `write`, `edit` and `shell`, confined to their folder and without
+  provider keys in their environment.
+- Number the lines `read` returns, search with one `grep` everywhere, and let `list` find files
+  by pattern, like `src/**/*.ts`. Read-only tool calls run in parallel.
+- Make a session one conversation: `continue` adds a turn with everything before it, or without
+  a prompt resumes a stopped or failed one.
+- Resume a turn whose worker was stopped partway, from where it left off, the next time it is
+  collected, and tell the model which tool calls were cut off. In environments that end
+  background processes with each command, `collect` waits for every task and says to wait
+  longer.
+- Give a task its own git worktree and branch with `"worktree": true`, and list every file a
+  write task changed, including in commits it made.
+- Retry a failing provider within a time budget, without retrying a failure that was itself
+  slow, and report `retrying` meanwhile. Shorten old tool outputs when a conversation outgrows
+  the model's context.
+- Add `ask settings`, which adds providers with a pasted, checked key, chooses your models and
+  the default, and sets the timeout; `ask doctor`, which checks everything a task needs; and
+  `ask models`, `ask sessions` and `ask show`.
+- Install with the installer, Homebrew, or `npm install -g @arocomputer/ask` on Node 24 or newer.
+- Remove the flag commands (`ask PROMPT`, `wait`, `continue`, `stop`, `setup`, `config`), the
+  extensions and their contract, prices and cost limits, `models.json`, `ask clean`, and the
+  import of other programs' keys.
 
 ## v0.3.1 · 2026-11-02
 

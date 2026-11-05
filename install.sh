@@ -32,7 +32,7 @@ Options
   --dir DIR         Installation folder (default: ~/.local/bin, or ASK_INSTALL_DIR)
   -h, --help        Show this help without installing anything
 
-Run the installer again to update. Then run ask setup.
+Run the installer again to update. Then run ask settings.
 HELP
       exit 0 ;;
     *) fail "unknown option $1; options: --version vX.Y.Z, --dir DIR" ;;
@@ -109,4 +109,4 @@ case ":$PATH:" in
   *) echo "Add $dir to your PATH, for example in ~/.zshrc or ~/.bashrc:"
      echo "  export PATH=\"$dir:\$PATH\"" ;;
 esac
-echo "Next: ask setup"
+echo "Next: ask settings"
