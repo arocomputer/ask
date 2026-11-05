@@ -31,13 +31,14 @@ worktrees, `status` draws the status lines and live rows, and `schema` checks `-
 
 ## Packages
 
-Each folder in `src/` is one Go package with a `// Package` comment saying what it is for;
-`go doc ./src/NAME` prints it.
+Each implementation folder in `src/` is one Go package with a `// Package` comment saying what
+it is for; `go doc ./src/NAME` prints it. `src/test/` holds the binary tests, their fake and fixtures,
+and the adapter integration runner. The repository has one root `go.mod`.
 
 | Package | Purpose |
 | --- | --- |
-| `cli` | The commands, one file each (`run.go`, `bench.go`, `runs.go`, `models.go`, `packages.go`, `settings.go` and its `menus.go`, `setup.go`, `title.go` and its `shell.go` tokenizer, `docs.go`, `update.go`, `help.go`), and `cli.go`: dispatch, options, exit codes |
-| `runs` | Runs on disk: ids and names, `RUN/TASK` references, locks, results; preparing tasks and follow-ups; running them in parallel; stopping |
+| `cli` | Commands in `run.go`, `batch.go`, `continue.go`, `bench.go`, `runs.go`, `wait.go`, `show.go`, `stop.go`, `clean.go`, `models.go`, `packages.go`, `settings.go`, `setup.go`, `title.go`, `docs.go` and `update.go`; `worker.go` handles detached admission, `menus.go` settings prompts, `shell.go` tokenization, `help.go` help, and `cli.go` dispatch, options and exit codes |
+| `runs` | `run.go`: identity and references; `store.go`: saved tasks and results; `prepare.go`: validation and follow-ups; `execute.go`: locks, parallel execution, admission and stopping; `hooks.go`: task/result decisions and combined results. Names, continuation locks, recovery, progress and event paths stay in their feature files |
 | `task` | One task, start to finish |
 | `agent` | Finding agents, listing their models, running one under the contract, model display names |
 | `hooks` | Task, result, title and name hooks |
@@ -48,9 +49,13 @@ Each folder in `src/` is one Go package with a `// Package` comment saying what 
 | `status` | Status lines, live rows and the `ask runs` table |
 | `setup` | What `ask setup` offers: the official agents, the ask skill per app, the title hook |
 | `schema` | The `--schema` check |
-| `home` | `~/.ask` paths, the contract environment, `settings.json` and `models.json`, atomic JSON records |
+| `home` | `~/.ask` paths, the contract environment, `settings.json`, `models.json` and generic `environment.json` policy, atomic JSON records |
 | `tui` | Inline Bubble Tea prompts and the review diff; owns prompt input and terminal cleanup |
 | `update` | Finding the latest release and replacing a directly installed ask |
+
+`home` keeps its name because it covers the home directory, persisted records, shared JSON
+types and the contract environment. `config` would describe only its settings and policy files;
+broader names such as `state` would still miss its contract and JSON utilities.
 
 ## Rules the layout keeps
 
@@ -77,8 +82,16 @@ Two more are kept by tests and review, not grep:
 | --- | --- |
 | [`docs/`](../) | User docs, built into ask for `ask docs` (only the top level; this folder is not) |
 | [`packages/`](../../packages/) | The official agents |
-| [`src/test/`](../../src/test/) | Black-box tests of the binary, one file per feature |
-| `.github/checks/` | Architectural checks |
-| `.github/release/` | Release tooling, described in [releases.md](releases.md) |
+| [`src/test/`](../../src/test/) | Black-box tests of the binary, one file per feature; fake, fixtures and integration runner |
+| `.github/checks/` | Architectural guards |
+| `.github/release/` | Release preparation, packaging and formula generation in [releases.md](releases.md) |
 | `assets/` | The logo, wordmark and README screens |
 | `x` | The one entry point for checks: `./x check` is what CI runs |
+
+## Trying a development build
+
+`./x dev` uses the normal `ASK_HOME` unless you set it. Like a released build, it refreshes
+installed official agents to match the binary, so alternating development and installed builds
+rewrites those package copies. To try changes without affecting your installed agents, use a
+separate `ASK_HOME`, run `./x dev install codex` (or another agent) there, and keep that same
+`ASK_HOME` for the test run.

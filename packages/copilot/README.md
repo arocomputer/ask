@@ -1,7 +1,7 @@
 # copilot
 
 The official ask agent for [GitHub Copilot CLI](https://github.com/github/copilot-cli). It runs
-`copilot` non-interactively for ask, so `ask -m copilot:gpt-5.4 "..."` hands a task to Copilot.
+`copilot` non-interactively for ask, so `ask --model copilot:gpt-5.4 "..."` hands a task to Copilot.
 
 ## Install
 
@@ -41,7 +41,7 @@ Copilot enforces no schema, so `ASK_SCHEMA` is ignored; ask still checks JSON an
 ## Follow-ups
 
 Every run starts with its own session id, reported to ask at once and passed as `--session-id`,
-so `ask -c RUN` resumes it, even after a run that was stopped. A follow-up's prompt is passed as is.
+so `ask continue RUN "prompt"` resumes it, even after a run that was stopped. A follow-up's prompt is passed as is.
 
 ## Titles
 
@@ -58,6 +58,45 @@ what the session had used before, from the last `session.shutdown` event in Copi
 AI credits rather than dollars, so no cost is reported. The report names the model that did most of
 the work (`GPT-5.4`, `Haiku 4.5`).
 
+## Live activity
+
+When ask supplies `ASK_EVENTS`, the agent appends visible main-agent activity to that absolute,
+pre-created private JSONL file. Supported native events and fields are verified against the
+[CLI runtime event schema](https://github.com/github/copilot-sdk/blob/main/nodejs/src/generated/session-events.ts)
+and offline fixtures:
+
+- `assistant.message`: string `data.content` becomes `message`. Each `data.toolRequests` entry
+  becomes `tool` using `name` and serialized `arguments`.
+- `assistant.message_delta`: string `data.deltaContent` becomes `message`; the matching
+  `data.messageId` final message snapshot is suppressed in activity only.
+- `tool.execution_start`: `data.toolName` and serialized `data.arguments` become `tool`.
+  `data.toolCallId` suppresses a duplicate call already emitted from a message request.
+- `tool.execution_complete`: string `data.result.detailedContent`, else `data.result.content`,
+  else `data.error.message` becomes `tool_result`. A matching call ID supplies the tool name.
+
+Only events actually present on stdout produce activity; CLI versions may omit deltas or tool
+execution events. Subagent events (`agentId` or `data.parentToolCallId`), user/lifecycle events,
+reasoning and opaque fields, partial tool snapshots, shell-output events and unknown events are
+ignored. No reasoning is inferred. Final answers still come from complete main-agent messages.
+
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
+
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
+
+Each correlation cache holds at most 1,024 IDs of up to 256 code units: eviction can allow duplicate
+snapshots/calls or omit a result's tool name. Complete final native lines work without a trailing
+newline; incomplete JSON is ignored.
+
 ## Cost limits
 
 Copilot reports no cost, so ask's cost limits (`--max-cost`, models.json or the `max_cost` setting)
@@ -73,7 +112,7 @@ doesn't map one to the other. Use `-t` to bound how long a run may take.
 | `COPILOT_HOME` | Copilot's home, for its session logs; `~/.copilot` by default. |
 
 The agent also reads ask's contract variables: `ASK_MODEL`, `ASK_EFFORT`, `ASK_ACCESS`, `ASK_TITLE`,
-`ASK_SESSION` and `ASK_REPORT` (see [Agents](../../docs/agents.md)).
+`ASK_SESSION`, `ASK_REPORT` and `ASK_EVENTS` (see [Agents](../../docs/agents.md)).
 
 ## Testing
 

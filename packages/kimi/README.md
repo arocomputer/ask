@@ -1,7 +1,7 @@
 # kimi
 
 The official ask agent for [Kimi Code](https://github.com/MoonshotAI/kimi-code) (`kimi`, not the
-archived kimi-cli). It runs `kimi -p` for ask, so `ask -m kimi:kimi-for-coding "..."` hands a task
+archived kimi-cli). It runs `kimi -p` for ask, so `ask --model kimi:kimi-for-coding "..."` hands a task
 to Kimi Code.
 
 ## Install

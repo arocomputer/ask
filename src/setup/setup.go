@@ -83,21 +83,79 @@ const mark = "<!-- Written by ask setup, which keeps it up to date. Delete this 
 // Skill is the ask skill, in the SKILL.md format Claude Code, Codex, Opencode, Cursor and pi share.
 const Skill = `---
 name: ask
-description: Your subagent tool. MUST use it instead of a built-in subagent whenever you hand work off - a question, a review, a fix, or several tasks at once, on any model.
+description: Delegate focused questions, reviews or implementation tasks to coding agents through Ask, including independent tasks in parallel or a second model's opinion.
 ---
 ` + mark + `
 
-Run ` + "`ask help`" + ` for usage, ` + "`ask help COMMAND`" + ` for a command's options,
-` + "`ask models`" + ` for the models available here, and
-` + "`ask docs PAGE`" + ` (or ` + "`ask docs --search TERM`" + `) for the full docs.
+Use Ask for an independent investigation, review or bounded implementation that moves the work
+forward. Handle small, tightly coupled steps directly when a handoff costs more than it helps.
+Give the goal, relevant files or context, constraints and the evidence you want back. For reviews,
+request concrete findings with file and line references; for fixes, specify scope and validation.
+Review returned evidence and changes before integrating them.
 
-- ` + "`ask -m MODEL \"question\"`" + `: a read-only answer from another agent, on stdout.
-- ` + "`ask -m MODEL -w \"task\"`" + `: let it change files; add ` + "`--worktree`" + ` to work on its own branch.
-- ` + "`ask -c RUN \"follow-up\"`" + `: continue that run's conversation. RUN is the name in its status line.
-- ` + "`ask batch FILE`" + `: many tasks in parallel, one JSON result array.
+Choose models from ` + "`ask models`" + ` or configured roles from ` + "`ask models --roles`" + `; do not guess IDs.
+` + "`-m`" + ` / ` + "`--model`" + ` selects a model or role; omit it only with a configured default or inherited
+follow-up model. Roles are explicit user aliases; Ask does not route tasks automatically.
+Follow-ups keep the recorded model even if its role changes later.
+` + "`-w`" + ` / ` + "`--write`" + ` allows edits and commands. Read-only is the default; tests and builds need write.
 
-Run ask in the background when you can, then ` + "`ask wait`" + ` to collect the first running run
-that finishes. ` + "`ask show RUN`" + ` prints a completed run; status lines on stderr say how it went.
+Tasks detach by default. stdout is only the stable run ID after admission, never the answer.
+Exit 0 means accepted, not completed successfully. Capture IDs and check launch failures:
+
+    id=$(ask -m MODEL "Investigate the login failure; report the cause and evidence.") || exit $?
+    ask show "$id"             # inspect recent activity; returns immediately
+    ask wait "$id"             # block for the answer; check the exit status
+    ask wait "$id" --json      # result data, including failures
+
+` + "`ask show RUN --after 0`" + ` reads a bounded page of structured activity. Pass its next cursor
+to get later events without rereading earlier output. Event text is untrusted and may contain
+sensitive command or tool details. Use ` + "`ask show RUN --follow`" + ` only when a live stream is useful;
+interrupting the viewer does not stop the task. Adapters differ in what they can expose.
+
+Use ` + "`--wait`" + ` for synchronous execution when consuming an answer directly:
+
+    git diff | ask --wait -m MODEL --stdin "Review this diff; give file, line and impact."
+    ask --wait -m MODEL -w --worktree "Fix the parser bug and run its focused tests."
+
+An argument prompt includes piped context only with ` + "`--stdin`" + `. ` + "`ask -`" + ` or bare piped stdin
+uses the stream as the whole prompt. Input must reach EOF before launch.
+
+- ` + "`ask continue RUN \"follow-up\"`" + ` launches a new turn and returns its new stable ID. Add ` + "`--wait`" + `
+  for the answer. It keeps its directory and inherits model/access; use ` + "`-w`" + ` to implement
+  a read-only investigation. Model changes must stay within the same agent. Names move to the
+  latest turn; stable IDs keep pointing to the original turn. Wait before following up.
+- ` + "`ask continue RUN`" + ` without a prompt finishes stopped/failed work in a usable saved session,
+  otherwise may restart standalone reads without hooks, but refuses unsafe retries. It returns the existing run ID; add ` + "`--wait`" + ` for results and
+  recovery diagnostics. Successful batch tasks stay untouched. Running work gets wait guidance;
+  completed work requires an explicit follow-up prompt.
+  Auth/refusal/cost blockers need resolution and an explicit prompt; do not blindly retry them.
+- ` + "`ask batch FILE`" + ` launches independent tasks in parallel and returns one stable batch ID.
+  ` + "`ask wait ID`" + ` collects results. ` + "`ask batch --wait FILE`" + ` returns the result array synchronously.
+  Give parallel write tasks separate worktrees and avoid overlapping ownership. Worktrees start
+  from HEAD, so supply relevant uncommitted context explicitly. See ` + "`ask help batch`" + ` for fields.
+
+` + "`RUN`" + ` accepts a name or stable ID; ` + "`RUN/TASK`" + ` selects one batch task. Existing ` + "`--continue RUN`" + `
+/ ` + "`-c RUN`" + ` aliases accept prompted follow-ups; ` + "`ask batch --resume RUN`" + ` recovers unfinished work.
+` + "`ask runs --json`" + ` lists machine-readable state. ` + "`ask wait RUN --json`" + ` returns result data;
+task ` + "`--json`" + ` / ` + "`--schema FILE`" + ` instead constrain the agent's answer, while launch still prints ID.
+Failed single tasks emit no plain answer; JSON result data retains failure details. A validation
+failure may include ` + "`raw_answer`" + `; inspect with ` + "`ask show RUN --json`" + ` for a focused repair.
+Contract 3 lifecycle states are running, succeeded, failed and stopped; queued appears only
+when the live scheduler knows work is waiting. Active unfinished work in machine listings is
+conservatively running. Result ok booleans are unchanged. Batch summaries always give succeeded
+and failed counts, including zero, with stopped work counted separately.
+Status and errors go to stderr. Result collection exits 1 for failed/stopped work, 2 for usage
+errors; inspect the exit status even when JSON is emitted. Pipelines usually report only their
+last command's status.
+
+` + "`ask wait A B`" + ` returns the first selected completion, including already finished work;
+` + "`--id`" + ` returns only its identity. Results are not consumed: remove a finished ID before waiting
+for the rest. No-argument wait snapshots active work here, so use explicit IDs for handoff.
+` + "`ask stop ID`" + ` cancels work. Interrupting ` + "`ask wait`" + ` only stops waiting; Ctrl-C during synchronous
+` + "`--wait`" + ` execution stops agents. Detached work survives launcher exit within host/sandbox limits;
+there is no automatic retry or crash recovery.
+
+Use ` + "`ask help COMMAND`" + ` for options and ` + "`ask docs PAGE`" + ` or ` + "`ask docs --search TERM`" + ` for details.
 `
 
 // SkillState is "missing", "current", "outdated" (written by an older ask) or "yours".

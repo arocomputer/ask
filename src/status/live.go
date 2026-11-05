@@ -3,6 +3,7 @@ package status
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,8 @@ import (
 // LiveRow holds one task's latest state; Started is reset for each follow-up round.
 type LiveRow struct {
 	Ref, Name, Access, Dir, State, Reason, Final string
+	RunID                                        string
+	Activity                                     string
 	Started                                      time.Time
 	Notes                                        []string
 	Usage                                        any // usage so far while running, then the result's
@@ -74,6 +77,18 @@ func ClipLine(text string, width int) string {
 // Frame renders live state without terminal I/O; width reserves the last column to avoid wrapping.
 // Height bounds redraws to a screen, showing a count when a large batch needs more rows.
 func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool) []string {
+	if s.Batch && height > 3 {
+		count := len(s.Rows) + 2
+		for _, row := range s.Rows {
+			count += len(row.Notes)
+		}
+		if count >= height {
+			s.Rows = append([]LiveRow(nil), s.Rows...)
+			sort.SliceStable(s.Rows, func(i, j int) bool {
+				return s.Rows[i].State == "running" && s.Rows[j].State != "running"
+			})
+		}
+	}
 	lines := []string{}
 	if s.Batch {
 		header := ClipLine(s.Header, width-1)
@@ -97,7 +112,7 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 	for _, r := range s.Rows {
 		idWidth = min(max(idWidth, length(taskID(r.Ref))), 16)
 	}
-	ok, failed := 0, 0
+	succeeded, failed, stopped := 0, 0, 0
 	for _, r := range s.Rows {
 		state := r.State
 		style := ""
@@ -113,42 +128,63 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 				mark = string([]rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")[tick%10])
 			}
 			text = r.Access + " · " + r.Dir + " · " + Clock(now.Sub(r.Started))
+			if r.Activity != "" {
+				text = r.Activity + " · " + text
+			}
 			if u := Usage(r.Usage); u != "" {
 				text += " · " + u
 			}
-		case "ok", "failed":
-			if state == "ok" {
+		case "succeeded", "failed", "stopped":
+			if state == "succeeded" {
 				style = "32"
 				mark = "+"
 				if utf8 {
 					mark = "✓"
 				}
-				ok++
+				succeeded++
 			} else {
 				style = "31"
 				mark = "x"
 				if utf8 {
 					mark = "✗"
 				}
-				failed++
+				if state == "stopped" {
+					stopped++
+				} else {
+					failed++
+				}
 			}
 			text = strings.TrimPrefix(r.Final, "ask "+r.Ref+" · "+state+" · ")
 			text = strings.TrimPrefix(text, r.Name+" · ")
 			if text == "" {
 				text = r.Reason
 			}
-		default:
+		case "queued":
 			text = "queued"
+		}
+		if state != "queued" && state != "" {
+			text = state + " · " + text
 		}
 		if s.Batch {
 			text = fmt.Sprintf("%s %-*s  %-*s  %s", mark, idWidth, ClipLine(taskID(r.Ref), idWidth), nameWidth, r.Name, text)
 		} else {
-			left := fmt.Sprintf("%s %s   %s", mark, r.Name, text)
-			gap := width - 1 - length(left) - length(r.Ref)
-			if gap < 2 {
-				gap = 2
+			// Keep the run handle visible even when the result text is long.
+			ref := r.Ref
+			if r.RunID != "" && r.RunID != r.Ref {
+				ref += " · id " + r.RunID
 			}
-			text = left + strings.Repeat(" ", gap) + r.Ref
+			ref = ClipLine(ref, max(0, width-3))
+			refWidth := 0
+			for _, ch := range ref {
+				refWidth += cells(ch)
+			}
+			left := ClipLine(fmt.Sprintf("%s %s   %s", mark, r.Name, text), max(0, width-3-refWidth))
+			leftWidth := 0
+			for _, ch := range left {
+				leftWidth += cells(ch)
+			}
+			gap := max(1, width-1-leftWidth-refWidth)
+			text = left + strings.Repeat(" ", gap) + ref
 		}
 		text = ClipLine(text, width-1)
 		if color && style != "" && strings.HasPrefix(text, mark) {
@@ -164,23 +200,26 @@ func Frame(s LiveState, now time.Time, tick, width, height int, color, utf8 bool
 		}
 	}
 	if s.Batch {
-		footer := fmt.Sprintf("%d/%d ok", ok, len(s.Rows))
-		if failed > 0 {
-			footer += fmt.Sprintf(" · %d failed", failed)
-		}
+		footer := counts(succeeded, failed, stopped)
 		footer += " · " + Clock(now.Sub(s.Started))
 		all := []any{}
 		for _, r := range s.Rows {
 			all = append(all, r.Usage)
 		}
 		if u := Usage(batchUsage(all)); u != "" {
-			footer += " · " + u
+			footer += " · reported: " + u
 		}
 		lines = append(lines, ClipLine(footer, width-1))
 	}
 	if height > 1 && len(lines) >= height {
-		hidden := len(lines) - height + 2
-		lines = append(lines[:height-2], ClipLine(fmt.Sprintf("%d more lines", hidden), width-1))
+		if s.Batch && height > 3 {
+			footer := lines[len(lines)-1]
+			hidden := len(lines) - height + 2
+			lines = append(lines[:height-3], ClipLine(fmt.Sprintf("%d more lines", hidden), width-1), footer)
+		} else {
+			hidden := len(lines) - height + 2
+			lines = append(lines[:height-2], ClipLine(fmt.Sprintf("%d more lines", hidden), width-1))
+		}
 	}
 	return lines
 }
@@ -203,10 +242,10 @@ func NewLive(r *runs.Run, header string, batch bool) *Live {
 	}
 	l := &Live{state: LiveState{Header: header, Batch: batch, Started: time.Now()}, color: CanStyle(os.Stderr), utf8: localeUTF8(), done: make(chan struct{})}
 	for i, t := range r.Tasks {
-		row := LiveRow{Ref: runs.Ref(r, i), Name: t.S("model"), State: "queued"}
+		row := LiveRow{Ref: runs.Ref(r, i), RunID: r.ID, Name: t.S("model"), State: "queued"}
 		if result := r.Results[i]; result.B("ok") {
 			row.Name = result.S("name")
-			row.State = "ok"
+			row.State = "succeeded"
 			row.Final = Done(result)
 			row.Usage = result.Get("usage")
 		}
@@ -292,18 +331,23 @@ func (l *Live) Update(e runs.Event, name, note string) {
 			row.Dir = "worktree " + row.Dir
 		}
 		row.State = "running"
+		row.Usage = nil
+		row.Activity = ""
 		row.Started = time.Now()
 		if _, extra, ok := strings.Cut(note, "\n"); ok {
 			row.Notes = append(row.Notes, strings.TrimPrefix(extra, "ask "+row.Ref+" · note · "))
 		}
+	case "activity":
+		row.Activity = e.Activity
 	case "usage":
 		row.Usage = e.Result
 	case "done":
+		row.Activity = ""
 		row.Usage = e.Result.Get("usage")
 		row.Name = e.Result.S("name")
 		row.State = "failed"
 		if e.Result.B("ok") {
-			row.State = "ok"
+			row.State = "succeeded"
 		}
 		row.Final = Done(e.Result)
 	default:
@@ -327,9 +371,9 @@ func (l *Live) Finish(summary string, stopped bool) {
 		for i := range l.state.Rows {
 			row := &l.state.Rows[i]
 			if row.State == "running" || row.State == "queued" {
-				row.State = "failed"
+				row.State = "stopped"
 				row.Final = ""
-				row.Reason = "stopped"
+				row.Reason = ""
 			}
 		}
 	}

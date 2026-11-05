@@ -1,4 +1,4 @@
-/* Tests for the shared package-test plumbing in helper.mjs, using node itself as the child. Run: node --test src/test/baymax */
+/* Tests for the shared package-test plumbing in helper.mjs, using node itself as the child. Run: node --test test/integration */
 import assert from 'node:assert/strict';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,7 @@ const NODE = process.execPath;
 const { nodeDir, path, tmp, env, launch } = offline(NODE, '/fake/bin');
 
 test('runProcess gives the child only the env it is passed, none by default, with input on stdin', async () => {
-  process.env.BAYMAX_LEAK = 'leaked';
+  process.env.INTEGRATION_LEAK = 'leaked';
   try {
     const script = 'let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => { console.log(JSON.stringify([Object.keys(process.env).filter((k) => k !== "__CF_USER_TEXT_ENCODING"), s])); console.error("err"); process.exit(3); });';
     const r = await runProcess(NODE, ['-e', script], { env: { ONLY: '1' }, input: 'prompt' });
@@ -19,7 +19,7 @@ test('runProcess gives the child only the env it is passed, none by default, wit
     assert.equal(r.code, 3);
     assert.deepEqual(JSON.parse((await runProcess(NODE, ['-e', script])).stdout), [[], '']);
   } finally {
-    delete process.env.BAYMAX_LEAK;
+    delete process.env.INTEGRATION_LEAK;
   }
 });
 

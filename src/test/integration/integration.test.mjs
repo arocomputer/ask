@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import { harness, packages, selection } from './integration.mjs';
 import { profiles } from './profiles.mjs';
 
-const ask = process.env.BAYMAX_ASK;
-const names = selection(process.env.BAYMAX_PACKAGES ? JSON.parse(process.env.BAYMAX_PACKAGES) : []);
+const ask = process.env.INTEGRATION_ASK;
+const names = selection(process.env.INTEGRATION_PACKAGES ? JSON.parse(process.env.INTEGRATION_PACKAGES) : []);
 
 /* Check coverage when packages are added and fail selections before any execution. */
 test('all discovered packages have profiles and unknown selections are refused', () => {
@@ -15,14 +15,14 @@ test('all discovered packages have profiles and unknown selections are refused',
 
 for (const name of names) {
   const p = profiles[name];
-  test(`${name}: installed package through real ask`, { skip: !ask && 'run via node src/test/baymax/runner.mjs', timeout: 120_000 }, async (t) => {
+  test(`${name}: installed package through real ask`, { skip: !ask && 'run via node src/test/integration/runner.mjs', timeout: 120_000 }, async (t) => {
     const s = await harness(name, ask);
     t.after(s.cleanup);
     let first;
     await t.test('write answer, usage and session reach the run record', async () => {
-      const out = await s.run(['-m', `${name}:${p.model}`, '-w', 'task']);
+      const out = await s.run(['-m', `${name}:${p.model}`, '--wait', '-w', 'task']);
       assert.equal(out.code, 0, out.stderr);
-      const answer = p.answer || 'baymax answer';
+      const answer = p.answer || 'integration answer';
       assert.equal(out.stdout, `${answer}\n`);
       first = s.record(out);
       assert.equal(first.task.model, `${name}:${p.model}`);
@@ -36,7 +36,7 @@ for (const name of names) {
     });
     await t.test(p.read === false ? 'read is refused before any prompt is sent' : 'read succeeds and is recorded as read access', async () => {
       const before = s.calls().length;
-      const out = await s.run(['-m', `${name}:${p.model}`, '-r', 'task']);
+      const out = await s.run(['-m', `${name}:${p.model}`, '--wait', '-r', 'task']);
       const { result } = s.record(out);
       if (p.read === false) {
         assert.equal(out.code, 1, out.stderr);
@@ -47,7 +47,7 @@ for (const name of names) {
         else assert.deepEqual(calls, []);
       } else {
         assert.equal(out.code, 0, out.stderr);
-        assert.equal(out.stdout, `${p.answer || 'baymax answer'}\n`);
+        assert.equal(out.stdout, `${p.answer || 'integration answer'}\n`);
         assert.equal(result.ok, true);
         assert.equal(result.write, false);
         reading(name, s.calls().slice(before));
@@ -56,7 +56,7 @@ for (const name of names) {
     await t.test(p.session === false ? 'sessionless runs cannot be continued' : 'continuation passes the saved session to the fake CLI', async () => {
       assert.ok(first, 'initial run must succeed');
       const before = s.calls().length;
-      const out = await s.run(['-c', first.id, 'task']);
+      const out = await s.run(['-c', first.id, '--wait', 'task']);
       if (p.session === false) {
         assert.equal(out.code, 2, out.stderr);
         assert.match(out.stderr, /reported no session/);
@@ -67,7 +67,7 @@ for (const name of names) {
         assert.equal(task.session, first.result.session);
         assert.equal(task.continues, first.id);
         assert.equal(result.session, first.result.session);
-        assert.equal(result.answer, p.answer || 'baymax answer');
+        assert.equal(result.answer, p.answer || 'integration answer');
         const native = name === 'amp' ? JSON.parse(task.session)[1] : task.session.replace(/^ask-read:/, '');
         assert.ok(JSON.stringify(s.calls().slice(before)).includes(native), 'CLI received the persisted session');
         assert.deepEqual(result.usage, Object.hasOwn(p, 'continuationUsage') ? p.continuationUsage : p.usage);
@@ -75,7 +75,7 @@ for (const name of names) {
     });
     await t.test('harness failure is persisted without a successful answer', async () => {
       const before = s.calls().length;
-      const out = await s.run(['-m', `${name}:${p.model}`, '-w', 'fail'], p.failure || { FAKE_FAIL: 'fail' });
+      const out = await s.run(['-m', `${name}:${p.model}`, '--wait', '-w', 'fail'], p.failure || { FAKE_FAIL: 'fail' });
       assert.equal(out.code, 1, out.stderr);
       const { result } = s.record(out);
       assert.equal(result.ok, false);

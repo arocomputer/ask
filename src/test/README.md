@@ -8,12 +8,12 @@ The documented review-command test uses `jq` and skips when it is not installed;
 Go tests need only Go, git and a POSIX shell.
 
 ```sh
-./x test                                    # everything, including src/ unit tests
+./x test                                     # everything, including src/ unit tests
 ./x test ./src/test -run 'TestRuns'             # one feature
 ./x test ./src/test -run 'TestRuns/stop_stops'  # one behavior
-./x baymax                               # packaged harnesses, offline through real ask
-./x baymax copilot                        # Copilot only
-./x baymax copilot pi                     # Copilot and Pi, checked separately
+./x integration                              # packaged harnesses, offline through real ask
+./x integration copilot                      # Copilot only
+./x integration copilot pi                   # Copilot and Pi, checked separately
 ```
 
 ## Local latency (opt-in)
@@ -43,9 +43,9 @@ observations with no latency pass/fail threshold. Normal tests and `./x check` d
 
 ## One file per feature
 
-Packaged harness checks are owned by [Baymax](../../docs/contributing/baymax.md), in
-`src/test/baymax/`. It replaces the old `./x node` package loop (now an alias), shares adapter-test
-process/report plumbing, and tests installed packages through the real binary using simulators.
+Packaged harness [integration checks](../../docs/contributing/integration.md) live in
+`src/test/integration/`. The runner shares adapter-test process/report plumbing and tests
+installed packages through the real binary using simulators.
 It requires no vendor CLIs, credentials or running agents. Harness-specific assertions and
 fake CLI protocols stay in `packages/NAME/test/`.
 
@@ -58,12 +58,15 @@ docs page for that feature.
 | `batch_test.go` | `ask batch`: task files, defaults, parallel results, `--resume` | batches.md |
 | `bench_test.go` | `ask bench`: every task on every model, checks, worktrees, the report | bench.md |
 | `latency_test.go` | Opt-in local startup and fake-task end-to-end timings | this page |
+| `detached_test.go` | Detached handoff: admission, lifecycle, private logs, cancellation, failures | runs.md |
+| `activity_test.go` | Saved activity, live following and byte-cursor pages | runs.md |
 | `runs_test.go` | Saved runs: `runs`, `show`, `wait`, `stop`, `clean`, locks, private state | runs.md |
 | `names_test.go` | Run names: from the prompt, taken over by follow-ups, name hooks | runs.md |
-| `followups_test.go` | `-c`: which session, model and access a follow-up gets | runs.md |
+| `followups_test.go` | `continue`, `-c`: follow-ups, state-based recovery, blockers and live session persistence | runs.md |
 | `git_test.go` | What write runs report from git, and `--worktree` | usage.md |
+| `environment_test.go` | Agent inheritance, adapter declarations, integration refusals and hook preservation | environment.md |
 | `agents_test.go` | The agent contract: stdin, environment, schema files, reports | agents.md |
-| `models_test.go` | `models.json`, models on and off, cost limits | models.md |
+| `models_test.go` | `models.json`, model roles and discovery, models on and off, cost limits | models.md |
 | `hooks_test.go` | Task and result hooks: order, refusals, follow-ups, failing open | hooks.md |
 | `commands_test.go` | Your own `ask NAME` commands and the documented large-diff review example | commands.md |
 | `packages_test.go` | `ask install` (including package updates), `remove`; official agents; refused sources | packages.md |

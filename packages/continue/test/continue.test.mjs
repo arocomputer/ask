@@ -4,7 +4,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { offline, readJson, readJsonl } from '../../../src/test/baymax/helper.mjs';
+import { offline, readJson, readJsonl } from '../../../src/test/integration/helper.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const NAME = 'continue';

@@ -7,11 +7,13 @@
  * The first event reports the session for follow-ups; unfinished usage comes from the version's
  * export command. Started by agents/opencode; ASK_OPENCODE_BIN overrides executable discovery.
  */
+import { activity } from './activity.mjs';
 import { randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 import { accessSync, constants, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { checkEnvironment } from './environment.mjs';
 
 // Put before a new read run's prompt, so the answer comes from the code rather than a guess.
 const GROUNDING = 'Answer from the files in your working directory: search and read them before answering. Never guess file names, functions or facts; if you cannot find something, say so.\n\n';
@@ -108,11 +110,16 @@ const STEPS = { read: 25, write: 100 };
 
 /*
  * Version-specific config injected through OPENCODE_CONFIG_CONTENT for the selected agent.
- * Read runs get no shell: rules over a command's text cannot follow everything a shell expands.
+ * Deny the model's shell tool: rules over command text cannot follow shell expansion. Preserve
+ * inline auth, instructions and plugin hooks instead of replacing the user's entire config.
  */
 function config(write, agent) {
+  let configured;
+  try { configured = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT || '{}'); }
+  catch { throw new Error('invalid OPENCODE_CONFIG_CONTENT; cannot preserve inline provider and hook settings'); }
+  if (!configured || Array.isArray(configured) || typeof configured !== 'object') throw new Error('OPENCODE_CONFIG_CONTENT must be an object');
   if (VERSION === 1) {
-    return JSON.stringify({ agent: { [agent]: write ? { steps: STEPS.write } : {
+    return JSON.stringify({ ...configured, agent: { ...configured.agent, [agent]: write ? { ...configured.agent?.[agent], steps: STEPS.write } : {
       description: 'Read files to answer without modifying the project',
       mode: 'primary',
       steps: STEPS.read,
@@ -122,7 +129,11 @@ function config(write, agent) {
   const rule = (action, resource, effect) => ({ action, resource, effect });
   const readOnly = [rule('*', '*', 'deny'), ...['read', 'grep', 'glob'].map((action) => rule(action, '*', 'allow'))];
   return JSON.stringify({
-    agents: write ? { build: { steps: STEPS.write } } : { plan: { steps: STEPS.read, permissions: readOnly } },
+    ...configured,
+    agents: { ...configured.agents, [agent]: {
+      ...configured.agents?.[agent], steps: STEPS[write ? 'write' : 'read'],
+      ...(write ? {} : { permissions: readOnly }),
+    } },
   });
 }
 
@@ -156,7 +167,10 @@ function exec(command, args, { input = '', env, onLine } = {}) {
     child.stderr.on('data', (d) => (stderr += d));
     child.on('error', (error) => (stderr += `${error.message}\n`));
     child.stdin.on('error', () => {});
-    child.on('close', (code) => resolve({ code, stdout, stderr }));
+    child.on('close', (code) => {
+      if (onLine && seen < stdout.length) onLine(stdout.slice(seen));
+      resolve({ code, stdout, stderr });
+    });
     child.stdin.end(input);
   });
 }
@@ -213,7 +227,9 @@ if (!CLI) {
 }
 
 let VERSION;
+let environmentNote;
 try {
+  environmentNote = checkEnvironment();
   VERSION = cliVersion();
 } catch (error) {
   console.error(error.message);
@@ -245,12 +261,14 @@ await adapter({
     const usage = {};
     const unfinished = new Set();
     const finished = new Set();
-    const add = ({ tokens: t = {}, cost }) => {
+    const add = ({ tokens, cost }) => {
+      const t = tokens || {};
       usage.input = (usage.input || 0) + (t.input || 0);
       usage.output = (usage.output || 0) + (t.output || 0) + (t.reasoning || 0);
       usage.cached = (usage.cached || 0) + (t.cache?.read || 0);
       if (typeof cost === 'number') usage.cost = (usage.cost || 0) + cost;
     };
+    const onActivity = activity();
     const onLine = (line) => {
       const id = !sessionId && /"sessionID":"([^"]+)"/.exec(line)?.[1];
       if (id) report({ session: (sessionId = id) });
@@ -260,6 +278,8 @@ await adapter({
       } catch {
         return;
       }
+      if (!event || typeof event !== 'object' || Array.isArray(event)) return;
+      try { onActivity(event); } catch {} // Optional activity must never fail the turn.
       if (event.type === 'error') failure ??= event.error?.message || 'error';
       if (event.type === 'step_start') steps++;
       // Every step's events carry its message id; Opencode 2.0 sometimes prints only an answer's text.
@@ -290,6 +310,6 @@ await adapter({
     if (failure) return { ok: false, error: failure, usage };
     if (r.code !== 0 || !text) return { ok: false, error: text ? `exit ${r.code}` : `no answer (exit ${r.code})`, usage };
     const capped = steps >= STEPS[write ? 'write' : 'read'];
-    return { ok: true, text, note: capped ? 'hit step cap; answer may be partial' : '', usage };
+    return { ok: true, text, note: [capped ? 'hit step cap; answer may be partial' : '', environmentNote].filter(Boolean).join('; '), usage };
   },
 });

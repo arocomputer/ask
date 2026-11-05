@@ -1,7 +1,7 @@
 # kilo
 
 The official ask agent for [Kilo CLI](https://kilo.ai/cli), the terminal agent from Kilo Code. It
-runs `kilo run` for ask, so `ask -m kilo:claude-sonnet-5.5 "..."` hands a task to Kilo.
+runs `kilo run` for ask, so `ask --model kilo:claude-sonnet-5.5 "..."` hands a task to Kilo.
 
 ## Install
 
@@ -51,7 +51,7 @@ the injected one and can change its rules or `default_agent`.
 
 ## Follow-ups
 
-Every event carries Kilo's session id; the agent reports it at once, so `ask -c RUN` continues the
+Every event carries Kilo's session id; the agent reports it at once, so `ask continue RUN "prompt"` continues the
 session with `--session`. A follow-up's prompt is passed as is.
 
 ## Title and usage

@@ -27,7 +27,9 @@ A hook is any executable. ask calls it with one argument, the event:
 - **`task`** is the task about to run: `id`, `prompt`, `model`, `write`, `json`, `schema`, `dir`,
   `timeout`, and for a follow-up `continues`. A hook may change `prompt`, `model`, `write`, `json`,
   `timeout` and `schema`; ask ignores other changes, and says so.
-- **`result`** is the task's result, as `ask show RUN --json` prints it.
+- **`result`** is the task's result, as `ask show RUN --json` prints it. JSON/schema validation
+  failures include `raw_answer`, the unmodified agent stdout, for inspection or a focused repair
+  follow-up. It is private task content; avoid copying it into hook notes or logs.
 - **`followup`** asks the same agent, in the same conversation and place, to keep working. Its new
   result goes through the result hooks again, up to three follow-ups per task. The task's final
   result combines every round: the last answer, with the time, usage and changes of all of them.
@@ -42,10 +44,10 @@ isn't a JSON object changes nothing; ask notes it and carries on. Only an explic
 `fail`, a string, stops a task; any other value is noted and ignored. Every note and follow-up shows as a status line:
 
 ```text
-ask add-sub-function-calc · started · Haiku 4.5 · write · ~/code/calc
+ask add-sub-function-calc · running · Haiku 4.5 · write · ~/code/calc
 ask add-sub-function-calc · note · hook verify · go test ./... fails
 ask add-sub-function-calc · follow-up · hook verify · `go test ./...` fails after your change. Fix it:
-ask add-sub-function-calc · ok · Haiku 4.5 · 21.4s · 1 file changed · 203.7k in · 1.0k out · $0.07
+ask add-sub-function-calc · succeeded · Haiku 4.5 · 21.4s · 1 file changed · 203.7k in · 1.0k out · $0.07
 Fixed: Add was returning `a - b` instead of `a + b`.
 ```
 
@@ -122,7 +124,7 @@ jq -c --arg context "$context" '{task: {prompt: ($context + "\n\n" + .task.promp
 ```
 
 ```text
-$ ask -m claude:haiku-4.5 "What am I in the middle of? One sentence."
+$ ask --wait --model claude:haiku-4.5 "What am I in the middle of? One sentence."
 You're in the middle of modifying `calc.go` on the main branch after an initial commit.
 ```
 

@@ -54,6 +54,9 @@ func install(p home.Paths, words []string) (int, error) {
 func checkAgents(p home.Paths, dir string) bool {
 	ready := true
 	for _, name := range find.List(filepath.Join(dir, "agents")) {
+		if strings.HasSuffix(name, ".environment.json") {
+			continue
+		}
 		path := filepath.Join(dir, "agents", name)
 		if used := find.Path(p, "agents", name); used != path {
 			fmt.Fprintf(os.Stderr, "ask: %s: %s is used instead of this package's; remove it to use this one\n", name, home.Tilde(used))
@@ -72,7 +75,11 @@ func checkAgents(p home.Paths, dir string) bool {
 
 // readiness runs NAME models from path: ready with a note about its models, or not with the reason.
 func readiness(p home.Paths, name, path string) (bool, string) {
-	r := process.Run(path, []string{"models"}, process.Options{Env: p.Env(nil), Timeout: 60 * time.Second})
+	env, err := p.AgentEnv(name, path, nil)
+	if err != nil {
+		return false, err.Error()
+	}
+	r := process.Run(path, []string{"models"}, process.Options{Env: env, Timeout: 60 * time.Second})
 	if r.Code != 0 {
 		why := process.Reason(r.Stderr)
 		if why == "" {

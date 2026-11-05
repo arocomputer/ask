@@ -27,6 +27,12 @@ built into the ask binary so `ask install NAME` needs no download:
 Installing these packages connects ask to existing CLIs; it does not install or authenticate
 them. All official agents need Node.js 18 or newer. See each package's README for prerequisites.
 
+Use `ask -m MODEL "prompt"`, or set a default model and use `ask "prompt"`. A launch prints
+its run ID; use `ask wait RUN` for the answer, or add `--wait` to the launch to wait directly.
+`ask continue RUN "prompt"` follows up in the saved conversation, inheriting model and access;
+write access may run commands. Without a prompt, `ask continue RUN` recovers unfinished work.
+See [Runs](../docs/runs.md) for details.
+
 They get no special treatment: each uses only the agent contract in
 [docs/agents.md](../docs/agents.md), the same one anyone's agent uses. ask's core knows nothing
 about them; `.github/checks/guard.sh` checks that.
@@ -42,6 +48,7 @@ a source build. OpenCode remains one package and uses the installed executable, 
 ```text
 packages/NAME/
 ├── agents/NAME      a small sh launcher that finds Node.js 18+ and runs lib/NAME.mjs
+├── agents/NAME.environment.json  optional environment defaults and supported integration keys
 ├── lib/NAME.mjs     the agent: runs the CLI, maps access and models, writes the report
 ├── test/            node --test, against a fake CLI in test/bin
 └── README.md        what a user needs: install, models, read and write
@@ -51,18 +58,25 @@ packages/NAME/
 `~/.ask/packages/ask/packages/NAME`, and ask rewrites that copy whenever its own build differs, so
 an installed agent always matches the ask running it.
 
+The six `ASK_EVENTS` writers keep identical `lib/activity-writer.mjs` copies inside their own
+packages. A cross-package runtime import would break independent installation; generating or
+copying files at build/install time would add machinery for a small helper. Update the copies
+together. Only the regression suite is shared, in `packages/test/activity-writer.mjs`; each
+provider's test entry runs it through the existing `node --test` and Baymax commands. Native
+event projections stay beside their providers and intentionally differ with the CLI schemas.
+
 ## Working on one
 
 ```sh
-./x baymax                    # every official agent, offline through real ask
-./x baymax claude              # one harness, adapter tests and integration
+./x integration           # every official agent, offline through real ask
+./x integration claude    # one harness, adapter tests and integration
 cd packages/claude && node --test
 ```
 
 The agents use Node.js built-ins only. A change to what users see goes in that folder's
 `README.md` and in `CHANGELOG.md`.
 
-[Baymax](../docs/contributing/baymax.md) replaces the old package-test loop (`./x node` remains
-an alias) and shares test process/report plumbing. Tests need no installed coding CLIs,
+[Integration checks](../docs/contributing/integration.md) share test process/report plumbing.
+Tests need no installed coding CLIs,
 credentials or running agents; harness-specific assertions and simulators remain beside each
 package. A pass verifies covered simulator contracts, not live provider compatibility.

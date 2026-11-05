@@ -5,8 +5,8 @@ import { join, relative } from 'node:path';
 import { test } from 'node:test';
 import { harness, root, selection } from './integration.mjs';
 
-const ask = process.env.BAYMAX_ASK;
-const names = selection(process.env.BAYMAX_PACKAGES ? JSON.parse(process.env.BAYMAX_PACKAGES) : []);
+const ask = process.env.INTEGRATION_ASK;
+const names = selection(process.env.INTEGRATION_PACKAGES ? JSON.parse(process.env.INTEGRATION_PACKAGES) : []);
 
 /* Return every shipped resource, including nested helper files required at runtime. */
 function resources(dir) {
@@ -17,7 +17,7 @@ function resources(dir) {
 }
 
 for (const name of names) {
-  test(`${name}: package lifecycle`, { skip: !ask && 'run via ./x baymax', timeout: 60_000 }, async (t) => {
+  test(`${name}: package lifecycle`, { skip: !ask && 'run via ./x integration', timeout: 60_000 }, async (t) => {
     const s = await harness(name, ask);
     t.after(s.cleanup);
     const source = join(root, 'packages', name);
@@ -27,7 +27,8 @@ for (const name of names) {
       for (const file of files) {
         const target = join(installed, file);
         assert.deepEqual(readFileSync(target), readFileSync(join(source, file)), `${name}/${file}`);
-        if (file.startsWith('agents/')) assert.ok(statSync(target).mode & 0o111, `${file} is executable`);
+        if (file.endsWith('.environment.json')) assert.equal(statSync(target).mode & 0o111, 0, `${file} is data`);
+        else if (file.startsWith('agents/')) assert.ok(statSync(target).mode & 0o111, `${file} is executable`);
       }
       assert.equal(existsSync(join(installed, 'test')), false, 'simulators are never installed');
     });
@@ -35,7 +36,7 @@ for (const name of names) {
       const own = join(s.env.ASK_HOME, 'agents');
       mkdirSync(own, { recursive: true });
       const override = join(own, name);
-      const content = '#!/bin/sh\necho baymax-user-model\n';
+      const content = '#!/bin/sh\necho integration-user-model\n';
       writeFileSync(override, content, { mode: 0o755 });
       writeFileSync(join(installed, '.ask-version'), 'previous-build\n');
       writeFileSync(join(installed, 'README.md'), 'stale resource\n');

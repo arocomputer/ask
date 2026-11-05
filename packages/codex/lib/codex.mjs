@@ -11,6 +11,8 @@ import { spawn } from 'node:child_process';
 import { accessSync, constants, mkdtempSync, readFileSync, rmSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { checkEnvironment } from './environment.mjs';
+import { createActivity } from './activity.mjs';
 
 // Put before a new read run's prompt, so the answer comes from the code rather than a guess.
 const GROUNDING = 'Answer from the files in your working directory: search and read them before answering. Never guess file names, functions or facts; if you cannot find something, say so.\n\n';
@@ -185,6 +187,10 @@ if (!CLI) {
   process.exit(1);
 }
 
+let environmentNote;
+try { environmentNote = checkEnvironment(); }
+catch (error) { console.error(error.message); process.exit(1); }
+
 await adapter({
   models: () => cachedModels().map((m) => [m.slug, displayName(m)]),
 
@@ -207,20 +213,39 @@ await adapter({
       args.push(...(session ? [session, '-'] : ['-']));
       // --json streams events on stdout; each finished turn reports its tokens (Codex reports no cost).
       const usage = { input: 0, output: 0, cached: 0 };
+      const activityEvent = createActivity();
       let sessionId;
+      let activity = '';
+      const activities = new Map([
+        ['reasoning', 'thinking'], ['command_execution', 'running commands'],
+        ['file_change', 'editing files'], ['web_search', 'searching'],
+        ['mcp_tool_call', 'using tools'], ['agent_message', 'answering'],
+      ]);
       const onLine = (line) => {
-        if (line.includes('"thread.started"')) {
-          sessionId = JSON.parse(line).thread_id;
+        let event;
+        try { event = JSON.parse(line); } catch { return; }
+        if (!event || typeof event !== 'object') return;
+        // Optional activity must never interfere with the answer, usage or session report.
+        try { activityEvent(event); } catch {}
+        if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
+          sessionId = event.thread_id;
           report({ session: sessionId });
         }
-        if (!line.includes('"turn.completed"')) return;
-        try {
-          const u = JSON.parse(line).usage || {};
-          usage.input += u.input_tokens || 0;
-          usage.output += (u.output_tokens || 0) + (u.reasoning_output_tokens || 0);
-          usage.cached += u.cached_input_tokens || 0;
-          report({ ...usage });
-        } catch {}
+        // The report keeps fixed labels only; visible text belongs in the optional activity sink.
+        if (['item.started', 'item.updated', 'item.completed'].includes(event.type)) {
+          const category = activities.get(event.item?.type);
+          if (category && category !== activity) {
+            activity = category;
+            report({ activity });
+          }
+        }
+        if (event.type !== 'turn.completed') return;
+        const u = event.usage || {};
+        usage.input += u.input_tokens || 0;
+        usage.output += (u.output_tokens || 0) + (u.reasoning_output_tokens || 0);
+        usage.cached += u.cached_input_tokens || 0;
+        activity = '';
+        report({ ...usage, activity });
       };
       const r = await exec(CLI, args, { input: prompt, onLine });
       if (title && sessionId) await nameThread(CLI, sessionId, title);
@@ -229,7 +254,7 @@ await adapter({
       try {
         text = readFileSync(out, 'utf8');
       } catch {}
-      if (r.code === 0 && text.trim()) return { ok: true, text, usage, name };
+      if (r.code === 0 && text.trim()) return { ok: true, text, usage, name, note: environmentNote };
       // Codex reports API errors as JSON on either stream; give its message, not a closing brace.
       const messages = [...(r.stderr + '\n' + r.stdout).matchAll(/"message":\s*"((?:[^"\\]|\\.)*)"/g)].map((match) => match[1]);
       const lines = r.stderr.trim().split('\n').filter((line) => /\w/.test(line));

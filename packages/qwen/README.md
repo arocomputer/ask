@@ -1,7 +1,7 @@
 # qwen
 
 The official ask agent for [Qwen Code](https://github.com/QwenLM/qwen-code). It runs `qwen` headless
-for ask, so `ask -m qwen:qwen-3-coder-plus "..."` hands a task to Qwen Code.
+for ask, so `ask --model qwen:qwen-3-coder-plus "..."` hands a task to Qwen Code.
 
 ## Install
 
@@ -39,7 +39,7 @@ pretend. Use another agent for read-only questions.
 
 ## Follow-ups
 
-The session id of Qwen Code's first event is reported to ask at once, so `ask -c RUN` continues it
+The session id of Qwen Code's first event is reported to ask at once, so `ask continue RUN "prompt"` continues it
 with `--resume`.
 
 ## Usage and limits

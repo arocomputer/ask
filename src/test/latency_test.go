@@ -17,7 +17,7 @@ func BenchmarkLatency(b *testing.B) {
 		args []string
 	}{
 		{"startup", []string{"help"}},
-		{"task", []string{"--model", "fake:small", "--read", "--timeout", "10", "hello"}},
+		{"task", []string{"--wait", "--model", "fake:small", "--read", "--timeout", "10", "hello"}},
 	} {
 		b.Run(c.name, func(b *testing.B) {
 			b.StopTimer()
@@ -49,7 +49,7 @@ func BenchmarkLatency(b *testing.B) {
 				}
 				calls := s.calls()
 				if c.name == "startup" {
-					if !strings.Contains(stdout.String(), "ask --model MODEL") || len(calls) != 0 {
+					if !strings.Contains(stdout.String(), "ask [options] PROMPT") || len(calls) != 0 {
 						b.Fatalf("expected help without an agent call; stdout=%q calls=%v", stdout.String(), calls)
 					}
 					continue

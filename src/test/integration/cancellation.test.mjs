@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { execute, isolated, root } from './integration.mjs';
 
-const ask = process.env.BAYMAX_ASK;
+const ask = process.env.INTEGRATION_ASK;
 
 /* A zombie is stopped but may await reaping by the system's init process on Linux. */
 function alive(pid) {
@@ -34,14 +34,14 @@ async function until(check) {
 
 /* Register emergency process cleanup before launch, even if an assertion fails. */
 function fixture(t) {
-  const s = isolated('ask-baymax-stop-');
+  const s = isolated('ask-integration-stop-');
   const pidFile = join(s.dir, 'pids.json');
   const agents = join(s.env.ASK_HOME, 'agents');
   mkdirSync(agents, { recursive: true });
   const agent = join(agents, 'sleeper');
-  copyFileSync(join(root, 'src', 'test', 'baymax', 'fixtures', 'sleeper'), agent);
+  copyFileSync(join(root, 'src', 'test', 'integration', 'fixtures', 'sleeper'), agent);
   chmodSync(agent, 0o755);
-  s.env.BAYMAX_PIDS = pidFile;
+  s.env.INTEGRATION_PIDS = pidFile;
   s.pids = () => existsSync(pidFile) ? JSON.parse(readFileSync(pidFile, 'utf8')) : [];
   t.after(() => {
     for (const pid of s.pids()) {
@@ -52,9 +52,9 @@ function fixture(t) {
   return s;
 }
 
-test('a task timeout stops the agent and its descendants and records failure', { skip: !ask && 'run via ./x baymax', timeout: 20_000 }, async (t) => {
+test('a task timeout stops the agent and its descendants and records failure', { skip: !ask && 'run via ./x integration', timeout: 20_000 }, async (t) => {
   const s = fixture(t);
-  const out = await execute(ask, ['-m', 'sleeper:slow', '-w', '-t', '1', 'wait'], { cwd: s.work, env: s.env, timeout: 15_000 });
+  const out = await execute(ask, ['-m', 'sleeper:slow', '--wait', '-w', '-t', '1', 'wait'], { cwd: s.work, env: s.env, timeout: 15_000 });
   assert.equal(out.code, 1, out.stderr);
   assert.equal(s.pids().length, 2, 'the simulated agent really launched its child');
   await until(() => s.pids().every((pid) => !alive(pid)));
@@ -65,9 +65,9 @@ test('a task timeout stops the agent and its descendants and records failure', {
   assert.match(result.error, /timed out|timeout/i);
 });
 
-test('ask stop shuts down the entire running agent tree', { skip: !ask && 'run via ./x baymax', timeout: 20_000 }, async (t) => {
+test('ask stop shuts down the entire running agent tree', { skip: !ask && 'run via ./x integration', timeout: 20_000 }, async (t) => {
   const s = fixture(t);
-  const running = execute(ask, ['-m', 'sleeper:slow', '-w', 'stop me'], { cwd: s.work, env: s.env, timeout: 15_000 });
+  const running = execute(ask, ['-m', 'sleeper:slow', '--wait', '-w', 'stop me'], { cwd: s.work, env: s.env, timeout: 15_000 });
   // Attach a rejection handler immediately; later assertions still await the original promise.
   running.catch(() => {});
   await until(() => s.pids().length === 2);

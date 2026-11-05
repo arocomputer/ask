@@ -61,5 +61,5 @@ jobs:
       # The platform-specific parts; source and workflow checks run on Linux.
       - run: ./x lint
       - run: ./x test
-      - run: ./x baymax
+      - run: ./x integration
       - run: sh install.sh --dir "$RUNNER_TEMP/ask" && "$RUNNER_TEMP/ask/ask" --version

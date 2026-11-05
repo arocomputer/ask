@@ -87,6 +87,21 @@ func (d *draft) set(key, value string) error {
 	var v any = value
 	if value == "" {
 		v = nil
+	} else if key == "worktree" {
+		switch value {
+		case "on", "true", "yes":
+			v = true
+		case "off", "false", "no":
+			v = false
+		default:
+			return home.Usage("worktree is on or off, not %q", value)
+		}
+	} else if key == "roles" {
+		roles, e := home.ParseRoles(value)
+		if e != nil {
+			return e
+		}
+		v = roles
 	} else if key == "timeout" || key == "jobs" || key == "max_cost" {
 		n, e := strconv.ParseFloat(strings.TrimPrefix(value, "$"), 64)
 		if e != nil {
@@ -94,8 +109,8 @@ func (d *draft) set(key, value string) error {
 		}
 		v = n
 	}
-	if name, id, _ := strings.Cut(value, ":"); key == "model" && value != "" && (name == "" || id == "") {
-		return home.Usage("model must be agent:id[#effort], like claude:sonnet-5.5, not %q", value)
+	if name, id, _ := strings.Cut(value, ":"); key == "model" && value != "" && (name == "" || id == "") && !home.Roles(s).Has(value) {
+		return home.Usage("model must be agent:id[#effort] or a configured role (ask models --roles), not %q", value)
 	}
 	s.Set(key, v)
 	if v == nil {
@@ -171,12 +186,14 @@ func (d *draft) changes() ([]tui.Change, error) {
 func (d *draft) mustChanges() []tui.Change { c, _ := d.changes(); return c }
 
 // apply saves the draft, saying how each part went, and starts a new draft from the result. It
-// returns false when an agent it installed isn't ready.
+// returns false if any operation fails, including readiness checks or reloading saved state.
+// Independent operations still run; partial application is not rolled back.
 func (d *draft) apply(say func(string, string)) bool {
 	ready := true
 	for name := range d.remove {
 		if line, e := packages.Remove(d.p, "ask/packages/"+name); e != nil {
 			say("✗", e.Error())
+			ready = false
 		} else {
 			say("✓", line)
 		}
@@ -186,11 +203,14 @@ func (d *draft) apply(say func(string, string)) bool {
 	}
 	fail := func(e error) {
 		if e != nil {
+			ready = false
 			say("✗", e.Error())
 		}
 	}
 	fail(d.p.WriteSettings(d.settings))
-	if saved, _ := d.p.ReadModels(); home.ModelsText(saved) != home.ModelsText(d.models) {
+	if saved, e := d.p.ReadModels(); e != nil {
+		fail(e)
+	} else if home.ModelsText(saved) != home.ModelsText(d.models) {
 		fail(d.p.WriteModels(d.models))
 	}
 	if d.hook != setup.HookOn() {
@@ -201,8 +221,12 @@ func (d *draft) apply(say func(string, string)) bool {
 			fail(setup.WriteSkill(h))
 		}
 	}
-	if next, e := newDraft(d.p); e == nil {
-		*d = *next
+	if ready {
+		if next, e := newDraft(d.p); e == nil {
+			*d = *next
+		} else {
+			fail(e)
+		}
 	}
 	return ready
 }
@@ -224,7 +248,9 @@ func (d *draft) review(t *tui.Prompter) (bool, error) {
 	if e != nil || !yes {
 		return false, e
 	}
-	d.apply(t.Say)
+	if !d.apply(t.Say) {
+		return false, fmt.Errorf("could not apply all changes; some changes may already be saved")
+	}
 	t.Say("✓", "saved")
 	return true, nil
 }
@@ -323,7 +349,9 @@ func settingsCommand(p home.Paths, opts home.Object, words []string) (int, error
 		if opts.B("--dry-run") {
 			return 0, nil
 		}
-		d.apply(func(mark, text string) { fmt.Fprintln(os.Stderr, mark+" "+text) })
+		if !d.apply(func(mark, text string) { fmt.Fprintln(os.Stderr, mark+" "+text) }) {
+			return 1, nil
+		}
 		return 0, nil
 	}
 	if len(words) > 1 {
@@ -363,7 +391,7 @@ func getSettings(p home.Paths, key string, asJSON bool) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	defaults := home.O("timeout", 900.0, "jobs", 4.0, "max_cost", 0.0, "worktrees", "~/.ask/worktrees/{name}", "branches", "ask/{name}")
+	defaults := home.O("roles", home.Object{}, "timeout", 900.0, "jobs", 4.0, "max_cost", 0.0, "worktrees", "~/.ask/worktrees/{name}", "branches", "ask/{name}", "worktree", false)
 	values := home.Object{}
 	for _, k := range home.Settings {
 		if s.Has(k) {
@@ -392,7 +420,9 @@ func getSettings(p home.Paths, key string, asJSON bool) (int, error) {
 			fmt.Fprintln(os.Stdout, home.JSON(v, false))
 		case v == nil:
 			fmt.Fprintln(os.Stdout)
-		case key == "hook":
+		case key == "roles":
+			fmt.Fprintln(os.Stdout, home.JSON(v, false))
+		case key == "hook" || key == "worktree":
 			fmt.Fprintln(os.Stdout, map[bool]string{true: "on", false: "off"}[v == true])
 		default:
 			fmt.Fprintln(os.Stdout, home.String(v))

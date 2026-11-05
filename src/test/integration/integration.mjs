@@ -1,4 +1,4 @@
-/* Isolated subprocesses and homes for Baymax; no developer credentials reach children. */
+/* Isolated subprocesses and homes for integration tests; no developer credentials reach children. */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -28,7 +28,7 @@ export function execute(command, args, options = {}) {
 }
 
 /* Create a disposable HOME and a PATH containing only Node and explicitly linked fake CLIs. */
-export function isolated(prefix = 'ask-baymax-') {
+export function isolated(prefix = 'ask-integration-') {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   const home = join(dir, 'home'), bin = join(dir, 'bin'), work = join(dir, 'work');
   for (const path of [home, bin, work, join(dir, 'tmp')]) mkdirSync(path);
@@ -44,14 +44,14 @@ export function isolated(prefix = 'ask-baymax-') {
 export async function harness(name, ask) {
   const profile = profiles[name];
   if (!profile) throw new Error(`missing integration profile for ${name}`);
-  const s = isolated(`ask-baymax-${name}-`);
+  const s = isolated(`ask-integration-${name}-`);
   try {
     const cli = profile.cli || name;
     symlinkSync(join(root, 'packages', name, 'test', 'bin', cli), join(s.bin, cli));
     Object.assign(s.env, {
       [`ASK_${name.toUpperCase()}_BIN`]: join(s.bin, cli),
       FAKE_LOG: join(s.dir, 'calls.jsonl'), FAKE_STATE: join(s.dir, 'state.json'),
-      FAKE_ANSWER: 'baymax answer', ...profile.env,
+      FAKE_ANSWER: 'integration answer', ...profile.env,
       CODEX_HOME: join(s.home, 'codex'), COPILOT_HOME: join(s.home, 'copilot'), QWEN_HOME: join(s.home, 'qwen'),
     });
     if (name === 'qwen') {
@@ -66,7 +66,7 @@ export async function harness(name, ask) {
     const runs = join(s.env.ASK_HOME, 'runs');
     s.run = async (args, extra = {}) => {
       const before = new Set(existsSync(runs) ? readdirSync(runs) : []);
-      const bounded = ['-m', '-c'].includes(args[0]) ? ['-t', '10', ...args] : args;
+      const bounded = ['--wait', '-m', '-c'].includes(args[0]) ? ['-t', '10', ...args] : args;
       const out = await execute(ask, bounded, { cwd: s.work, env: { ...s.env, ...extra } });
       const created = (existsSync(runs) ? readdirSync(runs) : []).filter((dir) => !before.has(dir));
       return { ...out, runDir: created.length === 1 ? join(runs, created[0]) : undefined };
@@ -82,6 +82,14 @@ export async function harness(name, ask) {
     if (installed.code !== 0) throw new Error(`install ${name}: ${installed.stderr}`);
     const launcher = join(s.env.ASK_HOME, 'packages', 'ask', 'packages', name, 'agents', name);
     if (!existsSync(launcher)) throw new Error(`install did not write ${launcher}`);
+    const manifest = `${launcher}.environment.json`;
+    if (existsSync(manifest)) {
+      const defaults = readJson(manifest);
+      // The CLI simulator needs its fixture controls, never the developer's environment.
+      writeFileSync(join(s.env.ASK_HOME, 'environment.json'), JSON.stringify({ agents: {
+        [name]: { inherit: [...new Set([...defaults.inherit, ...Object.keys(s.env), ...Object.keys(profile.failure || { FAKE_FAIL: 'fail' })])] },
+      } }));
+    }
     return s;
   } catch (error) { s.cleanup(); throw error; }
 }

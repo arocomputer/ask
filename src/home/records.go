@@ -5,21 +5,23 @@ import "encoding/json"
 // TaskRecord is the version 1 prepared task on disk, in the documented field order.
 // Schema retains user key order; omitted optional fields remain omitted on a new record.
 // Reuse marks a follow-up continuing a worktree the previous turn kept, rather than claiming one.
+// KeptWorktree pins its actual path and branch, independent of current naming settings.
 type TaskRecord struct {
-	ID        string          `json:"id"`
-	Prompt    string          `json:"prompt"`
-	Title     string          `json:"title,omitempty"`
-	Model     string          `json:"model"`
-	Write     bool            `json:"write"`
-	JSON      bool            `json:"json"`
-	Schema    json.RawMessage `json:"schema,omitempty"`
-	Dir       string          `json:"dir"`
-	Timeout   float64         `json:"timeout"`
-	MaxCost   float64         `json:"max_cost,omitempty"`
-	Worktree  string          `json:"worktree,omitempty"`
-	Reuse     bool            `json:"reuse,omitempty"`
-	Session   string          `json:"session,omitempty"`
-	Continues string          `json:"continues,omitempty"`
+	ID           string          `json:"id"`
+	Prompt       string          `json:"prompt"`
+	Title        string          `json:"title,omitempty"`
+	Model        string          `json:"model"`
+	Write        bool            `json:"write"`
+	JSON         bool            `json:"json"`
+	Schema       json.RawMessage `json:"schema,omitempty"`
+	Dir          string          `json:"dir"`
+	Timeout      float64         `json:"timeout"`
+	MaxCost      float64         `json:"max_cost,omitempty"`
+	Worktree     string          `json:"worktree,omitempty"`
+	Reuse        bool            `json:"reuse,omitempty"`
+	KeptWorktree *WorktreeRecord `json:"kept_worktree,omitempty"`
+	Session      string          `json:"session,omitempty"`
+	Continues    string          `json:"continues,omitempty"`
 }
 
 // UsageRecord carries optional token counts and USD cost; nil usage means no report.
@@ -44,6 +46,7 @@ type WorktreeRecord struct {
 
 // ResultRecord is a version 1 result, preserving the documented field order and raw JSON answer.
 // Answer is absent on failures; write records effective access; changes and commits track write runs.
+// RawAnswer retains the unmodified agent stdout only when JSON/schema validation fails.
 type ResultRecord struct {
 	Run       string          `json:"run"`
 	ID        string          `json:"id"`
@@ -54,6 +57,7 @@ type ResultRecord struct {
 	Answer    json.RawMessage `json:"answer,omitempty"`
 	Note      string          `json:"note,omitempty"`
 	Error     string          `json:"error,omitempty"`
+	RawAnswer string          `json:"raw_answer,omitempty"`
 	Seconds   float64         `json:"seconds"`
 	Usage     *UsageRecord    `json:"usage"`
 	Session   *string         `json:"session"`

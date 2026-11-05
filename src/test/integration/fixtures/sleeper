@@ -6,7 +6,7 @@ if (process.argv[2] === 'models') {
   process.stdout.write('slow\n');
 } else {
   const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
-  child.on('spawn', () => writeFileSync(process.env.BAYMAX_PIDS, JSON.stringify([process.pid, child.pid])));
+  child.on('spawn', () => writeFileSync(process.env.INTEGRATION_PIDS, JSON.stringify([process.pid, child.pid])));
   process.stdin.resume();
   setInterval(() => {}, 1000);
 }

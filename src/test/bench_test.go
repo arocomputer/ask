@@ -9,6 +9,21 @@ import (
 // TestBench pins ask bench: every task on every model, checks that decide a pass, fresh
 // worktrees for write attempts, and the per-model report.
 func TestBench(t *testing.T) {
+	t.Run("bench roles resolve before deduplication and every report records the exact model", func(t *testing.T) {
+		s := fresh(t)
+		s.write(filepath.Join(s.home, "settings.json"), `{"roles":{"fast":"fake:SMALL#low","review":"fake:small#low"}}`)
+		r := s.run([]string{"bench", "-m", "fast", "-m", "review", "-m", "fake:small#low", "-"}, `[{"prompt":"hello"}]`, nil)
+		eq(t, r.code, 0)
+		eq(t, len(s.calls()), 1)
+		eq(t, s.calls()[0].s("effort"), "low")
+		report := obj(t, r.stdout)
+		for _, key := range []string{"models", "attempts"} {
+			rows := report[key].([]any)
+			eq(t, len(rows), 1)
+			eq(t, object(rows[0].(map[string]any)).s("model"), "fake:small#low")
+		}
+		eq(t, s.runFile("tasks.json")[0].s("model"), "fake:small#low")
+	})
 	t.Run("every task runs on every model -n times, and its check, given the answer, decides a pass", func(t *testing.T) {
 		s := fresh(t)
 		tasks := `[{"id":"says","prompt":"hello","check":"grep -q 'fake: hello'"},{"id":"never","prompt":"x","check":"echo nope; exit 3"}]`

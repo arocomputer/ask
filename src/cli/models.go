@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -14,9 +15,34 @@ import (
 )
 
 // models lists the models that are on, or with --all every model and whether it is on, and
-// reports listing failures without failing the command. Given models, it turns them on or off
+// reports listing failures without failing the command. --roles lists settings aliases without
+// querying agents. Given models, it turns them on or off
 // or sets their cost limit in models.json instead.
 func models(a *agent.Registry, opts home.Object, words []string) (int, error) {
+	if opts.B("--roles") {
+		if len(words) > 0 || len(opts) != 1 {
+			return 0, home.Usage("ask models --roles takes no other options or model arguments")
+		}
+		settings, e := a.Paths.ReadSettings()
+		if e != nil {
+			return 0, e
+		}
+		roles := home.Roles(settings)
+		names := []string{}
+		for name := range roles {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			owner, id, effort, _ := home.ParseModelSpec(roles.S(name))
+			spec := owner + ":" + id
+			if effort != "" {
+				spec += "#" + effort
+			}
+			fmt.Fprintf(os.Stdout, "%s\t%s\n", name, spec)
+		}
+		return 0, nil
+	}
 	config, e := a.Paths.ReadModels()
 	if e != nil {
 		return 0, e

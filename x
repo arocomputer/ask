@@ -11,7 +11,7 @@ usage: ./x [command] [args...]
   lint               Run go vet
   test [args...]     Forward arguments to go test (default: ./...)
   build [args...]    Forward arguments to go build (default: ./...)
-  baymax [names...]  Offline packaged-agent integration checks
+  integration [names...]  Offline packaged-agent integration checks
   shell | guard      Shellcheck or architectural guards
   workflows          Check GitHub Actions with actionlint
   audit              Network vulnerability audit, separate from check
@@ -42,7 +42,7 @@ case "$command" in
         ./x fmt --check
         ./x lint
         ./x test
-        ./x baymax
+        ./x integration
         ./x shell
         ./x guard
         ./x workflows
@@ -69,8 +69,8 @@ case "$command" in
         go build "$@"
         ;;
     # Offline adapter and real-ask integration checks.
-    baymax|node)
-        exec node src/test/baymax/runner.mjs "$@"
+    integration)
+        exec node src/test/integration/runner.mjs "$@"
         ;;
     shell)
         command -v shellcheck >/dev/null 2>&1 || { echo "shell: shellcheck is not on PATH" >&2; exit 2; }

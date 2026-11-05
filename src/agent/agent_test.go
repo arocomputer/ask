@@ -19,7 +19,7 @@ func TestRunReportsUsageWhileRunning(t *testing.T) {
 		t.Fatal(e)
 	}
 	seen := []home.Object{}
-	r := New(p).Run(Model{Agent: "x", ID: "m"}, "hi", home.O("dir", root, "timeout", 10.0), func(u home.Object) { seen = append(seen, u) })
+	r := New(p).Run(Model{Agent: "x", ID: "m"}, "hi", home.O("dir", root, "timeout", 10.0), "", func(p Progress) { seen = append(seen, p.Usage) })
 	if len(seen) == 0 || seen[0].N("input") != 1200 || seen[0].Has("cost") {
 		t.Fatalf("no live usage before exit: %v", seen)
 	}

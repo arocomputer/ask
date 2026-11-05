@@ -12,6 +12,7 @@ func TestTitle(t *testing.T) {
 	for _, c := range []struct{ command, description, want string }{
 		{`cd /tmp && A=value ask -m fake:small#high -w "fix login" 2>&1 | tail -20`, "", "Small One (high) · Fix login · write\n"},
 		{`ask -m fake:big -w --worktree 'fix it'`, "  add a test  ", "Big · Add a test · worktree\n"},
+		{`ask run --wait -m fake:big -w 'fix login'`, "", "Big · Fix login · write\n"},
 		{`ask -m fake:small 'first line
 second line'`, "", "Small One · First line\n"},
 		{`ask -m fake:small '` + strings.Repeat("x", 70) + `'`, "", "Small One · X" + strings.Repeat("x", 58) + "…\n"},
@@ -30,14 +31,19 @@ second line'`, "", "Small One · First line\n"},
 	eq(t, s.ask("title", "--command", written, "--description", "Run audits").stdout, "Batch of 2 · Big · Run audits\n")
 	piped := "ask batch -m fake:small - <<'EOF'\n{\"prompt\": \"one\"}\nEOF"
 	eq(t, s.ask("title", "--command", piped).stdout, "Batch of 1 · Small One · One\n")
-	first := s.ask("-m", "fake:small#high", "-w", "remember")
+	first := s.ask("--wait", "-m", "fake:small#high", "-w", "remember")
 	id := runID(t, first.stderr)
 	eq(t, s.ask("title", "--command", "ask -c "+id+" 'go again'").stdout, "Small One (high) · Go again · write\n")
+	eq(t, s.ask("title", "--command", "ask continue "+id+" 'go again'").stdout, "Small One (high) · Go again · write\n")
+	eq(t, s.ask("title", "--command", "ask continue "+id+" - <<'EOF'\ninspect logs\nEOF").stdout, "Small One (high) · Inspect logs · write\n")
+	eq(t, s.ask("title", "--command", "ask continue "+id).stdout, "Continue "+id+"\n")
 	eq(t, s.ask("title", "--command", "ask -c "+id+" -m fake:big -r 'look'").stdout, "Big · Look\n")
 	t.Run("ask title --hook answers a PreToolUse event for ask commands and stays silent otherwise", func(t *testing.T) {
 		s := fresh(t)
 		event := `{"tool_name":"Bash","tool_input":{"command":"ask -m fake:small hi","description":"Say hi","timeout":5}}`
-		eq(t, s.run([]string{"title", "--hook"}, event, nil).stdout, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"ask -m fake:small hi","description":"Small One · Say hi","run_in_background":true,"timeout":5}}}`+"\n")
+		eq(t, s.run([]string{"title", "--hook"}, event, nil).stdout, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"ask -m fake:small hi","description":"Small One · Say hi","timeout":5}}}`+"\n")
+		background := `{"tool_name":"Bash","tool_input":{"command":"ask -m fake:small hi","description":"Say hi","run_in_background":true}}`
+		eq(t, s.run([]string{"title", "--hook"}, background, nil).stdout, `{"hookSpecificOutput":{"hookEventName":"PreToolUse","updatedInput":{"command":"ask -m fake:small hi","description":"Small One · Say hi","run_in_background":true}}}`+"\n")
 		other := s.run([]string{"title", "--hook"}, `{"tool_name":"Bash","tool_input":{"command":"ls","description":"List"}}`, nil)
 		eq(t, other.stdout+other.stderr, "")
 		eq(t, other.code, 0)
@@ -67,20 +73,20 @@ second line'`, "", "Small One · First line\n"},
 	t.Run("a title hook can customize the shared agent-session title", func(t *testing.T) {
 		s := fresh(t)
 		s.hook("name-session", []string{"title"}, `echo '{"title":"My custom session"}'`)
-		r := s.ask("-m", "fake:small", "fix the login")
+		r := s.ask("--wait", "-m", "fake:small", "fix the login")
 		eq(t, r.code, 0)
 		eq(t, s.calls()[0].s("title"), "My custom session")
 		input := s.hookCalls()[0]["input"].(map[string]any)
 		eq(t, input["title"], "Small One · Fix the login")
 		assertTask := input["task"].(map[string]any)
 		eq(t, assertTask["prompt"], "fix the login")
-		r = s.ask("-m", "fake:small", "keep default", "--no-hooks")
+		r = s.ask("--wait", "-m", "fake:small", "keep default", "--no-hooks")
 		eq(t, s.calls()[1].s("title"), "Small One · Keep default")
 		eq(t, len(s.hookCalls()), 1)
 	})
 	t.Run("an explicit run word is parsed the way ask parses it", func(t *testing.T) {
 		s := fresh(t)
-		eq(t, s.ask("title", "--command", `ask run -m fake:small fix`).stdout, "Small One · Run fix\n")
+		eq(t, s.ask("title", "--command", `ask run -m fake:small fix`).stdout, "Small One · Fix\n")
 	})
 	t.Run("--title overrides the prompt-derived host title", func(t *testing.T) {
 		s := fresh(t)
@@ -88,12 +94,12 @@ second line'`, "", "Small One · First line\n"},
 	})
 	t.Run("--title names single and batch agent sessions uniformly", func(t *testing.T) {
 		s := fresh(t)
-		s.ask("-m", "fake:small", "--title", "Audit parser", "actual prompt")
+		s.ask("--wait", "-m", "fake:small", "--title", "Audit parser", "actual prompt")
 		eq(t, s.calls()[0].s("title"), "Small One · Audit parser")
 		match(t, s.read(filepath.Join(s.home, "runs", s.latest(), "tasks.json")), `"title": "Audit parser"`)
 
 		batch := fresh(t)
-		batch.run([]string{"batch", "-j", "1", "-m", "fake:small", "--title", "Shared title", "-"}, `[{"prompt":"one"},{"prompt":"two","title":"Specific title"}]`, nil)
+		batch.run([]string{"batch", "--wait", "-j", "1", "-m", "fake:small", "--title", "Shared title", "-"}, `[{"prompt":"one"},{"prompt":"two","title":"Specific title"}]`, nil)
 		calls := batch.calls()
 		eq(t, calls[0].s("title"), "Small One · Shared title")
 		eq(t, calls[1].s("title"), "Small One · Specific title")

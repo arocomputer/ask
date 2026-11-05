@@ -40,7 +40,7 @@ use your own Goose extensions.
 ## Follow-ups
 
 A new run names its Goose session from `ASK_TITLE` plus a unique suffix
-(`Sonnet 5.5 · Fix tests · write · 3f2a9c1e`) and reports that name to ask at once; `ask -c RUN`
+(`Sonnet 5.5 · Fix tests · write · 3f2a9c1e`) and reports that name to ask at once; `ask continue RUN "prompt"`
 resumes it with `--resume --name`. A follow-up's prompt is passed as is.
 
 ## Usage

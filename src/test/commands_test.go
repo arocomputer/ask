@@ -76,7 +76,7 @@ func TestCommands(t *testing.T) {
 	})
 	t.Run("a command runs as ask NAME with its arguments and exit code, and can run ask itself", func(t *testing.T) {
 		s := fresh(t)
-		s.script("commands", "twice", "# ask-command: ask the same question twice\n\"$ASK_BIN\" -m fake:small \"$@\" 2>/dev/null\n\"$ASK_BIN\" -m fake:small \"$@\" 2>/dev/null\nexit 3")
+		s.script("commands", "twice", "# ask-command: ask the same question twice\n\"$ASK_BIN\" --wait -m fake:small \"$@\" 2>/dev/null\n\"$ASK_BIN\" --wait -m fake:small \"$@\" 2>/dev/null\nexit 3")
 		r := s.ask("twice", "hello")
 		eq(t, r.code, 3)
 		eq(t, r.stdout, "fake: hello\nfake: hello\n")

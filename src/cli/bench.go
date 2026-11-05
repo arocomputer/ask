@@ -35,12 +35,16 @@ func bench(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	if len(words) != 1 {
 		return 0, home.Usage("ask bench takes one file of tasks, like ask bench tasks.json -m claude:sonnet-5.5 -m codex:gpt-6.1-sol")
 	}
+	settings, e := a.Paths.ReadSettings()
+	if e != nil {
+		return 0, e
+	}
 	models := []string{}
 	for _, m := range strings.Split(opts.S("-m"), ",") {
 		if m = home.Trim(m); m == "" {
 			continue
 		}
-		spec, e := agent.Parse(a.Paths, m)
+		spec, e := agent.Resolve(a.Paths, settings, m)
 		if e != nil {
 			return 0, e
 		}
@@ -131,7 +135,7 @@ func bench(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
-	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes)
+	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes, true, false)
 	if e != nil {
 		return 0, e
 	}
@@ -197,7 +201,7 @@ func table(models []string, results []home.Object, scored []any) []any {
 	rows := []any{}
 	for _, m := range models {
 		row := home.O("model", m, "name", m, "attempts", 0, "passed", 0)
-		seconds, input, cost, costed := []float64{}, 0.0, 0.0, true
+		seconds, input, cost, costed, inputKnown := []float64{}, 0.0, 0.0, true, true
 		for i, x := range scored {
 			rec := x.(home.Object)
 			if rec.S("model") != m {
@@ -211,6 +215,7 @@ func table(models []string, results []home.Object, scored []any) []any {
 			seconds = append(seconds, rec.N("seconds"))
 			u, _ := rec.Get("usage").(home.Object)
 			input += u.N("input")
+			inputKnown = inputKnown && u.Has("input")
 			cost += u.N("cost")
 			costed = costed && u.Has("cost")
 		}
@@ -218,8 +223,10 @@ func table(models []string, results []home.Object, scored []any) []any {
 		if n := len(seconds); n > 0 {
 			row.Set("median_seconds", home.Number(home.Fixed((seconds[(n-1)/2]+seconds[n/2])/2, 1)))
 		}
-		row.Set("input", input)
-		if costed {
+		if inputKnown && len(seconds) > 0 {
+			row.Set("input", input)
+		}
+		if costed && len(seconds) > 0 {
 			row.Set("cost", home.Number(home.Fixed(cost, 4)))
 		}
 		rows = append(rows, row)
@@ -240,8 +247,11 @@ func benchTable(report home.Object) string {
 				per = "$" + home.Dollars(row.N("cost")/row.N("passed"))
 			}
 		}
-		tokens := status.Usage(home.O("input", row.N("input")))
-		tokens, _, _ = strings.Cut(tokens, " in")
+		tokens := ""
+		if row.Has("input") {
+			tokens = status.Usage(home.O("input", row.N("input")))
+			tokens, _, _ = strings.Cut(tokens, " in")
+		}
 		lines = append(lines, []string{status.SafeText(row.S("name")),
 			fmt.Sprintf("%d/%d", int(row.N("passed")), int(row.N("attempts"))),
 			status.Duration(row.N("median_seconds")), cmp.Or(tokens, "—"), cost, per})

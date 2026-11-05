@@ -1,0 +1,10 @@
+{"type":"step_start","sessionID":"ses_fake","part":{"id":"s1","type":"step-start","messageID":"msg_0"}}
+{"type":"text","part":{"id":"p1","messageID":"msg_0","type":"text","text":"Inspecting files 🐾"}}
+{"type":"tool_use","part":{"id":"t1","messageID":"msg_0","type":"tool","tool":"read","state":{"status":"completed","input":{"filePath":"src/main.ts"},"output":"File contents"},"partID":"part-t1"}}
+{"type":"tool_use","part":{"id":"t1","messageID":"msg_0","type":"tool","tool":"read","state":{"status":"completed","output":"File contents"},"partID":"part-t1"}}
+{"type":"tool_use","part":{"id":"t2","messageID":"msg_0","type":"tool","tool":"grep","state":{"status":"error","error":"No such directory"},"partID":"part-t2"}}
+{"type":"text","part":{"id":"p1","messageID":"msg_0","type":"text","text":"Inspecting files 🐾"}}
+{"type":"reasoning","part":{"id":"r1","text":"private reasoning"}}
+{"type":"text","part":{"id":"synthetic","synthetic":true,"text":"synthetic instructions"}}
+{"type":"text","part":{"id":"p2","messageID":"msg_0","type":"text","text":"answer"}}
+{"type":"step_finish","part":{"messageID":"msg_0","tokens":{"input":50,"output":6,"reasoning":1,"cache":{"read":10}},"cost":0.002}}

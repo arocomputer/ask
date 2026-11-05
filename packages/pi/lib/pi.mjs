@@ -1,5 +1,7 @@
-/* Pi's ask adapter: one JSON-mode turn, built-in tools only, with saved sessions and usage. */
+/* Pi's ask adapter: one JSON-mode turn, controlled integrations, saved sessions and usage. */
+import { activity } from './activity.mjs';
 import { spawn } from 'node:child_process';
+import { environmentArgs } from './environment.mjs';
 import { accessSync, constants, existsSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -52,19 +54,20 @@ async function main() {
   if (effort && !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) throw new Error(`unsupported Pi thinking level: ${effort}`);
   const split = model.indexOf('/');
   const args = ['--mode', 'json', '--provider', model.slice(0, split), '--model', model.slice(split + 1),
-    '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes',
+    ...environmentArgs(cli, access),
     '--tools', access === 'write' ? 'read,grep,find,ls,bash,edit,write' : 'read,grep,find,ls'];
   if (effort) args.push('--thinking', effort);
   if (session) args.push('--session', session);
   if (title) args.push('--name', title);
   const report = reporter();
   const totals = {};
+  const onActivity = activity();
   let text = '';
   let failure;
   let terminal = false;
   let stderr = '';
-  // Pi resolves configured packages even with extensions disabled; offline skips missing installs.
-  const child = spawn(cli, args, { env: { ...process.env, ...(access === 'write' ? {} : { PI_OFFLINE: '1' }) }, stdio: ['pipe', 'pipe', 'pipe'] });
+  // Avoid startup downloads in both modes. This does not block model API requests.
+  const child = spawn(cli, args, { env: { ...process.env, PI_OFFLINE: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
   const finished = new Promise((resolve) => {
     child.on('error', (error) => { failure = error.message; });
     child.on('close', (code) => resolve(code));
@@ -77,6 +80,8 @@ async function main() {
   for await (const line of lines) {
     let event;
     try { event = JSON.parse(line); } catch { continue; }
+    if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
+    try { onActivity(event); } catch {} // Optional activity must never fail the turn.
     if (event.type === 'session' && typeof event.id === 'string') report({ session: event.id });
     if (event.type === 'message_update' && event.usage) {
       const current = usage(event.usage);
@@ -92,7 +97,7 @@ async function main() {
       report({ ...totals, name: message.model });
       failure = ['error', 'aborted'].includes(message.stopReason) ? message.errorMessage || `Pi request ${message.stopReason}` : undefined;
       terminal = message.stopReason === 'stop' || message.stopReason === 'length';
-      text = (message.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('');
+      text = (Array.isArray(message.content) ? message.content : []).filter((part) => part?.type === 'text' && typeof part.text === 'string').map((part) => part.text).join('');
       if (message.stopReason === 'length') report({ note: 'hit output limit; answer may be partial' });
     }
   }

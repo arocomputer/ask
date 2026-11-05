@@ -3,7 +3,91 @@
 ## Unreleased
 
 - Organize source under `src/` and release tooling under `.github/release/`; `go install` now uses the module root.
+- Add the optional `worktree` setting to require a separate worktree for write tasks.
+- Rename the offline adapter runner to `./x integration [AGENT...]`; remove the `baymax`
+  and `node` aliases.
+- Preserve the previous bundled package during replacement, serialize concurrent writers, and
+  recover interrupted replacements. Automatic refresh failures warn without failing unrelated
+  commands; explicit installation failures still exit 1.
+- Propagate every settings/setup apply failure, including partial saves, through the exit status.
+  Independent successful changes remain applied; incomplete interactive saves no longer say saved.
+- Bump `ASK_CONTRACT` to 3 for consistent lifecycle states: `queued` where the live scheduler
+  knows work is waiting, `running`, `succeeded`, `failed`, and `stopped`. Status parsers should
+  replace `started`/`ok` and machine `success` with `running`/`succeeded`. Batch summaries always
+  include succeeded and failed counts, including zeros, with stopped work separate. Persisted
+  result `ok` booleans and historical run records are unchanged.
+- Expose `./x release vX.Y.Z`, pin release dispatch to the checked main commit, and require
+  stable tags with one nonempty changelog section. Share verified archive and checksum builds
+  between CI and publication; check workflows, Homebrew formula syntax and internal Go races.
 
+- Supply agents an optional private per-task `ASK_EVENTS` JSONL file, preserved across retries
+  and hook follow-ups, independently of final answers and `ASK_REPORT` metadata.
+- Show bounded recent task activity with `ask show`, stream it with `--follow`, or read
+  byte-cursor JSON pages with `--after`. Viewer interruption leaves workers running;
+  legacy agents retain coarse status and completed answer output.
+
+- Fix detached launches with relative `ASK_HOME`, remove fresh unadmitted records on SIGTERM,
+  preserve usage error exit status, and report name-hook notes and recovery decisions on stderr
+  before admission. Concurrent launches choose unique matching run and worktree names atomically.
+
+- Require `-` for follow-up prompts on stdin, so pipe timing cannot change recovery behavior.
+- Add `ask runs --json` metadata and `ask wait --json` results with stable run IDs and batch
+  positions. Report running and stopped selections in `ask show --json` with exit status 1;
+  completed show results retain their format. Foreground start status includes the stable ID.
+
+- Extend environment allowlists and explicit integration policy to Claude, Codex and OpenCode.
+  Claude probes supported MCP/skill/tool controls without resetting auth, instructions or hooks.
+  Unavailable defaults produce visible run notes; explicit unenforceable restrictions fail.
+  Codex and OpenCode retain normal integration loading with documented limitations. Preserve
+  OpenCode inline provider/plugin settings when injecting agent permissions. No integration
+  isolation claim is made for tool permissions; see `ask docs environment`.
+- Keep the caller's foreground or background choice when titling Ask commands in Claude Code.
+- Add `--stdin` to append piped or redirected context to an explicit prompt, as in
+  `git diff | ask --stdin 'Review this diff'`. Argument prompts otherwise leave inherited stdin
+  unread, avoiding hangs and leaving a shell loop's remaining input intact.
+- Preserve the original agent stdout as optional `raw_answer` on JSON/schema validation
+  failures in saved results, JSON output and result hooks, without printing it in status lines.
+  Failed results still omit `answer` and exit 1.
+- Teach useful, focused delegation in the generated Ask skill without requiring Ask for every
+  handoff; cover explicit context, independent parallel work and structured failure recovery.
+- Add optional user-defined model roles in `settings.json`: direct names such as `fast`, `deep`
+  and `review` for exact models and efforts, with no automatic routing. Discover them with
+  `ask models --roles` and edit them in `ask settings` or `ask settings set roles JSON`.
+  Runs, batches and benches record resolved models; follow-ups and reruns keep their recorded
+  models after role edits, with existing enabled-state and cost-limit rules.
+- Add editable `environment.json` for per-agent inherited variables and integration controls.
+  Claude, Codex, OpenCode and Pi now inherit only their adapter allowlists by default; use `add`
+  to pass other needed variables. Pi disables native MCP, checks CLI support, preserves auth paths
+  and refuses to suppress possible extension policy hooks. Other adapters reject integration
+  policies they cannot enforce; see `ask docs environment` for supported defaults and limits.
+- Make promptless `ask continue` finish unfinished work in usable saved conversations; restart standalone reads without hooks
+  when needed, but refuse unsafe automatic retries, guide active runs to `ask wait`, and require explicit
+  prompts for completed-run follow-ups. Keep successful batch tasks and auth/refusal/cost
+  blockers untouched.
+  Persist private live session and worktree metadata for interrupted attempts, invalidate stale
+  rerun results, and avoid waiting on empty nonterminal stdin. Existing aliases remain supported.
+- Make tasks, prompted continuations and batches detach by default, returning a stable run ID
+  after admission. Add `--wait` for synchronous answers/results; update answer-consuming scripts
+  to use it. Keep `-w` for write and `-m` for a model or role. Remove the separate `ask start`
+  command without a compatibility alias. Make `ask show` immediate inspection, add machine state
+  with `ask runs --json` and result collection with `ask wait --json`, and align help, docs and
+  the generated agent skill. Launch success means admitted; collection reports task failure.
+  `ask wait A B` still selects the first completion from those references; `--id` returns only
+  its identity. No-argument wait is scoped to active work in the current repository or directory.
+
+- Show coarse Codex and Claude Code activity while runs work, including in `ask runs`. The
+  optional `ASK_REPORT` activity field updates terminal rows and rate-limited plain status lines
+  without exposing commands, paths, reasoning or output; malformed activity cannot hide usage
+  or cost limits.
+- Show reported cache reads and omit unknown or partial totals. Show elapsed time for active runs,
+  preserve run handles in narrow terminals, and clarify follow-ups and stopped-run recovery.
+- Keep the recorded worktree path and branch for read, write and hook follow-ups, including
+  prefixed worktree templates. Refuse overlapping continuations of the same agent session or
+  kept worktree, within a batch and across ask processes sharing `ASK_HOME`.
+- Add `ask run`, `ask continue` for follow-ups and reruns, and `ask wait RUN` for a specific
+  run or task. Piped input can start a task with the default model; the shorter help avoids
+  model discovery. Existing continuation and batch resume flags remain available.
+- Add `ask update packages` to update packages separately from ask itself.
 - Prevent old release reruns from replacing the latest Homebrew formula; serialize formula
   updates and guard the release tag and main before pushing.
 - Ignore local agent state and environment files; use Dependabot for Go dependency and Actions updates.
@@ -82,7 +166,7 @@
   its checksum; `--check` only reports. Homebrew and go install are pointed to their own update.
   In a terminal, ask mentions a newer release at most once a day (`ASK_NO_UPDATE_CHECK=1` stops it).
 - Releases carry build provenance (`gh attestation verify`), run CI's checks and `govulncheck`
-  first, and are installed for real on macOS and Linux. `scripts/release.sh` releases in two runs.
+  first, and are installed for real on macOS and Linux. `./x release` releases in two runs.
 - A new README.
 
 ## v0.1.0 · 2026-10-02

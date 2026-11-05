@@ -11,9 +11,11 @@
  * Tokens come from --usage-output-file when Copilot exits, less what a resumed session had already
  * used; Copilot bills in AI credits, not USD, so no cost is reported. A new read run's prompt starts with GROUNDING. Copilot is
  * $ASK_COPILOT_BIN, else on PATH, else where its installers put it. Started by agents/copilot,
- * which finds Node.js.
+ * which finds Node.js. Visible native messages and tools append best-effort to ASK_EVENTS;
+ * no reasoning is emitted.
  */
 import { spawn } from 'node:child_process';
+import { activity, argumentsText } from './activity.mjs';
 import { randomUUID } from 'node:crypto';
 import { accessSync, constants, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -120,7 +122,10 @@ function exec(command, args, { input = '', env, onLine } = {}) {
     child.stderr.on('data', (d) => (stderr += d));
     child.on('error', (error) => (stderr += `${error.message}\n`));
     child.stdin.on('error', () => {});
-    child.on('close', (code) => resolve({ code, stdout, stderr }));
+    child.on('close', (code) => {
+      if (onLine && seen < stdout.length) onLine(stdout.slice(seen));
+      resolve({ code, stdout, stderr });
+    });
     child.stdin.end(input);
   });
 }
@@ -195,6 +200,9 @@ await adapter({
       let text = '';
       let failure;
       let result;
+      const emit = activity(process.env.ASK_EVENTS);
+      const tools = new Map();
+      const streaming = new Set();
       const onLine = (line) => {
         let event;
         try {
@@ -202,12 +210,44 @@ await adapter({
         } catch {
           return;
         }
-        const data = event.data || {};
+        if (!event || typeof event !== 'object' || Array.isArray(event)) return;
+        const data = event.data && typeof event.data === 'object' ? event.data : {};
         if (event.type === 'result') result = event;
         if (event.type === 'session.error') failure = data.message || data.errorType;
-        if (event.type !== 'assistant.message' || event.agentId || data.parentToolCallId) return;
-        if (data.toolRequests?.length) text = '';
-        else if (data.content?.trim()) text += (text ? '\n\n' : '') + data.content;
+        // Native schema: github/copilot-sdk nodejs/src/generated/session-events.ts.
+        // Keep the main-agent scope used by the answer; never project reasoning/opaque fields.
+        if (event.agentId || data.parentToolCallId) return;
+        const toolCall = (id, name, args) => {
+          if (typeof name !== 'string') return;
+          const tracked = typeof id === 'string' && id.length <= 256;
+          if (tracked && tools.has(id)) return;
+          if (tracked) {
+            if (tools.size >= 1024) tools.delete(tools.keys().next().value);
+            tools.set(id, name.slice(0, 256));
+          }
+          emit('tool', name + ' ' + argumentsText(args), name);
+        };
+        if (event.type === 'tool.execution_start') toolCall(data.toolCallId, data.toolName, data.arguments);
+        if (event.type === 'tool.execution_complete') {
+          const output = data.result;
+          emit('tool_result', typeof output?.detailedContent === 'string' ? output.detailedContent :
+            typeof output?.content === 'string' ? output.content : data.error?.message, tools.get(data.toolCallId));
+          tools.delete(data.toolCallId);
+        }
+        if (event.type === 'assistant.message_delta' && typeof data.deltaContent === 'string' && typeof data.messageId === 'string' && data.messageId.length <= 256) {
+          if (!streaming.has(data.messageId) && streaming.size >= 1024) streaming.delete(streaming.values().next().value);
+          streaming.add(data.messageId);
+          emit('message', data.deltaContent);
+        }
+        if (event.type !== 'assistant.message') return;
+        if (!streaming.delete(data.messageId)) emit('message', data.content);
+        if (Array.isArray(data.toolRequests)) {
+          for (const request of data.toolRequests) {
+            if (request && typeof request === 'object') toolCall(request.toolCallId, request.name, request.arguments);
+          }
+        }
+        if (Array.isArray(data.toolRequests) && data.toolRequests.length) text = '';
+        else if (typeof data.content === 'string' && data.content.trim()) text += (text ? '\n\n' : '') + data.content;
       };
       const r = await exec(CLI, args, { input: prompt, env: write ? {} : readEnv(), onLine });
       const { usage, ran } = usageFile(usagePath, before);

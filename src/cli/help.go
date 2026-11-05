@@ -69,26 +69,18 @@ func overview(a *agent.Registry) string {
 	lines := []string{`ask · hand tasks to coding agents
 
 Usage
-  ask --model MODEL [options] PROMPT       Run a task
-  ask --continue RUN [options] PROMPT      Follow up in the same conversation
+  ask [options] PROMPT         Start a task; prints its ID
 
-Commands
-  setup      Set ask up the first time
-  settings   Change agents, defaults, worktrees and apps
-  batch      Run many tasks in parallel
-  bench      Compare models on the same tasks
-  show       Print a saved answer
-  wait       Wait for the next run to finish, then print it
-  runs       List recent runs
-  stop       Stop a running run
-  clean      Remove finished worktrees and old runs
-  models     List available models
-  title      Name a command for a host
-  docs       Read the docs
-  update     Update ask to the latest release
-  install    Install or update packages
-  packages   List installed packages
-  remove     Remove a package`}
+  ask runs                     List recent runs
+  ask show RUN                 Inspect a run without waiting
+  ask wait RUN                 Wait for its result
+  ask continue RUN [PROMPT]    Follow up or finish unfinished work
+  ask stop RUN                 Stop a run
+
+  ask models                   List available models
+  ask settings                 Change defaults and agents
+
+More: batch · bench · clean · docs · install · packages · remove · setup · update`}
 	commands := find.Sorted(a.Paths, "commands")
 	if len(commands) > 0 {
 		own := []string{"Your commands"}
@@ -99,7 +91,7 @@ Commands
 				if len(text) > 4096 {
 					text = text[:4096]
 				}
-				if m := commandDescription.FindStringSubmatch(text); m != nil {
+				if m := commandDescription.FindStringSubmatch(text); len(m) > 1 {
 					desc = home.Trim(m[1])
 				}
 			}
@@ -110,18 +102,14 @@ Commands
 		}
 		lines = append(lines, strings.Join(own, "\n"))
 	}
-	lines = append(lines, `Options
-  --model MODEL        agent:id[#effort]
-  --write              Allow edits and commands (default: read only)
-  --worktree           Work in a new git worktree (with --write)
-  --directory DIR      Directory to work in
-  --timeout SECONDS    Seconds per task (default: 900, or your settings)
-  --max-cost USD       Cost limit per task (default: model or settings)
-  --json, --schema F   Require JSON, or JSON matching a schema
-  --no-hooks           Skip your hooks
+	lines = append(lines, `Common options
+  -m, --model MODEL   Model or role (ask models --roles); else default
+  -w, --write         Allow edits and commands
+      --wait          Run synchronously and return the answer/result
+      --worktree      Work in a separate worktree
 
-Models
-`+modelLines(a), "Short forms: -m, -w, -c, -C, -t · ask help run · ask help COMMAND\ndocs  ask docs")
+Default: detach and print the stable run ID; collect with ask wait RUN.
+ask help COMMAND · ask models · ask docs`)
 	return strings.Join(lines, "\n\n")
 }
 
@@ -130,43 +118,81 @@ Models
 func topicHelp(topic string) string {
 	switch topic {
 	case "run":
-		return `ask · run one task, or follow up on one
+		return `ask · start a task
 
 Usage
-  ask --model MODEL [options] PROMPT
-  ask --continue RUN [options] PROMPT
+  ask [options] PROMPT
+  ask run [options] PROMPT
 
 Options
-  --model MODEL        agent:id[#effort], from ask models (or your default)
-  --continue RUN       Follow up on RUN or RUN/TASK, in its conversation
-  --write              Allow edits and commands (default: read only)
-  --read               Explicitly require read-only access (alias: -r)
-  --worktree           Work in a new git worktree and branch (with --write)
-  --directory DIR      Directory to work in (default: current; alias: --dir, -C)
-  --timeout SECONDS    Seconds per task (default: 900, or your settings; alias: -t)
-  --title TEXT         Replace prompt text in agent session titles
-  --max-cost USD       Dollars per task; 0 for no limit
-  --json               Require a JSON answer
-  --schema FILE        Require JSON matching this schema
-  --no-hooks           Skip your hooks
+  -m, --model MODEL      Agent:model[#effort] or role; else your configured default
+  -w, --write            Allow edits and commands
+      --wait             Run synchronously and return the answer
+  -r, --read             Require read-only access (the default)
+      --worktree         Work in a new worktree (with --write)
+  -C, --directory DIR    Working directory (default: current)
+  -t, --timeout SECONDS  Time limit (default: 900, or your settings)
+      --title TEXT       Replace the prompt in the session title
+      --max-cost USD     Cost limit; 0 means none
+      --stdin            Append stdin to PROMPT (reads until EOF)
+      --json             Require a JSON answer; still an ID unless --wait
+      --schema FILE      Require JSON matching a schema
+      --no-hooks         Skip hooks
 
 Output
-  stdout   The answer, and nothing else
-  stderr   Status lines: ask RUN · state · model · details
-  exit     0 ok · 1 failed · 2 usage error
+  default  Detach; stdout is the stable run ID, one line, after admission
+  --wait   Block; stdout is only the answer (empty on failure)
+  stderr   Status and errors
+  exit     0 admitted (--wait: succeeded) · 1 failed · 2 usage error
 
-Runs
-  RUN is named from the prompt, like login-checked; a follow-up
-  keeps the name. The run's id, like k3f9a2, works too.
-  Use the RUN printed on stderr; examples below assume that name.
-  Follow-ups keep their directory and inherit model and access.
-  A positive recorded cost limit is inherited; else model, then settings.
-  Pipe a prompt on stdin, or use - in place of PROMPT.
+Admission is not task success. Collect the result with ask wait ID.
+Use - or piped stdin for the prompt; --stdin appends context to an argument prompt.
+-m accepts models from ask models or roles from ask models --roles.
 
 Examples
-  ask --model claude:haiku-4.5 "Where is login checked?"
-  ask --model codex:gpt-6.1-sol --title "Review login" "Inspect the login flow."
-  ask --continue login-checked --write "Fix it and run the test."` + "\n\nShort forms: -m, -w, -c, -C, -t\ndocs  ask docs usage"
+  id=$(ask -m claude:haiku-4.5 "Where is login checked?")
+  ask wait "$id"
+  git diff | ask --wait --stdin "Review this diff"
+  ask -m codex:gpt-6.1-sol -w "Fix the login test and run it."` + "\n\ndocs  ask docs usage"
+	case "continue":
+		return `ask continue · follow up or finish unfinished work
+
+Usage
+  ask continue RUN [options] PROMPT
+  ask continue RUN [--wait] [--jobs N] [--no-hooks]
+
+A prompt continues the agent's conversation; default stdout is a new stable
+run ID. Add --wait to block and return the answer instead.
+Without a prompt:
+  running         Use ask wait RUN
+  stopped/failed  Continue a usable session; otherwise restart only safe reads
+  completed       Give an explicit follow-up prompt
+
+Batches recover only unfinished/failed tasks; successes stay untouched.
+Use RUN/TASK for one task. Auth, refusal and cost blockers need an explicit
+prompt after resolving the blocker; ask never retries them automatically.
+
+Options for a follow-up
+  -m, --model MODEL    Model or role from the same agent; else inherit
+  -w, --write          Allow edits and commands
+      --wait           Run synchronously and return the answer
+  -r, --read           Use read-only access
+      --no-hooks       Skip hooks
+
+Follow-ups keep their directory and inherit model/access; -m, -r and -w override.
+Recovery keeps saved task options and returns the existing run ID by default.
+--wait blocks for results, --jobs N sets parallelism, --no-hooks skips hooks.
+Recovery decisions and blockers go to stderr before detached admission, or with --wait.
+Use - to read a follow-up prompt from stdin.
+See ask help run for other follow-up options.
+
+Examples
+  id=$(ask continue login-bug "What did you find?")
+  ask wait "$id"
+  ask continue login-bug --wait -w "Fix it."
+  ask continue login-bug
+
+--continue RUN and -c RUN remain aliases for prompted follow-ups.` + "\n\ndocs  ask docs runs"
 	case "bench":
 		return `ask bench · compare models on the same tasks
 
@@ -182,7 +208,7 @@ Tasks · a batch file, without model, plus
              Runs as you, even for read-only tasks; only use trusted checks
 
 Options
-  --model MODEL  A model to compare; repeat for each model
+  --model MODEL  Model or role to compare; repeat for each model
   -n N           Attempts per task and model (default: 1)
   --read         Require read-only tasks
   --write        Allow edits and commands
@@ -211,12 +237,15 @@ Examples
 
 Usage
   ask batch [options] FILE|-
-  ask batch --resume RUN [-j N] [--no-hooks]
+  ask batch --resume RUN [--wait] [-j N] [--no-hooks]
+
+--resume recovers only unfinished/failed tasks, using usable saved sessions
+or restarting safe reads. Writes, follow-ups and tasks with hooks are not blindly retried.
 
 Tasks · a JSON array, or one object per line
   prompt     The task (required)
   id         Result id (default: position)
-  model      agent:id[#effort] (default: --model, then followed-up run, then settings)
+  model      agent:id[#effort] or role (default: --model, followed-up run, settings)
   continue   RUN or RUN/TASK to follow up
   write      Allow edits (default: --read/--write, then followed-up run, else read)
   worktree   Work in a new git worktree (default: --worktree)
@@ -228,7 +257,8 @@ Tasks · a JSON array, or one object per line
   json       Require a JSON answer
   schema     A JSON Schema, inline
 
-Results · a JSON array on stdout, in task order
+Results · --wait returns a JSON array in task order
+ask wait RUN also returns this array for a multi-task batch.
   run, id           RUN/TASK, and the task id
   model, name       Requested model and the model's own name
   ok                true or false
@@ -240,28 +270,51 @@ Results · a JSON array on stdout, in task order
   followups         Follow-ups your hooks asked for
 
 Options
-  --model, --read, --write, --worktree, --directory, --timeout   Task defaults
+  -m, --model MODEL            Model or role default
+  -w, --write                  Allow edits and commands by default
+      --wait                   Run synchronously and return the result array
+  --read, --worktree, --directory, --timeout   Task defaults
   --title TEXT                 Default session-title text for every task
   --json, --schema FILE         Defaults for JSON answers or a schema
   --max-cost USD               Each task's cost limit
   -j N                         Tasks at once (default: 4, or your settings)
   --no-hooks                   Skip your hooks
 
+Output
+  default  Detach; stdout is the stable batch run ID after admission
+  --wait   Block; stdout is the result array, including failures
+  stderr   Status and errors
+  exit     0 admitted (--wait: all succeeded) · 1 failed · 2 usage error
+
 Use - for stdin; omitting FILE also reads stdin. Explicit --read refuses write tasks.
 
 Examples
-  ask batch -j 4 --model claude:haiku-4.5 tasks.json
+  id=$(ask batch -j 4 -m claude:haiku-4.5 tasks.json)
+  ask wait "$id"
+  ask batch --wait -m claude:haiku-4.5 tasks.json
   ask batch --resume summarize-public-api` + "\n\ndocs  ask docs batches"
 	case "show":
-		return `ask show · print a run again, without starting its agent
+		return `ask show · inspect a run immediately
 
 Usage
-  ask show RUN [--json]
-  ask show RUN/TASK [--json]
+  ask show RUN [--json | --follow | --after CURSOR]
+  ask show RUN/TASK [--json | --follow | --after CURSOR]
+
+Shows recent activity immediately. --follow streams until completion; interrupting
+the viewer leaves the worker running. Use ask wait RUN to collect a result.
+
+Options
+  --after CURSOR  JSON activity page from byte offset 0 or a returned next_cursor.
+                  Reads up to 100 lines / 256 KiB; retry incomplete tails.
+                  Requires one task in a batch. has_more indicates another page.
+  --follow        Readable activity only; cannot combine with --json or --after.
 
 Output
-  stdout   The answer; with --json, the whole result
-  stderr   The run's status line
+  stdout   The available answer/result; --json includes recorded result data.
+           --after returns run_id, state, events, next_cursor and has_more.
+  stderr   Recent activity (up to 100 events / 32 KiB), status and errors.
+           Legacy agents fall back to coarse status. Obvious credential values
+           are suppressed in activity; this is not comprehensive redaction.
 
 Examples
   ask show login-checked
@@ -270,30 +323,48 @@ Examples
 		return `ask runs · list recent runs, newest first
 
 Usage
-  ask runs [-n N] [--all]
+  ask runs [-n N] [--all] [--json]
 
 Options
   -n N    How many (default: 20)
   --all   Every run, not only this repository's
+  --json  Machine-readable run state
 
 Output
   RUN  ID  STARTED  STATUS  MODEL  TIME  TASK
 
 Examples
   ask runs
-  ask runs --all -n 50` + "\n\ndocs  ask docs runs"
+  ask runs --all -n 50
+  ask runs --json` + "\n\ndocs  ask docs runs"
 	case "wait":
-		return `ask wait · wait for the next run to finish, then print it
+		return `ask wait · wait for completion and return the answer/result
 
 Usage
-	  ask wait
+  ask wait RUN [--json]
+  ask wait [--json | --id] [RUN...]
+
+With references, return the first finished run or task from that exact set,
+including already finished work. Ties use argument order. References are pinned
+when waiting begins; use stable IDs to avoid following a moving name.
+Without references, snapshot active runs in this repository (all its worktrees),
+or under the current directory outside git. Later launches are not included.
+
+Options
+  --json   Print the selected result as JSON, including failure details
+  --id     Print only the winner's stable ID (ID<TAB>POSITION for a batch task)
 
 Output
-	  The first running run's answer on stdout, its status line on stderr, like ask show
-	  exit        0 answer received, or no runs running · 1 failed or stopped
+  stdout   The answer/result; --json returns result data, --id identity only
+  stderr   Status and errors; plain multi-run output also identifies the winner
+  exit     0 success or no active runs · 1 failed/stopped · 2 usage error
 
 Examples
-	  ask wait` + "\n\ndocs  ask docs runs"
+  ask wait k3f9a2
+  ask wait k3f9a2 --json
+  ask wait k3f9a2 b7x01q
+  ask wait --id k3f9a2 b7x01q
+  ask wait` + "\n\ndocs  ask docs runs"
 	case "clean":
 		return `ask clean · remove worktrees whose work has landed, and old runs
 
@@ -330,6 +401,7 @@ Example
 
 Usage
   ask models [--names] [--all]
+  ask models --roles                  Your configured roles: name<TAB>agent:id[#effort]
   ask models MODEL... --enable | --disable | --max-cost USD
 
 Output
@@ -345,6 +417,7 @@ Changes, saved in ~/.ask/models.json
 Examples
   ask models
   ask models --all
+  ask models --roles                 # explicit aliases in settings.json; no automatic routing
   ask models codex:gpt-5.6-sol opencode:gpt-4o --disable
   ask models claude:opus-5.5 --max-cost 10
   ask settings NAME                  # in a terminal, choose that agent's models` + "\n\ndocs  ask docs models"
@@ -439,6 +512,7 @@ Examples
 Usage
   ask update            Replace this ask with the latest release, checked against its checksums
   ask update --check    Only say whether a newer release is out (exit 1 when one is)
+  ask update packages   Update installed packages without updating ask
 
 ask installed by Homebrew or go install is updated there; ask update says how. In a terminal,
 ask mentions a newer release at most once a day; ASK_NO_UPDATE_CHECK=1 turns that off.` + "\n\ndocs  ask docs install"
@@ -474,10 +548,12 @@ Usage
   ask settings unset KEY        Back to the default
 
 Keys
-  model       The model when -m gives none, like claude:sonnet-5.5
+  model       Model or configured role when -m gives none
+  roles       JSON object of names to exact agent:id[#effort] strings; no role references
   timeout     Seconds per task (default: 900)
   jobs        Batch tasks at once (default: 4)
   max_cost    Dollars a task may spend; ask stops it there (default: no limit)
+  worktree    on or off: require a worktree for every write (default: off)
   worktrees   Where --worktree works, like ~/code/worktrees/ask-{name}
   branches    A worktree's branch (default: ask/{name})
   hook        on or off: title ask runs in Claude Code's task list
@@ -491,6 +567,8 @@ Examples
   ask settings
   ask settings opencode
   ask settings set max_cost 2
+  ask settings set roles '{"fast":"codex:gpt-6.1-sol"}'
+  ask settings set model fast
   ask settings set worktrees '~/code/worktrees/ask-{name}' --dry-run
   ask settings get --json` + "\n\ndocs  ask docs settings"
 	}

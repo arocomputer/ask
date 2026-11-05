@@ -75,11 +75,20 @@ func Locate(p home.Paths, source string) (string, string, error) {
 	return source, filepath.Join(p.Packages, m[1], m[2], m[3]), nil
 }
 
-// Contents describes directory entries, including nonexecutables, just as the existing CLI does.
+// Contents describes directory entries, including nonexecutables but excluding agent sidecars.
 func Contents(dir string) string {
 	parts := []string{}
 	for _, kind := range []string{"agents", "hooks", "commands"} {
 		names := find.List(filepath.Join(dir, kind))
+		if kind == "agents" {
+			agents := []string{}
+			for _, name := range names {
+				if !strings.HasSuffix(name, ".environment.json") {
+					agents = append(agents, name)
+				}
+			}
+			names = agents
+		}
 		if len(names) > 0 {
 			parts = append(parts, kind+": "+strings.Join(names, ", "))
 		}
@@ -175,6 +184,17 @@ func Remove(p home.Paths, name string) (string, error) {
 			names = append(names, x.Name)
 		}
 		return "", home.Usage("%s matches %s; name one in full", name, strings.Join(names, " and "))
+	}
+	dir := matches[0].Path
+	if filepath.Dir(dir) == filepath.Dir(BuiltinDir(p, "x")) && Builtin(filepath.Base(dir)) {
+		lock, err := lockBuiltin(p, filepath.Base(dir))
+		if err != nil {
+			return "", err
+		}
+		defer lock.Close()
+		if err := recoverBuiltin(dir); err != nil {
+			return "", err
+		}
 	}
 	if e := os.RemoveAll(matches[0].Path); e != nil {
 		return "", e

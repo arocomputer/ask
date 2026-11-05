@@ -1,10 +1,10 @@
 /* Black-box adapter tests: fake CLI only, prompt on stdin, atomic ask report on disk. */
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
-import { offline, pollJson, readJson, readJsonl } from '../../../src/test/baymax/helper.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { offline, pollJson, readJson, readJsonl } from '../../../src/test/integration/helper.mjs';
 const agent = fileURLToPath(new URL('../agents/pi', import.meta.url));
 const fake = fileURLToPath(new URL('./bin/pi', import.meta.url));
 const { tmp, env: offlineEnv, launch } = offline(agent);
@@ -31,7 +31,7 @@ test('read runs allow only built-in reading tools and disable executable extensi
   assert.equal(r.code, 0, r.stderr);
   const [call] = r.calls;
   assert.equal(after(call.argv, '--tools'), 'read,grep,find,ls');
-  for (const flag of ['--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes']) assert.ok(call.argv.includes(flag));
+  for (const flag of ['--no-mcp', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes']) assert.ok(call.argv.includes(flag));
   assert.match(call.stdin, /^Answer from the files/);
   assert.equal(call.cwd, tmp());
   assert.equal(call.offline, '1');
@@ -58,6 +58,7 @@ test('reports a session and reapplies read tools on continuation', async () => {
   assert.equal(r.code, 0, r.stderr);
   const call = r.calls.at(-1);
   assert.equal(after(call.argv, '--session'), 'pi-session');
+  assert.ok(call.argv.includes('--no-mcp'));
   assert.equal(after(call.argv, '--tools'), 'read,grep,find,ls');
   assert.equal(call.stdin, 'look at files');
 });
@@ -122,4 +123,87 @@ test('refuses Pi startup migration of legacy project resources in a read run', a
   assert.match(r.stderr, /would migrate/);
   assert.deepEqual(r.calls, []);
   assert.ok(existsSync(join(tmp(), '.pi', 'commands')));
+});
+
+test('refuses a CLI without the native MCP kill switch or successful help', async () => {
+  for (const env of [{ FAKE_OLD_PI: '1' }, { FAKE_HELP_FAIL: '1' }]) {
+    const r = await run(env);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /help does not confirm.*--no-mcp/);
+    assert.deepEqual(r.calls, []);
+  }
+});
+test('never disables extension policy hooks discovered in settings or on disk', async () => {
+  for (const base of [join(tmp(), '.pi'), join(tmp(), 'global')]) {
+    mkdirSync(base, { recursive: true });
+    for (const key of ['extensions', 'packages', 'hooks']) {
+      writeFileSync(join(base, 'settings.json'), JSON.stringify({ [key]: ['policy-hook'] }));
+      const r = await run({ PI_CODING_AGENT_DIR: join(tmp(), 'global') });
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /policy hooks/);
+      assert.deepEqual(r.calls, []);
+    }
+    writeFileSync(join(base, 'settings.json'), '{}');
+  }
+  mkdirSync(join(tmp(), '.pi', 'extensions'), { recursive: true });
+  writeFileSync(join(tmp(), '.pi', 'extensions', 'policy.js'), 'throw new Error("must not execute")');
+  const r = await run();
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /policy hooks/);
+  assert.deepEqual(r.calls, []);
+});
+test('explicit skill opt-in leaves instruction discovery and auth locations intact', async () => {
+  const authDir = join(tmp(), 'auth');
+  mkdirSync(authDir);
+  writeFileSync(join(authDir, 'auth.json'), '{"fixture":"credential"}');
+  writeFileSync(join(tmp(), 'AGENTS.md'), 'Keep project policy');
+  const r = await run({ ASK_ENVIRONMENT: '{"skills":true}', PI_CODING_AGENT_DIR: authDir });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(!r.calls[0].argv.includes('--no-skills'));
+  for (const flag of ['--no-context-files', '--no-approve']) assert.ok(!r.calls[0].argv.includes(flag));
+  assert.equal(existsSync(join(authDir, 'auth.json')), true);
+});
+test('full integration opt-in preserves extensions for trusted write runs only', async () => {
+  mkdirSync(join(tmp(), '.pi', 'extensions'), { recursive: true });
+  writeFileSync(join(tmp(), '.pi', 'extensions', 'policy.js'), '// policy hook');
+  const policy = '{"plugins":true,"mcp":true,"skills":true,"hooks":true}';
+  const r = await run({ ASK_ACCESS: 'write', ASK_ENVIRONMENT: policy });
+  assert.equal(r.code, 0, r.stderr);
+  for (const flag of ['--no-mcp', '--no-extensions', '--no-skills']) assert.ok(!r.calls[0].argv.includes(flag));
+});
+test('rejects unenforceable combinations before any task CLI call', async () => {
+  for (const policy of ['{"hooks":false}', '{"plugins":true}', '{"plugins":true,"mcp":true,"skills":true}', '{"mcp":true}', '{"skills":"yes"}', '{"typo":true}', 'null']) {
+    const r = await run({ ASK_ENVIRONMENT: policy });
+    assert.equal(r.code, 1);
+    assert.deepEqual(r.calls, []);
+  }
+});
+
+test('native MCP opt-in explicitly loads only its builtin extension in a write run', async () => {
+  const r = await run({ ASK_ACCESS: 'write', ASK_ENVIRONMENT: '{"mcp":true}' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(r.calls[0].argv.includes('--no-extensions'));
+  assert.equal(after(r.calls[0].argv, '--extension'), 'builtin:mcp');
+  assert.ok(!r.calls[0].argv.includes('--no-mcp'));
+});
+test('malformed Pi settings are refused without repeating their contents', async () => {
+  mkdirSync(join(tmp(), '.pi'));
+  writeFileSync(join(tmp(), '.pi', 'settings.json'), 'private-sentinel');
+  const r = await run();
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /cannot inspect Pi settings safely/);
+  assert.ok(!r.stderr.includes('private-sentinel'));
+  assert.deepEqual(r.calls, []);
+});
+
+test('expands tilde and file URLs before checking global extension policy', async () => {
+  const base = join(tmp(), 'configured');
+  mkdirSync(base);
+  writeFileSync(join(base, 'settings.json'), '{"extensions":["policy-hook"]}');
+  for (const path of ['~/configured', pathToFileURL(base).href]) {
+    const r = await run({ PI_CODING_AGENT_DIR: path });
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /policy hooks/);
+    assert.deepEqual(r.calls, []);
+  }
 });

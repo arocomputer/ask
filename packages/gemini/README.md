@@ -1,7 +1,7 @@
 # gemini
 
 The official ask agent for [Gemini CLI](https://geminicli.com). It runs `gemini` headless for ask,
-so `ask -m gemini:gemini-3.5-flash "..."` hands a task to Gemini CLI.
+so `ask --model gemini:gemini-3.5-flash "..."` hands a task to Gemini CLI.
 
 ## Install
 
@@ -52,7 +52,7 @@ Gemini CLI enforces no schema, so `ASK_SCHEMA` is ignored; ask still checks JSON
 ## Follow-ups
 
 Every run starts with its own session id, reported to ask at once and passed as `--session-id`, so
-`ask -c RUN` resumes it with `--resume`, in the same directory. A follow-up's prompt is passed as is.
+`ask continue RUN "prompt"` resumes it with `--resume`, in the same directory. A follow-up's prompt is passed as is.
 
 ## Titles
 
@@ -63,6 +63,35 @@ Gemini CLI has no way to name a session, so `ASK_TITLE` is not used.
 Gemini CLI reports tokens only when the run ends, so ask shows usage then. Output counts everything
 beyond the prompt, thinking included; input includes cache reads. Gemini CLI reports no cost. The
 report names the model that did most of the work (`Gemini 3.5 Flash`).
+
+## Live activity
+
+When ask supplies `ASK_EVENTS`, the agent appends visible activity to that absolute, pre-created
+private JSONL file. Assistant `message` events (`role: assistant`, string `content`) become
+`message` entries, including native deltas. `tool_use` becomes `tool` with `tool_name` and serialized
+`parameters`; `tool_result` becomes `tool_result` with string `output`, falling back to
+`error.message` when output is absent. Results include the tool name when a matching `tool_id`
+was seen. These fields are verified against the native
+[stream schema](https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/output/types.ts)
+and the offline CLI fixture. User messages, lifecycle events, errors outside tool results, usage
+and any unknown event or reasoning fields produce no activity. No reasoning is inferred.
+
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
+
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
+
+Tool-name correlation keeps at most 1,024 calls, with IDs up to 256 code units; older or untracked results
+omit `tool`. Complete final native lines work without a trailing newline; incomplete JSON is ignored.
 
 ## Cost limits
 
@@ -77,7 +106,7 @@ Gemini CLI reports no cost and has no budget option, so ask's cost limits don't 
 | `ASK_NODE` | The Node.js executable to run the agent with. |
 
 The agent also reads ask's contract variables: `ASK_MODEL`, `ASK_EFFORT`, `ASK_ACCESS`,
-`ASK_SESSION` and `ASK_REPORT` (see [Agents](../../docs/agents.md)).
+`ASK_SESSION`, `ASK_REPORT` and `ASK_EVENTS` (see [Agents](../../docs/agents.md)).
 
 ## Testing
 

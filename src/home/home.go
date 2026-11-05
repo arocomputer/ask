@@ -19,6 +19,9 @@ func New() Paths {
 	if root == "" {
 		root = filepath.Join(h, ".ask")
 	}
+	if absolute, err := filepath.Abs(root); err == nil {
+		root = absolute
+	}
 	bin, _ := os.Executable()
 	if real, err := filepath.EvalSymlinks(bin); err == nil {
 		bin = real
@@ -26,10 +29,10 @@ func New() Paths {
 	return Paths{root, filepath.Join(root, "runs"), filepath.Join(root, "worktrees"), filepath.Join(root, "agents"), filepath.Join(root, "packages"), bin}
 }
 
-// Env clears inherited per-task variables and supplies contract version 1.
+// Env clears inherited contract variables and supplies contract version 3.
 func (p Paths) Env(vars map[string]string) []string {
 	drop := map[string]bool{}
-	for _, k := range []string{"ASK_MODEL", "ASK_EFFORT", "ASK_ACCESS", "ASK_SCHEMA", "ASK_SESSION", "ASK_REPORT", "ASK_MAX_COST", "ASK_TITLE", "ASK_RUN", "ASK_EVENT", "ASK_CONTRACT", "ASK_BIN", "ASK_HOME"} {
+	for _, k := range []string{"ASK_MODEL", "ASK_EFFORT", "ASK_ACCESS", "ASK_SCHEMA", "ASK_SESSION", "ASK_REPORT", "ASK_EVENTS", "ASK_MAX_COST", "ASK_TITLE", "ASK_RUN", "ASK_EVENT", "ASK_CONTRACT", "ASK_BIN", "ASK_HOME", "ASK_ENVIRONMENT", "ASK_ENVIRONMENT_REQUESTED"} {
 		drop[k] = true
 	}
 	env := []string{}
@@ -39,7 +42,7 @@ func (p Paths) Env(vars map[string]string) []string {
 			env = append(env, e)
 		}
 	}
-	env = append(env, "ASK_CONTRACT=1", "ASK_BIN="+p.Bin, "ASK_HOME="+p.Home)
+	env = append(env, "ASK_CONTRACT=3", "ASK_BIN="+p.Bin, "ASK_HOME="+p.Home)
 	for k, v := range vars {
 		env = append(env, k+"="+v)
 	}
@@ -119,10 +122,11 @@ func Tilde(path string) string {
 }
 
 // Settings are the keys settings.json may hold, each replacing a built-in default:
-// model (the default -m), timeout (seconds per task), jobs (batch tasks at once), max_cost (USD a
-// task may spend; none when absent or 0), worktrees (a path whose last part holds {name}) and
-// branches (a worktree's branch name, holding {name}).
-var Settings = []string{"model", "timeout", "jobs", "max_cost", "worktrees", "branches"}
+// model (the default -m), roles (names for exact model specifications), timeout (seconds per
+// task), jobs (batch tasks at once), max_cost (USD a task may spend; none when absent or 0),
+// worktrees (a path whose last part holds {name}) and branches (a worktree's branch name,
+// holding {name}); worktree requires a separate worktree for every write task.
+var Settings = []string{"model", "roles", "timeout", "jobs", "max_cost", "worktrees", "branches", "worktree"}
 
 // ReadSettings reads the optional settings.json, like {"worktrees": "~/code/worktrees/ask-{name}"}.
 // Unknown keys and malformed values are errors.
@@ -142,6 +146,9 @@ func (p Paths) ReadSettings() (Object, error) {
 	o, ok := v.(Object)
 	if !ok {
 		return nil, Usage(`%s must be a JSON object, like {"worktrees": "~/code/worktrees/ask-{name}"}`, path)
+	}
+	if e := checkRoleDuplicates(UTF8(b)); e != nil {
+		return nil, Usage("%s: %s", path, e)
 	}
 	if e := p.checkSettings(o); e != nil {
 		return nil, e
@@ -205,6 +212,10 @@ func (p Paths) checkSettings(o Object) error {
 			if s, ok := val.(string); !ok || Trim(s) == "" {
 				bad = `a model like "claude:sonnet-5.5"`
 			}
+		case "roles":
+			if e := checkRoles(val); e != nil {
+				return Usage("%s: %s", path, e)
+			}
 		case "timeout":
 			if n, ok := val.(float64); !ok || !(n > 0 && n <= 2000000) {
 				bad = "a number of seconds above 0"
@@ -216,6 +227,10 @@ func (p Paths) checkSettings(o Object) error {
 		case "jobs":
 			if n, ok := val.(float64); !ok || n < 1 || n != float64(int(n)) {
 				bad = "a whole number of tasks, 1 or more"
+			}
+		case "worktree":
+			if _, ok := val.(bool); !ok {
+				bad = "true or false"
 			}
 		case "worktrees":
 			if _, e := p.worktreeTemplate(val); e != nil {

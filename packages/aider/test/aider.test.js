@@ -7,7 +7,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { offline, readJson, readJsonl, scratch } from '../../../src/test/baymax/helper.mjs';
+import { offline, readJson, readJsonl, scratch } from '../../../src/test/integration/helper.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const AGENT = join(HERE, '..', 'agents', 'aider');

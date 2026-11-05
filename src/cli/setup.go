@@ -83,13 +83,22 @@ func survey(p home.Paths) (*machine, error) {
 
 // settingText shows a setting's value with unit, or its built-in default marked as such.
 func settingText(s home.Object, key string, unit ...string) string {
-	defaults := map[string]string{"model": "none: give -m", "timeout": "900", "jobs": "4", "max_cost": "none", "worktrees": "~/.ask/worktrees/{name}", "branches": "ask/{name}"}
+	defaults := map[string]string{"model": "none: give -m", "roles": "{}", "timeout": "900", "jobs": "4", "max_cost": "none", "worktrees": "~/.ask/worktrees/{name}", "branches": "ask/{name}", "worktree": "off"}
 	text, suffix := defaults[key], " (default)"
+	if key == "worktree" {
+		if s.Has(key) {
+			suffix = ""
+		}
+		return map[bool]string{true: "on", false: "off"}[s.B(key)] + suffix
+	}
 	if key == "max_cost" && s.N(key) > 0 {
 		return "$" + home.Dollars(s.N(key)) + " a task"
 	}
 	if s.Has(key) && !(key == "max_cost" && s.N(key) == 0) {
 		text, suffix = home.String(s.Get(key)), ""
+		if key == "roles" {
+			text = home.JSON(s.Get(key), false)
+		}
 	}
 	if len(unit) > 0 && !(key == "model" && !s.Has(key)) {
 		text += " " + unit[0]
@@ -337,9 +346,10 @@ func walkthrough(p home.Paths, t *tui.Prompter, m *machine, d *draft) error {
 	if e != nil {
 		return e
 	}
+	ready := true
 	for i, a := range official {
 		if picked[i] {
-			installAgent(p, t.Say, a.Name)
+			ready = installAgent(p, t.Say, a.Name) && ready
 		}
 	}
 	if entries, _ := agent.New(p).Catalog(d.models); len(entries) > 0 {
@@ -373,6 +383,9 @@ func walkthrough(p home.Paths, t *tui.Prompter, m *machine, d *draft) error {
 	saved, e := d.review(t)
 	if e != nil {
 		return e
+	}
+	if !ready {
+		return fmt.Errorf("some agents could not be made ready; changes already applied are kept")
 	}
 	if !saved {
 		fmt.Fprint(t.Out, t.Dim("The agents above stay installed; nothing else was saved. Run ask setup again whenever you like.")+"\r\n")

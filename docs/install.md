@@ -104,7 +104,7 @@ The output depends on the agents installed here. In a project directory, choose 
 from `ask models` and try a first run (this example uses Claude Code):
 
 ```sh
-ask --model claude:haiku-4.5 "What does this project do?"
+ask --wait -m claude:haiku-4.5 "What does this project do?"
 ```
 
 ## Update

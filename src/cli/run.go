@@ -75,45 +75,6 @@ func taskOptions(opts home.Object) (home.Object, error) {
 	return t, nil
 }
 
-// readTasks accepts a JSON array or nonblank JSON lines, with source-specific diagnostics.
-func readTasks(text string) ([]any, error) {
-	trimmed := home.Trim(text)
-	if trimmed == "" {
-		return nil, home.Usage("no tasks: pass a JSON array or JSON lines in FILE or on stdin")
-	}
-	decode := func(text, where string) (any, error) {
-		v, e := home.ParseJSON(text)
-		if e != nil {
-			return nil, home.Usage("cannot parse %s: %s", where, e)
-		}
-		return v, nil
-	}
-	items := []any{}
-	if strings.HasPrefix(trimmed, "[") {
-		v, e := decode(trimmed, "the batch")
-		if e != nil {
-			return nil, e
-		}
-		items, _ = v.([]any)
-	} else {
-		for i, line := range strings.Split(text, "\n") {
-			line = home.Trim(line)
-			if line == "" {
-				continue
-			}
-			v, e := decode(line, fmt.Sprintf("line %d", i+1))
-			if e != nil {
-				return nil, e
-			}
-			items = append(items, v)
-		}
-	}
-	if len(items) == 0 {
-		return nil, home.Usage("no tasks: the batch is empty")
-	}
-	return items, nil
-}
-
 // prepare validates task fields and resolves follow-ups without starting model processes.
 func prepare(a *agent.Registry, items []any, defaults home.Object, label string, single bool) ([]home.Object, error) {
 	return runs.Prepare(a.Paths, items, defaults, label, single, func(where string) error {
@@ -123,11 +84,12 @@ func prepare(a *agent.Registry, items []any, defaults home.Object, label string,
 
 // runName names a new run before its tasks are prepared, so worktrees and branches carry it:
 // a single follow-up takes over its conversation's name; otherwise name hooks may rename the
-// first prompt's slug, and a number keeps it apart from earlier runs. defaults are the options
-// a batch applies to tasks that don't set their own, or nil.
+// first prompt's slug. Create chooses any uniqueness suffix under its claim lock. defaults
+// are the options a batch applies to tasks that don't set their own, or nil.
 func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool) (string, []hooks.Note) {
 	prompts := []string{}
 	worktree := false
+	settings, _ := a.Paths.ReadSettings()
 	for _, item := range items {
 		t, _ := item.(home.Object)
 		prompts = append(prompts, home.String(t.Get("prompt")))
@@ -136,6 +98,8 @@ func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool)
 		} else {
 			worktree = worktree || defaults.B("worktree")
 		}
+		write := t.B("write") || (!t.Has("write") && defaults.B("write"))
+		worktree = worktree || settings.B("worktree") && write
 	}
 	if len(items) == 1 {
 		t, _ := items[0].(home.Object)
@@ -155,16 +119,28 @@ func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool)
 			name = clean
 		}
 	}
-	return runs.Unique(a.Paths, name), notes
+	return name, notes
 }
 
 // reporter serializes complete status lines from parallel tasks to stderr.
 func reporter(a *agent.Registry, r *runs.Run, live *status.Live) func(runs.Event) {
 	var mu sync.Mutex
+	activity := map[int]string{}
+	shown := map[int]time.Time{}
 	return func(e runs.Event) {
 		mu.Lock()
 		defer mu.Unlock()
 		if live == nil {
+			if e.Kind == "start" {
+				delete(activity, e.Index)
+				delete(shown, e.Index)
+			}
+			if e.Kind == "activity" {
+				if e.Activity == "" || e.Activity == activity[e.Index] || time.Since(shown[e.Index]) < 5*time.Second {
+					return
+				}
+				activity[e.Index], shown[e.Index] = e.Activity, time.Now()
+			}
 			if e.Kind != "usage" { // plain status lines report usage once, at the end
 				fmt.Fprintln(os.Stderr, status.StyledLine(status.EventLine(r, e), os.Stderr))
 			}
@@ -194,19 +170,36 @@ func answerText(t, r home.Object) string {
 	return home.String(answer)
 }
 
-// runOne records and executes one prompt, printing only a successful answer.
+// runOne reads a prompt and admits detached work, or returns its answer with --wait.
 func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	prompt := strings.Join(words, " ")
-	if prompt == "" || prompt == "-" {
+	// An inherited pipe looks just like intentional context. Read it alongside an argument
+	// only when requested, so shell loops and callers holding stdin open remain safe.
+	if prompt == "" || prompt == "-" || opts.B("--stdin") {
 		if stdinTerminal() {
+			if opts.B("--stdin") {
+				return 0, home.Usage("--stdin needs piped or redirected input")
+			}
 			return 0, home.Usage("no prompt: give it as an argument, or pipe it in")
 		}
-		var e error
-		prompt, e = home.ReadInput("-", "prompt")
+		if opts.S("--schema") == "-" {
+			return 0, home.Usage("stdin cannot supply both the prompt and --schema; use a schema file")
+		}
+		input, e := home.ReadInput("-", "prompt")
 		if e != nil {
 			return 0, e
 		}
+		if prompt == "" || prompt == "-" {
+			prompt = input
+		} else if input != "" {
+			prompt += "\n\n" + input
+		}
 	}
+	return runPrompt(a, opts, prompt)
+}
+
+// runPrompt records and executes a prompt already read from arguments or stdin.
+func runPrompt(a *agent.Registry, opts home.Object, prompt string) (int, error) {
 	t, e := taskOptions(opts)
 	if e != nil {
 		return 0, e
@@ -221,6 +214,9 @@ func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	if e != nil {
 		return 0, e
 	}
+	if !opts.B("--wait") {
+		return startWorker(a.Paths, launchRequest{Name: name, Notes: notes, Tasks: home.TaskRecords(tasks), WorktreeLabel: id, Jobs: 1, Hooks: !opts.B("--no-hooks")})
+	}
 	r, e := runs.Create(a.Paths, id, name, tasks)
 	if e != nil {
 		return 0, e
@@ -232,7 +228,7 @@ func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	for _, n := range notes {
 		report(runs.Event{Kind: "note", Note: n})
 	}
-	results, e := runs.Execute(a, r, 1, !opts.B("--no-hooks"), report)
+	results, e := runs.Execute(a, r, 1, !opts.B("--no-hooks"), report, nil)
 	process.AwaitShutdown()
 	final := ""
 	if e == nil {
@@ -240,80 +236,18 @@ func runOne(a *agent.Registry, opts home.Object, words []string) (int, error) {
 	}
 	live.Finish(final, false)
 	if e != nil {
+		// An admission failure must not take over the conversation's name with an empty run.
+		if results == nil && runs.Owner(r) == 0 {
+			if err := runs.Delete(r); err != nil {
+				return 0, err
+			}
+		}
 		return 0, e
 	}
 	if !results[0].B("ok") {
 		return 1, nil
 	}
 	fmt.Fprintln(os.Stdout, answerText(tasks[0], results[0]))
-	return 0, nil
-}
-
-// batch records or resumes tasks and prints all results in task order.
-func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
-	jobs, e := jobCount(a, opts)
-	if e != nil {
-		return 0, e
-	}
-	var r *runs.Run
-	var notes []hooks.Note
-	if opts.B("--resume") {
-		extra := []string{}
-		for key := range opts {
-			if !has([]string{"--resume", "-j", "--no-hooks"}, key) {
-				extra = append(extra, key)
-			}
-		}
-		extra = append(extra, words...)
-		if len(extra) > 0 {
-			return 0, home.Usage("--resume reruns a batch as it was recorded; it takes only -j and --no-hooks, not %s", strings.Join(extra, " "))
-		}
-		r, _, e = runs.Open(a.Paths, opts.S("--resume"))
-		if e != nil {
-			return 0, e
-		}
-	} else {
-		if len(words) > 1 {
-			return 0, home.Usage("ask batch takes one file of tasks, not %d", len(words))
-		}
-		path := "-"
-		if len(words) > 0 && words[0] != "" {
-			path = words[0]
-		}
-		text, e := home.ReadInput(path, "tasks")
-		if e != nil {
-			return 0, e
-		}
-		items, e := readTasks(text)
-		if e != nil {
-			return 0, e
-		}
-		defaults, e := taskOptions(opts)
-		if e != nil {
-			return 0, e
-		}
-		id := runs.NewID()
-		var name string
-		name, notes = runName(a, items, defaults, !opts.B("--no-hooks"))
-		tasks, e := prepare(a, items, defaults, cmp.Or(name, id), false)
-		if e != nil {
-			return 0, e
-		}
-		r, e = runs.Create(a.Paths, id, name, tasks)
-		if e != nil {
-			return 0, e
-		}
-	}
-	results, e := execute(a, r, jobs, !opts.B("--no-hooks"), notes)
-	if e != nil {
-		return 0, e
-	}
-	fmt.Fprintln(os.Stdout, home.JSON(home.ResultRecords(results), true))
-	for _, x := range results {
-		if !x.B("ok") {
-			return 1, nil
-		}
-	}
 	return 0, nil
 }
 
@@ -337,17 +271,22 @@ func jobCount(a *agent.Registry, opts home.Object) (int, error) {
 
 // execute runs a created run's unfinished tasks with the live rows and status lines a batch
 // shows on stderr, and returns every task's result in task order.
-func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hooks.Note) ([]home.Object, error) {
+func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hooks.Note, batch, smart bool, selected ...int) ([]home.Object, error) {
 	todo := 0
-	for _, x := range r.Results {
-		if !x.B("ok") {
+	for i, x := range r.Results {
+		if !x.B("ok") && (len(selected) == 0 || selected[0] == i) {
 			todo++
 		}
 	}
 	begin := time.Now()
 	header := status.BatchStart(r, jobs, todo)
-	live := status.NewLive(r, header, true)
-	if live == nil {
+	var live *status.Live
+	if len(selected) == 0 {
+		live = status.NewLive(r, header, batch)
+	} else {
+		batch = false
+	}
+	if batch && live == nil {
 		fmt.Fprintln(os.Stderr, status.StyledLine(header, os.Stderr))
 	}
 	process.OnStop(func() { live.Finish("ask "+r.Label()+" · stopped", true) })
@@ -356,14 +295,23 @@ func execute(a *agent.Registry, r *runs.Run, jobs int, hooksOn bool, notes []hoo
 	for _, n := range notes {
 		report(runs.Event{Kind: "note", Note: n})
 	}
-	results, e := runs.Execute(a, r, jobs, hooksOn, report)
+	run := runs.Execute
+	if smart {
+		run = runs.Continue
+	}
+	results, e := run(a, r, jobs, hooksOn, report, nil, selected...)
 	process.AwaitShutdown()
-	summary := status.BatchEnd(r, float64(time.Since(begin).Milliseconds())/1000)
+	summary := ""
+	if batch {
+		summary = status.BatchEnd(r, float64(time.Since(begin).Milliseconds())/1000)
+	} else if e == nil && len(results) == 1 {
+		summary = status.Done(results[0])
+	}
 	live.Finish(summary, false)
 	if e != nil {
-		return nil, e
+		return results, e
 	}
-	if live == nil {
+	if batch && live == nil {
 		fmt.Fprintln(os.Stderr, status.StyledLine(summary, os.Stderr))
 	}
 	return results, nil

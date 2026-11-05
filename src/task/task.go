@@ -3,7 +3,10 @@ package task
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/arocomputer/ask/src/agent"
@@ -14,6 +17,26 @@ import (
 )
 
 var fence = regexp.MustCompile("(?is)^\\s*```[a-z]*\\s*\\n(.*?)\\n\\s*```\\s*$")
+
+// KeptWorktree resolves a prepared task's saved location. Older reuse records saved only the
+// folder's basename; their template directory and branch pattern still come from settings.
+func KeptWorktree(p home.Paths, t home.Object) (*home.WorktreeRecord, error) {
+	if kept, ok := t.Get("kept_worktree").(home.Object); ok {
+		return &home.WorktreeRecord{Path: kept.S("path"), Branch: kept.S("branch")}, nil
+	}
+	if !t.B("reuse") {
+		return nil, nil
+	}
+	template, err := p.Worktree(git.Root(t.S("dir")), "{name}")
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(filepath.Dir(template), t.S("worktree"))
+	prefix, suffix, _ := strings.Cut(filepath.Base(template), "{name}")
+	name := strings.TrimSuffix(strings.TrimPrefix(t.S("worktree"), prefix), suffix)
+	branch, err := p.Branch(name)
+	return &home.WorktreeRecord{Path: path, Branch: branch}, err
+}
 
 // fullPrompt is the prompt as given, plus the JSON answer instruction for --json or --schema.
 func fullPrompt(t home.Object) string {
@@ -53,8 +76,9 @@ type Started struct {
 }
 
 // Run returns one complete result, converting task errors into failed results.
-// progress (if not nil) gets the agent's usage so far while it runs.
-func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started), progress func(home.Object)) home.Object {
+// progress (if not nil) gets the agent's usage and coarse activity while it runs.
+// events goes only to the agent, never to hooks or persisted task metadata.
+func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, events string, started func(Started), progress func(agent.Progress)) home.Object {
 	begin := time.Now()
 	dir := t.S("dir")
 	var w *git.Worktree
@@ -63,8 +87,24 @@ func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started)
 	diff := false
 	m, e := agent.Parse(a.Paths, t.S("model"))
 	r := home.Object{}
+	if e == nil && t.B("write") && !t.B("worktree") {
+		var settings home.Object
+		settings, e = a.Paths.ReadSettings()
+		if e == nil && settings.B("worktree") {
+			e = home.Usage("writes require a worktree; a task hook cannot enable in-place write access")
+		}
+	}
 	if e == nil && t.B("worktree") {
-		w, e = git.Add(a.Paths, dir, t.S("worktree"), t.B("reuse"))
+		var kept *home.WorktreeRecord
+		kept, e = KeptWorktree(a.Paths, t)
+		if e == nil && kept != nil && !t.B("write") {
+			if info, err := os.Stat(kept.Path); err != nil || !info.IsDir() {
+				e = home.Usage("a read follow-up needs its kept worktree to exist: %s", kept.Path)
+			}
+		}
+		if e == nil {
+			w, e = git.Add(a.Paths, dir, t.S("worktree"), kept)
+		}
 		if e == nil {
 			dir = w.Dir
 		}
@@ -84,7 +124,7 @@ func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started)
 		runTask := t.Clone()
 		runTask.Set("dir", dir)
 		runTask.Set("title", title)
-		r = a.Run(m, fullPrompt(t), runTask, progress)
+		r = a.Run(m, fullPrompt(t), runTask, events, progress)
 		if before != nil {
 			files, commits = git.Changes(before)
 			diff = true
@@ -94,6 +134,7 @@ func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started)
 			if problem != "" {
 				r.Set("ok", false)
 				r.Set("note", problem)
+				r.Set("raw_answer", r.S("text"))
 			} else {
 				r.Set("answer", answer)
 			}
@@ -118,6 +159,9 @@ func Run(a *agent.Registry, t home.Object, h *hooks.Hooks, started func(Started)
 		}
 	} else {
 		out.Set("error", r.Get("note"))
+		if r.Has("raw_answer") {
+			out.Set("raw_answer", r.Get("raw_answer"))
+		}
 	}
 	out.Set("seconds", home.Number(home.Fixed(float64(time.Since(begin).Milliseconds())/1000, 1)))
 	out.Set("usage", r.Get("usage"))

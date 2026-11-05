@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/arocomputer/ask/src/home"
@@ -32,6 +33,10 @@ func PackageDirs(p home.Paths) []string {
 	for _, host := range List(p.Packages) {
 		for _, owner := range List(filepath.Join(p.Packages, host)) {
 			for _, repo := range List(filepath.Join(p.Packages, host, owner)) {
+				// Hidden siblings hold staged replacements, backups and persistent locks.
+				if host == "ask" && owner == "packages" && strings.HasPrefix(repo, ".") {
+					continue
+				}
 				dirs = append(dirs, filepath.Join(p.Packages, host, owner, repo))
 			}
 		}

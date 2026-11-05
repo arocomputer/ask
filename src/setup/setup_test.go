@@ -62,8 +62,8 @@ func TestSkillLeavesYoursAlone(t *testing.T) {
 	if len(frontmatter) != 3 {
 		t.Fatal("updated skill has no frontmatter")
 	}
-	if !strings.Contains(frontmatter[1], "description: Your subagent tool. MUST use it instead of a built-in subagent") {
-		t.Fatal("updated skill does not require ask for handoffs")
+	if !strings.Contains(frontmatter[1], "name: ask\n") || !strings.Contains(frontmatter[1], "description: ") {
+		t.Fatal("updated skill has no name or description")
 	}
 	os.WriteFile(filepath.Join(h.SkillDir, "SKILL.md"), []byte("my own"), 0644)
 	WriteSkill(h)

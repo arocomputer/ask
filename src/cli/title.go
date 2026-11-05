@@ -33,16 +33,16 @@ func titlePath(dir, path string) string {
 func invocationTitle(a *agent.Registry, argv []string, description, dir string, in shellInput, files map[string]string) (string, home.Object) {
 	args := argv[1:]
 	command := "run"
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] == "start" {
 		return "", nil
 	}
-	if _, ok := options[args[0]]; ok && args[0] != "run" {
+	if _, ok := options[args[0]]; ok {
 		command = args[0]
 		args = args[1:]
 	} else if find.Path(a.Paths, "commands", args[0]) != "" {
 		return "", nil
 	}
-	if command != "run" && command != "batch" {
+	if command != "run" && command != "continue" && command != "batch" {
 		return "", nil
 	}
 	opts, words, err := parse(command, args)
@@ -59,6 +59,21 @@ func invocationTitle(a *agent.Registry, argv []string, description, dir string, 
 	if opts.Has("--title") && strings.TrimSpace(opts.S("--title")) == "" {
 		return "", nil
 	}
+	if command == "continue" {
+		if len(words) == 0 {
+			return "", nil
+		}
+		ref := words[0]
+		words = words[1:]
+		if (len(words) == 0 || len(words) == 1 && words[0] == "-") && in.HasStdin && strings.TrimSpace(in.Stdin) != "" {
+			words = []string{in.Stdin}
+		}
+		if len(words) == 0 {
+			return "Continue " + ref, opts
+		}
+		opts.Set("-c", ref)
+		command = "run"
+	}
 	invocationDir := dir
 	if opts.Has("-C") {
 		dir = titlePath(dir, opts.S("-C"))
@@ -71,7 +86,7 @@ func invocationTitle(a *agent.Registry, argv []string, description, dir string, 
 				return "", nil
 			}
 			for key := range opts {
-				if !has([]string{"--resume", "-j", "--no-hooks"}, key) {
+				if !has([]string{"--resume", "-j", "--no-hooks", "--wait"}, key) {
 					return "", nil
 				}
 			}
@@ -233,8 +248,8 @@ func commandTitle(a *agent.Registry, command, description string) string {
 }
 
 // hookTitle answers a PreToolUse hook event on stdin, the format Claude Code uses: for a shell
-// command that runs ask, it prints the tool input with the title as its description and
-// run_in_background set; for anything else, or input it cannot read, it prints nothing.
+// command that runs ask, it prints the tool input with the title as its description;
+// for anything else, or input it cannot read, it prints nothing.
 // It always exits 0, so a host never blocks a command on a title.
 func hookTitle(a *agent.Registry) (int, error) {
 	b, _ := io.ReadAll(os.Stdin)
@@ -255,7 +270,6 @@ func hookTitle(a *agent.Registry) (int, error) {
 	}
 	updated := input.Clone()
 	updated.Set("description", title)
-	updated.Set("run_in_background", true)
 	fmt.Fprintln(os.Stdout, home.JSON(home.O("hookSpecificOutput", home.O("hookEventName", "PreToolUse", "updatedInput", updated)), false))
 	return 0, nil
 }

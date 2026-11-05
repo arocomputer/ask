@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,23 +23,26 @@ import (
 // that models.json lookups, run records and the agent (ASK_MODEL) all see; Spec is rebuilt from it.
 type Model struct{ Spec, Agent, ID, Effort string }
 
-var specPattern = regexp.MustCompile(`^([a-z0-9][a-z0-9_-]*):([^#\s]+)(?:#(\S+))?$`)
-
-// Parse validates a model specification, lowercases its id, and requires its agent to be installed.
-func Parse(p home.Paths, spec string) (Model, error) {
-	m := specPattern.FindStringSubmatch(spec)
-	if m != nil {
-		for _, r := range m[2] + m[3] {
-			if home.Space(r) {
-				m = nil
-				break
-			}
+// Resolve expands an optional user-defined role, then parses its exact model specification.
+// Records and agent calls use only the resolved model, never the role name.
+func Resolve(p home.Paths, settings home.Object, spec string) (Model, error) {
+	if !strings.Contains(spec, ":") {
+		target, ok := home.Roles(settings)[spec]
+		if !ok {
+			return Model{}, home.Usage("unknown model role %q; expected agent:id[#effort] or a configured role; see ask models --roles", spec)
 		}
+		spec = target.(string)
 	}
-	if m == nil {
-		return Model{}, home.Usage("bad model \"%s\": expected agent:id[#effort]; see `ask models`", spec)
+	return Parse(p, spec)
+}
+
+// Parse validates an exact model specification, lowercases its id, and requires its agent to be installed.
+func Parse(p home.Paths, spec string) (Model, error) {
+	name, id, effort, err := home.ParseModelSpec(spec)
+	if err != nil {
+		return Model{}, err
 	}
-	if find.Path(p, "agents", m[1]) == "" {
+	if find.Path(p, "agents", name) == "" {
 		names := []string{}
 		for _, x := range find.Sorted(p, "agents") {
 			names = append(names, x.Name)
@@ -49,14 +51,13 @@ func Parse(p home.Paths, spec string) (Model, error) {
 		if text == "" {
 			text = "none"
 		}
-		return Model{}, home.Usage("no agent \"%s\" in %s; installed: %s; run ask setup, or ask install %s if it is an official agent", m[1], p.Agents, text, m[1])
+		return Model{}, home.Usage("no agent %q in %s; installed: %s; run ask setup, or ask install %s if it is an official agent", name, p.Agents, text, name)
 	}
-	id := strings.ToLower(m[2])
-	spec = m[1] + ":" + id
-	if m[3] != "" {
-		spec += "#" + m[3]
+	spec = name + ":" + id
+	if effort != "" {
+		spec += "#" + effort
 	}
-	return Model{spec, m[1], id, m[3]}, nil
+	return Model{spec, name, id, effort}, nil
 }
 
 type listedModel struct{ id, name string }
@@ -86,7 +87,14 @@ func (a *Registry) models(name string) listing {
 	}
 	a.mu.Unlock()
 	if !ok {
-		r := process.Run(find.Path(a.Paths, "agents", name), []string{"models"}, process.Options{Env: a.Paths.Env(nil), Timeout: 10 * time.Second})
+		executable := find.Path(a.Paths, "agents", name)
+		env, err := a.Paths.AgentEnv(name, executable, nil)
+		if err != nil {
+			own.error = err.Error()
+			close(own.ready)
+			return *own
+		}
+		r := process.Run(executable, []string{"models"}, process.Options{Env: env, Timeout: 10 * time.Second})
 		if r.Code != 0 {
 
 			own.error = process.Reason(r.Stderr)
@@ -220,10 +228,16 @@ func exitText(r process.Result) string {
 }
 
 // Run sends the prompt on stdin and reads the optional report even after failure or timeout.
-// While the agent runs, progress (if not nil) gets each new usage the agent rewrites its report
-// with. The user-facing title goes as ASK_TITLE; max_cost goes as ASK_MAX_COST, and ask stops the
+// While the agent runs, progress (if not nil) gets usage and coarse activity snapshots each poll.
+// The user-facing title goes as ASK_TITLE; max_cost goes as ASK_MAX_COST, and ask stops the
 // agent once its reported cost passes it; the session survives, so a follow-up continues the work.
-func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home.Object)) home.Object {
+// events is an optional pre-created private append-only JSONL path, supplied as ASK_EVENTS.
+// Adapters append complete UTF-8 lines of at most 16 KiB (including the newline): objects with
+// type message, reasoning, tool or tool_result, string text and optional string tool. They must
+// truncate oversized payloads safely, omit hidden reasoning and suppress obvious credential
+// values; this is not comprehensive redaction. Event errors must not prevent a final answer.
+// Readers advance byte offsets only past complete lines, retaining partial tails for later reads.
+func (a *Registry) Run(m Model, prompt string, t home.Object, events string, progress func(Progress)) home.Object {
 	work, err := os.MkdirTemp("", "ask-")
 	if err != nil {
 		return home.O("ok", false, "note", err.Error())
@@ -234,6 +248,9 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home
 		access = "write"
 	}
 	vars := map[string]string{"ASK_MODEL": m.ID, "ASK_EFFORT": m.Effort, "ASK_ACCESS": access, "ASK_REPORT": filepath.Join(work, "report.json")}
+	if events != "" {
+		vars["ASK_EVENTS"] = events
+	}
 	if title := t.S("title"); title != "" {
 		vars["ASK_TITLE"] = title
 	}
@@ -254,9 +271,15 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home
 	if limit > 0 {
 		vars["ASK_MAX_COST"] = strconv.FormatFloat(limit, 'f', -1, 64)
 	}
+	executable := find.Path(a.Paths, "agents", m.Agent)
+	env, err := a.Paths.AgentEnv(m.Agent, executable, vars)
+	if err != nil {
+		return home.O("ok", false, "note", err.Error())
+	}
 	done, stop := make(chan struct{}), make(chan struct{})
 	watched := make(chan struct{})
 	overLimit := false
+	session := t.S("session")
 	go func() {
 		defer close(watched)
 		if progress == nil && limit <= 0 {
@@ -264,31 +287,33 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home
 		}
 		tick := time.NewTicker(500 * time.Millisecond)
 		defer tick.Stop()
-		last := ""
 		for {
 			select {
 			case <-done:
 				return
 			case <-tick.C:
 			}
-			if b, err := os.ReadFile(vars["ASK_REPORT"]); err == nil && string(b) != last {
+			if b, err := os.ReadFile(vars["ASK_REPORT"]); err == nil {
 				var report Report
 				if json.Unmarshal(b, &report) == nil {
-					last = string(b)
-					if usage := report.usage(); usage != nil {
-						if progress != nil {
-							progress(usage)
-						}
-						if limit > 0 && usage.Has("cost") && usage.N("cost") > limit && !overLimit {
-							overLimit = true
-							close(stop)
-						}
+					if reported := home.Trim(report.Session); reported != "" {
+						session = reported
+					}
+					usage := report.usage()
+					if limit > 0 && usage != nil && usage.Has("cost") && usage.N("cost") > limit && !overLimit {
+						overLimit = true
+						close(stop)
+					}
+					if progress != nil {
+						// Repeat snapshots so a rate-limited display can show a suppressed category
+						// even when the agent has no new events during a long operation.
+						progress(Progress{Usage: usage, Activity: report.activity(), Session: home.Trim(report.Session), Blocker: costBlocker(overLimit, limit)})
 					}
 				}
 			}
 		}
 	}()
-	r := process.Run(find.Path(a.Paths, "agents", m.Agent), nil, process.Options{Input: prompt, Dir: t.S("dir"), Env: a.Paths.Env(vars), Timeout: process.Timeout(timeout), Stop: stop})
+	r := process.Run(executable, nil, process.Options{Input: prompt, Dir: t.S("dir"), Env: env, Timeout: process.Timeout(timeout), Stop: stop})
 	close(done)
 	<-watched
 
@@ -298,7 +323,7 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home
 	}
 	meta := home.O("usage", nil, "name", home.Trim(report.Name), "session", home.Trim(report.Session))
 	if !meta.B("session") {
-		meta.Set("session", t.Get("session"))
+		meta.Set("session", session)
 	}
 	if usage := report.usage(); usage != nil {
 		meta.Set("usage", usage)
@@ -331,19 +356,28 @@ func (a *Registry) Run(m Model, prompt string, t home.Object, progress func(home
 			meta.Set("note", strings.TrimPrefix(home.Trim(report.Note)+"; "+over, "; "))
 		}
 	}
+	if progress != nil {
+		failure := ""
+		if !meta.B("ok") {
+			failure = meta.S("note")
+		}
+		progress(Progress{Usage: report.usage(), Session: home.Trim(report.Session), Blocker: failure})
+	}
 	return meta
 }
 
 // Report is the agent's optional version 1 metadata; unknown fields are ignored.
 // Pointer counts distinguish an omitted metric from a reported zero.
 type Report struct {
-	Session string   `json:"session"`
-	Name    string   `json:"name"`
-	Input   *float64 `json:"input"`
-	Output  *float64 `json:"output"`
-	Cached  *float64 `json:"cached"`
-	Cost    *float64 `json:"cost"`
-	Note    string   `json:"note"`
+	// Decode activity separately: a bad optional signal must never hide valid cost or usage.
+	Activity json.RawMessage `json:"activity"`
+	Session  string          `json:"session"`
+	Name     string          `json:"name"`
+	Input    *float64        `json:"input"`
+	Output   *float64        `json:"output"`
+	Cached   *float64        `json:"cached"`
+	Cost     *float64        `json:"cost"`
+	Note     string          `json:"note"`
 }
 
 // usage returns the report's valid counts and cost, or nil when it has none.
@@ -358,4 +392,33 @@ func (report Report) usage() home.Object {
 		return nil
 	}
 	return usage
+}
+
+// Progress carries live metadata. Session and Blocker may be saved for interrupted recovery;
+// activity and usage are presentation snapshots.
+type Progress struct {
+	Usage    home.Object
+	Activity string
+	Session  string
+	Blocker  string
+}
+
+// activity accepts only fixed, non-sensitive categories, never agent-supplied display text.
+func (report Report) activity() string {
+	var value string
+	if json.Unmarshal(report.Activity, &value) != nil {
+		return ""
+	}
+	switch value {
+	case "thinking", "running commands", "editing files", "searching", "using tools", "answering":
+		return value
+	}
+	return ""
+}
+
+func costBlocker(over bool, limit float64) string {
+	if over {
+		return "stopped at the $" + home.Dollars(limit) + " cost limit"
+	}
+	return ""
 }

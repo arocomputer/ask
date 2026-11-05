@@ -190,9 +190,9 @@ type Worktree struct {
 
 // Add creates a worktree on the branches setting's branch (ask/NAME) from HEAD where the worktrees setting puts name, or
 // name-2, name-3 and so on when another task already has that folder; it claims the folder
-// atomically, so parallel tasks never share one. reuse is for follow-ups of a kept worktree: they
-// continue the one at name, recreating it if removed.
-func Add(p home.Paths, dir, name string, reuse bool) (*Worktree, error) {
+// atomically, so parallel tasks never share one. kept is for follow-ups: they reuse its exact
+// path and branch, recreating it if removed. The caller must lock kept against concurrent use.
+func Add(p home.Paths, dir, name string, kept *home.WorktreeRecord) (*Worktree, error) {
 	root, ok := git(dir, []string{"rev-parse", "--show-toplevel"}, "")
 	root = home.Trim(root)
 	if !ok || root == "" {
@@ -200,23 +200,32 @@ func Add(p home.Paths, dir, name string, reuse bool) (*Worktree, error) {
 	}
 	main := Root(dir)
 	used := name
-	path, e := p.Worktree(main, used)
-	if e != nil {
-		return nil, e
+	var path, branch string
+	var e error
+	if kept != nil {
+		path, branch = kept.Path, kept.Branch
+	} else {
+		path, e = p.Worktree(main, used)
+		if e != nil {
+			return nil, e
+		}
 	}
 	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
 		return nil, e
 	}
 	e = os.Mkdir(path, 0700)
-	for i := 2; os.IsExist(e) && !reuse; i++ {
+	for i := 2; os.IsExist(e) && kept == nil; i++ {
 		used = name + "-" + strconv.Itoa(i)
 		if path, e = p.Worktree(main, used); e == nil {
 			e = os.Mkdir(path, 0700)
 		}
 	}
-	branch, e2 := p.Branch(used)
-	if e2 != nil {
-		return nil, e2
+	if kept == nil {
+		var err error
+		branch, err = p.Branch(used)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if e == nil {
 		_, exists := git(root, []string{"rev-parse", "--verify", "-q", "refs/heads/" + branch}, "")
@@ -230,6 +239,11 @@ func Add(p home.Paths, dir, name string, reuse bool) (*Worktree, error) {
 		}
 	} else if !os.IsExist(e) {
 		return nil, e
+	} else {
+		// Never treat an arbitrary existing directory (or a replacement worktree) as ours.
+		if err := CheckWorktree(dir, &home.WorktreeRecord{Path: path, Branch: branch}); err != nil {
+			return nil, err
+		}
 	}
 	prefix, ok := git(dir, []string{"rev-parse", "--show-prefix"}, "")
 	if !ok {
@@ -350,4 +364,15 @@ func Landed(path, branch string) (bool, string) {
 		return false, "no main branch to compare with"
 	}
 	return false, "not merged into " + targets[0]
+}
+
+// CheckWorktree verifies an existing worktree's repository and branch without recreating it.
+func CheckWorktree(dir string, kept *home.WorktreeRecord) error {
+	top, ok := git(kept.Path, []string{"rev-parse", "--show-toplevel"}, "")
+	actual, _ := git(kept.Path, []string{"symbolic-ref", "--quiet", "--short", "HEAD"}, "")
+	real, err := filepath.EvalSymlinks(kept.Path)
+	if !ok || err != nil || home.Trim(top) != real || Root(kept.Path) != Root(dir) || home.Trim(actual) != kept.Branch {
+		return fmt.Errorf("kept worktree %s is no longer on branch %s in %s", kept.Path, kept.Branch, Root(dir))
+	}
+	return nil
 }

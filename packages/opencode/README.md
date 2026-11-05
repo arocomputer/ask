@@ -50,8 +50,8 @@ Opencode has no read-only flag, so read runs inject enforceable tool permission 
 allows. Each v1 read run creates a fresh primary agent name so deep-merging a configured `plan`
 agent cannot leave tool-specific allows in place. Follow-ups select a fresh restricted agent too.
 
-- **Read runs** may use only the read, grep and glob tools; the shell is denied, so no command
-  runs, not even `git log`: rules over a command's text cannot follow everything a shell expands.
+- **Read runs** may use only the read, grep and glob tools; the shell tool is denied, including
+  for `git log`: rules over a command's text cannot follow everything a shell expands.
   Delegation, MCP/custom tools, edits and other actions are denied by the catch-all rule.
   Git runs Opencode starts itself take no optional locks and no fsmonitor. The prompt starts with
   an instruction to answer from the files in the working directory and never guess. They stop
@@ -65,7 +65,7 @@ CLI directly and has no `--standalone` flag.
 
 ## Follow-ups
 
-The session id of Opencode's first event is reported to ask at once, so `ask --continue RUN` continues it
+The session id of Opencode's first event is reported to ask at once, so `ask continue RUN "prompt"` continues it
 with `--session`. A follow-up's prompt is passed as is.
 
 ## Usage
@@ -78,14 +78,51 @@ V1 uses `opencode export SESSION`, whose messages wrap assistant metadata and us
 Only unfinished messages from the current run are added, so streamed usage and earlier turns are
 not counted twice. Exports retry briefly for delayed saves; unavailable usage remains unreported.
 
+## Live activity
+
+When ask supplies `ASK_EVENTS`, the agent appends native visible activity to its private JSONL
+file, separately from the final answer on stdout.
+
+Completed native text parts produce `message`; completed or failed tools produce
+`tool_result`. OpenCode's stream exposes no execution starts or public reasoning summaries,
+so neither is invented.
+
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
+
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
+
 ## Cost limits
 
 Opencode reports cost after every step, so ask enforces its limit (`--max-cost`, models.json or
 the `max_cost` setting) itself: once the reported cost passes it, ask stops Opencode. The run fails
-as `stopped at the $2.00 cost limit`, keeps its session, and `ask --continue RUN` continues it. Cost is
+as `stopped at the $2.00 cost limit`, keeps its session, and `ask continue RUN "prompt"` continues it. Cost is
 known after each step, so a run can go over the limit by up to one step's cost.
 
 ## Environment
+
+The shipped `opencode.environment.json` allowlist retains config/auth paths, provider keys,
+GitHub/Copilot tokens, AWS/Google/Azure identity and proxy/CA settings. Add custom provider/helper
+variables by copying the shipped `inherit` list into `~/.ask/environment.json` and extending it.
+`OPENCODE_CONFIG_CONTENT` must be a JSON object; injected agent settings retain inline provider,
+plugin and unrelated agent configuration, as well as config loaded from files.
+
+OpenCode 2.2.5's help does not establish independent global controls that disable all MCP,
+plugins and skills while preserving auth, project instructions and plugin policy hooks. Ask
+retains native integration loading for supported v1/v2 releases, with a visible run limitation
+note. Any explicit `false` integration policy is refused before launching the CLI. Setting all
+four integrations to `true` acknowledges normal native loading and removes the note. Tool
+permissions and v2's `--standalone` do not prevent plugin execution or MCP startup. See
+[Agent environments](../../docs/environment.md) for the exact policy and limits.
 
 | Variable | |
 | --- | --- |
@@ -94,7 +131,7 @@ known after each step, so a run can go over the limit by up to one step's cost.
 | `ASK_NODE` | The Node.js executable to run the agent with. |
 
 The agent also reads ask's contract variables: `ASK_MODEL`, `ASK_EFFORT`, `ASK_ACCESS`, `ASK_TITLE`,
-`ASK_SESSION` and `ASK_REPORT` (see [Agents](../../docs/agents.md)).
+`ASK_SESSION`, `ASK_REPORT` and `ASK_EVENTS` (see [Agents](../../docs/agents.md)).
 Opencode enforces no schema, so `ASK_SCHEMA` is ignored; ask still checks JSON answers.
 
 ## Testing

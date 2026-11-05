@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -61,8 +62,9 @@ func (d *draft) mainMenu(t *tui.Prompter, m *machine) error {
 		}
 		items := []tui.Option{
 			{Label: "Agents", Note: edited(agentsNote, len(d.install)+len(d.remove) > 0)},
+			{Label: "Model roles", Note: edited(settingText(d.settings, "roles"), d.changedSetting("roles"))},
 			{Label: "Defaults", Note: edited(defaults, d.changedSetting("model", "timeout", "jobs", "max_cost"))},
-			{Label: "Worktrees", Note: edited(settingText(d.settings, "worktrees"), d.changedSetting("worktrees", "branches"))},
+			{Label: "Worktrees", Note: edited(settingText(d.settings, "worktrees"), d.changedSetting("worktrees", "branches", "worktree"))},
 			{Label: "Apps", Note: edited(apps, len(d.skills) > 0 || d.hook != setup.HookOn())},
 		}
 		n := len(d.mustChanges())
@@ -78,6 +80,8 @@ func (d *draft) mainMenu(t *tui.Prompter, m *machine) error {
 		switch items[i].Label {
 		case "Agents":
 			e = d.agentsMenu(t, m)
+		case "Model roles":
+			e = d.rolesMenu(t)
 		case "Defaults":
 			e = d.defaultsMenu(t)
 		case "Worktrees":
@@ -86,12 +90,13 @@ func (d *draft) mainMenu(t *tui.Prompter, m *machine) error {
 			e = d.appsMenu(t, m)
 		case "Review and save":
 			_, e = d.review(t)
-			if e == nil {
-				m, e = survey(d.p)
+			if e != nil {
+				return e
 			}
+			m, e = survey(d.p)
 		case "Done":
-			if e = d.finish(t); e == nil {
-				return nil
+			if e = d.finish(t); !errors.Is(e, errBack) {
+				return e
 			}
 		}
 		if errors.Is(e, tui.ErrInterrupted) {
@@ -217,6 +222,52 @@ func (d *draft) agentMenu(t *tui.Prompter, m *machine, name string) error {
 	}
 }
 
+// rolesMenu edits direct aliases; each draft change goes through settings validation.
+func (d *draft) rolesMenu(t *tui.Prompter) error {
+	for {
+		roles := home.Roles(d.settings).Clone()
+		names := []string{}
+		for name := range roles {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		options := []tui.Option{}
+		for _, name := range names {
+			options = append(options, tui.Option{Label: name, Note: roles.S(name)})
+		}
+		options = append(options, tui.Option{Label: "Add role"}, tui.Option{Label: "Back"})
+		i, e := t.Select("Model roles: explicit names for exact models", options, 0)
+		if e != nil || i == len(names)+1 {
+			return e
+		}
+		name := ""
+		if i < len(names) {
+			name = names[i]
+		} else {
+			name, e = t.Input("Role name, like fast, deep or review", "")
+			if e != nil {
+				return e
+			}
+			if roles.Has(name) {
+				t.Say("✗", "role "+name+" already exists; select it to edit")
+				continue
+			}
+		}
+		target, e := t.Input("Exact agent:id[#effort], or - to remove", roles.S(name))
+		if e != nil {
+			return e
+		}
+		if target == "-" {
+			roles.Delete(name)
+		} else {
+			roles.Set(name, target)
+		}
+		if e := d.set("roles", home.JSON(roles, false)); e != nil {
+			t.Say("✗", e.Error())
+		}
+	}
+}
+
 func (d *draft) defaultsMenu(t *tui.Prompter) error {
 	at := 0
 	for {
@@ -260,6 +311,7 @@ func (d *draft) worktreesMenu(t *tui.Prompter) error {
 		items := []tui.Option{
 			{Label: "Folder", Note: settingText(d.settings, "worktrees")},
 			{Label: "Branch", Note: settingText(d.settings, "branches")},
+			{Label: "Writes", Note: settingText(d.settings, "worktree")},
 			{Label: "Back"},
 		}
 		i, e := t.Select("Worktrees", items, at)
@@ -272,6 +324,12 @@ func (d *draft) worktreesMenu(t *tui.Prompter) error {
 			e = d.chooseWorktrees(t)
 		case "Branch":
 			e = d.askSetting(t, "branches", "Branch name, with {name}", "ask/{name}")
+		case "Writes":
+			if d.settings.B("worktree") {
+				d.settings.Delete("worktree")
+			} else {
+				d.settings.Set("worktree", true)
+			}
 		case "Back":
 			return nil
 		}
@@ -312,16 +370,24 @@ func (d *draft) appsMenu(t *tui.Prompter, m *machine) error {
 
 func (d *draft) chooseModel(t *tui.Prompter) error {
 	ids, _ := agent.New(d.p).List(d.models)
-	if len(ids) == 0 {
-		return nil
+	roles := home.Roles(d.settings)
+	roleNames := []string{}
+	for name := range roles {
+		roleNames = append(roleNames, name)
 	}
+	sort.Strings(roleNames)
+	ids = append(roleNames, ids...)
 	current := d.settings.S("model")
 	options := []tui.Option{{Label: "None", Note: "give -m every time"}}
 	at := 0
 	a := agent.New(d.p)
 	for i, id := range ids {
-		m, _ := agent.Parse(d.p, id)
-		options = append(options, tui.Option{Label: id, Note: a.Name(m, "")})
+		note := roles.S(id)
+		if note == "" {
+			m, _ := agent.Parse(d.p, id)
+			note = a.Name(m, "")
+		}
+		options = append(options, tui.Option{Label: id, Note: note})
 		if id == current {
 			at = i + 1
 		}
