@@ -158,6 +158,8 @@ keeps its existing nonblocking result/state format. Use `ask wait RUN` or `ask w
 to collect final results. Adapters that cannot report details still show their available state.
 Readable activity and status go to stderr; a completed answer goes to stdout. For programmatic
 consumption, `--after` writes its JSON page to stdout, including `has_more` and `next_cursor`.
+Claude, Codex, Copilot, Gemini, OpenCode and Pi report activity where their native streams expose
+it; the detail and timing vary by provider.
 
 Events can contain visible messages, commands, paths and tool details. Ask stores them privately
 with the run and `ask clean` removes them with it; they are not guaranteed to be redacted. Treat
