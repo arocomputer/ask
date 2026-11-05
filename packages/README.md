@@ -58,6 +58,13 @@ packages/NAME/
 `~/.ask/packages/ask/packages/NAME`, and ask rewrites that copy whenever its own build differs, so
 an installed agent always matches the ask running it.
 
+The six `ASK_EVENTS` writers keep identical `lib/activity-writer.mjs` copies inside their own
+packages. A cross-package runtime import would break independent installation; generating or
+copying files at build/install time would add machinery for a small helper. Update the copies
+together. Only the regression suite is shared, in `packages/test/activity-writer.mjs`; each
+provider's test entry runs it through the existing `node --test` and Baymax commands. Native
+event projections stay beside their providers and intentionally differ with the CLI schemas.
+
 ## Working on one
 
 ```sh

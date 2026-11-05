@@ -78,6 +78,29 @@ V1 uses `opencode export SESSION`, whose messages wrap assistant metadata and us
 Only unfinished messages from the current run are added, so streamed usage and earlier turns are
 not counted twice. Exports retry briefly for delayed saves; unavailable usage remains unreported.
 
+## Live activity
+
+When ask supplies `ASK_EVENTS`, the agent appends native visible activity to its private JSONL
+file, separately from the final answer on stdout.
+
+Completed native text parts produce `message`; completed or failed tools produce
+`tool_result`. OpenCode's stream exposes no execution starts or public reasoning summaries,
+so neither is invented.
+
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
+
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
+
 ## Cost limits
 
 Opencode reports cost after every step, so ask enforces its limit (`--max-cost`, models.json or
@@ -108,7 +131,7 @@ permissions and v2's `--standalone` do not prevent plugin execution or MCP start
 | `ASK_NODE` | The Node.js executable to run the agent with. |
 
 The agent also reads ask's contract variables: `ASK_MODEL`, `ASK_EFFORT`, `ASK_ACCESS`, `ASK_TITLE`,
-`ASK_SESSION` and `ASK_REPORT` (see [Agents](../../docs/agents.md)).
+`ASK_SESSION`, `ASK_REPORT` and `ASK_EVENTS` (see [Agents](../../docs/agents.md)).
 Opencode enforces no schema, so `ASK_SCHEMA` is ignored; ask still checks JSON answers.
 
 ## Testing

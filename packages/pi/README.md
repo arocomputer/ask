@@ -71,6 +71,28 @@ off at the output-token limit is marked partial. `ASK_SCHEMA` is not enforced
 natively; ask supplies the JSON instruction and validates the answer. There is
 no adapter step cap, image input, interactive extension UI or model alias mapping.
 
+## Live activity
+
+When ask supplies `ASK_EVENTS`, the agent appends native visible activity to its private JSONL
+file, separately from the final answer on stdout.
+
+Completed visible text blocks produce `message`; tool execution starts and ends produce
+`tool` and `tool_result`. Thinking, signatures, images and argument deltas are omitted.
+
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
+
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
+
 ## Environment and tests
 
 Ask applies the defaults in `agents/pi.environment.json` and user overrides from
@@ -84,7 +106,7 @@ outside Ask also checks integration controls, but does not filter inherited vari
 launcher's Node runtime; the launcher also searches the existing official
 packages' Node installation locations. An invalid explicit CLI override fails
 without falling back. Standard ask inputs are `ASK_MODEL`, `ASK_EFFORT`,
-`ASK_ACCESS`, `ASK_SESSION`, `ASK_TITLE` and `ASK_REPORT`.
+`ASK_ACCESS`, `ASK_SESSION`, `ASK_TITLE`, `ASK_REPORT` and `ASK_EVENTS`.
 
 ```sh
 cd packages/pi && node --test

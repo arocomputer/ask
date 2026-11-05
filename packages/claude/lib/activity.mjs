@@ -1,54 +1,4 @@
-import { closeSync, constants, fstatSync, openSync, writeSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
-import { stripVTControlCharacters } from 'node:util';
-
-/*
- * ASK_EVENTS is an optional, pre-created append-only JSONL sink. Each UTF-8 record, including
- * its newline, fits in 16 KiB. Keep this helper local: packages are installed independently.
- * Credential suppression is deliberately best-effort, not comprehensive redaction.
- */
-function activitySink(path) {
-  let fd;
-  try {
-    if (!path || !isAbsolute(path)) return;
-    fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    if (!fstatSync(fd).isFile()) throw new Error('not a regular file');
-  } catch {
-    if (fd !== undefined) { try { closeSync(fd); } catch {} }
-    return;
-  }
-  return (type, text, tool) => {
-    if (fd === undefined || typeof text !== 'string' || !text.length) return;
-    try {
-      const clean = (value) => stripVTControlCharacters(value)
-        .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '')
-        .replace(/\b(Bearer|Basic)\s+[^\s"',;]+/gi, '$1 [redacted]')
-        .replace(/(["']?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|password|passwd|secret|authorization|cookie|private[_-]?key|aws[_-]?(?:secret[_-]?access[_-]?key|access[_-]?key[_-]?id))["']?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'[^']*'|[^\s,;}&]+)/gi, '$1[redacted]')
-        .replace(/(--(?:api-key|token|password|secret)\s+)(?:"[^"]*"|'[^']*'|\S+)/gi, '$1[redacted]')
-        .replace(/\b(?:sk-[a-zA-Z0-9_-]{12,}|gh[pousr]_[a-zA-Z0-9_]{12,})\b/g, '[redacted]')
-        .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@');
-      // Round-trip malformed surrogate input before measuring the actual UTF-8 encoding.
-      text = Buffer.from(clean(text), 'utf8').toString('utf8');
-      if (!text.length) return;
-      const record = { type, text };
-      if (typeof tool === 'string' && tool) record.tool = Array.from(clean(tool)).slice(0, 128).join('');
-      const line = (end) => JSON.stringify({ ...record, text: text.slice(0, end).replace(/[\uD800-\uDBFF]$/, '') }) + '\n';
-      let low = 0;
-      let high = text.length;
-      while (low < high) {
-        const mid = Math.ceil((low + high) / 2);
-        if (Buffer.byteLength(line(mid), 'utf8') <= 16 * 1024) low = mid;
-        else high = mid - 1;
-      }
-      const bytes = Buffer.from(line(low), 'utf8');
-      // One append write per record; never repair or skip an existing partial tail.
-      if (writeSync(fd, bytes) !== bytes.length) throw new Error('short activity write');
-    } catch {
-      try { closeSync(fd); } catch {}
-      fd = undefined;
-    }
-  };
-}
+import { activityWriter } from './activity-writer.mjs';
 
 const textContent = (content) => typeof content === 'string' ? content : Array.isArray(content)
   ? content.filter((block) => block?.type === 'text' && typeof block.text === 'string').map((block) => block.text).join('\n') : '';
@@ -59,8 +9,8 @@ const textContent = (content) => typeof content === 'string' ? content : Array.i
  * intentionally omitted: this wire format does not identify summary-only reasoning reliably.
  */
 export function createActivity(path = process.env.ASK_EVENTS) {
-  const emit = activitySink(path);
-  if (!emit) return () => {};
+  if (!path) return () => {};
+  const emit = activityWriter(path);
   const streams = new Map();
   const messages = new Map();
   const tools = new Map();

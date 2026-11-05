@@ -79,17 +79,21 @@ execution events. Subagent events (`agentId` or `data.parentToolCallId`), user/l
 reasoning and opaque fields, partial tool snapshots, shell-output events and unknown events are
 ignored. No reasoning is inferred. Final answers still come from complete main-agent messages.
 
-Every append is one UTF-8 JSON line, at most 16 KiB including its newline, with `type`, string
-`text` and optional string `tool`. Text is inspected up to 64 Ki UTF-16 code units, sanitized for
-terminal escapes, controls and bidi overrides, and truncated by encoded JSON size with an ellipsis.
-Tool names are limited to 128 UTF-16 code units. Common credential forms are redacted best effort;
-this is incomplete, especially for credentials split across chunks. Only activity is sanitized;
-the answer and report retain their existing behavior.
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
 
-The agent never creates or truncates the sink, so retries append. Missing, unwritable, relative,
-symlink, non-regular, non-private or differently owned sinks disable activity without changing the
-answer, report or exit status. A write failure disables activity for that invocation. Each
-correlation cache holds at most 1,024 IDs of up to 256 code units: eviction can allow duplicate
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
+
+Each correlation cache holds at most 1,024 IDs of up to 256 code units: eviction can allow duplicate
 snapshots/calls or omit a result's tool name. Complete final native lines work without a trailing
 newline; incomplete JSON is ignored.
 

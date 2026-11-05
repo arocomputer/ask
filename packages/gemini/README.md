@@ -76,17 +76,21 @@ was seen. These fields are verified against the native
 and the offline CLI fixture. User messages, lifecycle events, errors outside tool results, usage
 and any unknown event or reasoning fields produce no activity. No reasoning is inferred.
 
-Every append is one UTF-8 JSON line, at most 16 KiB including its newline, with `type`, string
-`text` and optional string `tool`. Text is inspected up to 64 Ki UTF-16 code units, sanitized for
-terminal escapes, controls and bidi overrides, and truncated by encoded JSON size with an ellipsis.
-Tool names are limited to 128 UTF-16 code units. Common credential forms are redacted best effort;
-this is incomplete, especially for credentials split across chunks. Only activity is sanitized;
-the answer and report retain their existing behavior.
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
 
-The agent never creates or truncates the sink, so retries append. Missing, unwritable, relative,
-symlink, non-regular, non-private or differently owned sinks disable activity without changing the
-answer, report or exit status. A write failure disables activity for that invocation. Tool-name
-correlation keeps at most 1,024 calls, with IDs up to 256 code units; older or untracked results
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
+
+Tool-name correlation keeps at most 1,024 calls, with IDs up to 256 code units; older or untracked results
 omit `tool`. Complete final native lines work without a trailing newline; incomplete JSON is ignored.
 
 ## Cost limits

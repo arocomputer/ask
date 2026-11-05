@@ -114,6 +114,21 @@ and keep the final answer on stdout. If the event path is absent or unavailable,
 still run normally. Ask stores the event file privately with the run; it may contain sensitive
 commands, paths or model output, so treat it as a transcript rather than a redacted audit log.
 
+The bundled Claude, Codex, OpenCode, Pi, Copilot and Gemini writers accept only an absolute,
+pre-created regular file owned by the current user with no group/other permission bits. They
+open it for nonblocking append without following a final symlink, validate the opened file for
+each record, and never create or truncate it. Terminal escapes, control characters (except LF
+and tab) and bidi/format controls are removed from text and tool names. Common credential forms
+and inherited values of at least eight characters in credential-named environment variables
+are suppressed best effort; arbitrary secrets and secrets split across chunks can still appear.
+Tool names are limited to 128 UTF-16 code units without splitting surrogate pairs. Text is
+sanitized before truncation by serialized UTF-8 size; an ellipsis marks truncated text, and
+whitespace-only chunks are preserved. Each record uses one append write. An open, validation,
+write or close failure disables that writer for the invocation. A short write can leave a partial
+tail: the writer stops without retrying, repairing or truncating it. A later invocation appends
+as usual without repairing that tail. Activity failures leave answers, reports and exit status
+unchanged. These are bundled-writer safeguards, not a promise of complete transcript redaction.
+
 ask handles everything else: timeouts, stopping, batches, recording runs, follow-ups, worktrees,
 reporting what changed and checking JSON answers. Official agents apply `ASK_TITLE` when their
 harness provides a session-naming CLI or API; agents without one leave native titles unchanged.

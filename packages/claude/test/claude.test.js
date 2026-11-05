@@ -1,16 +1,14 @@
 /*
  * Tests for the claude agent. Runs agents/claude as ask does (prompt on stdin, ASK_* env,
  * answer on stdout, report in $ASK_REPORT), driving the fake claude in ./bin. No network, no real
- * models; sink failures are injected directly. Run: node --test
+ * models. Run: node --test
  */
 import assert from 'node:assert/strict';
-import fs, { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { syncBuiltinESMExports } from 'node:module';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { offline, pollJson, readJson, readJsonl } from '../../../src/test/integration/helper.mjs';
-import { createActivity } from '../lib/activity.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const AGENT = join(HERE, '..', 'agents', 'claude');
@@ -138,35 +136,6 @@ test('visible activity', async (t) => {
     assert.ok(!existsSync(missing));
     assert.ok(!existsSync(join(tmp(), 'relative.jsonl')));
     assert.equal(readFileSync(target, 'utf8'), '');
-  });
-
-  await t.test('disables a failed sink after an exception or a short append, preserving any partial tail', async (t) => {
-    for (const failure of ['exception', 'short write']) await t.test(failure, () => {
-      const path = join(tmp(), 'failed-events.jsonl');
-      writeFileSync(path, '', { mode: 0o600 });
-      const emit = createActivity(path);
-      const original = fs.writeSync;
-      const target = fs.statSync(path);
-      let attempts = 0;
-      fs.writeSync = (fd, bytes, ...args) => {
-        const file = fs.fstatSync(fd);
-        if (file.ino !== target.ino || file.dev !== target.dev) return original(fd, bytes, ...args);
-        attempts++;
-        if (failure === 'exception') throw new Error('simulated full sink');
-        return original(fd, bytes.subarray(0, 3));
-      };
-      syncBuiltinESMExports();
-      const event = (id) => ({ type: 'assistant', message: { id, content: [{ type: 'text', text: 'Visible' }] } });
-      try {
-        assert.doesNotThrow(() => emit(event('first')));
-        assert.doesNotThrow(() => emit(event('second')));
-      } finally {
-        fs.writeSync = original;
-        syncBuiltinESMExports();
-      }
-      assert.equal(attempts, 1);
-      assert.equal(readFileSync(path, 'utf8'), failure === 'exception' ? '' : '{"t');
-    });
   });
 
   await t.test('appends across a failed attempt and a resumed follow-up without changing existing records', async () => {

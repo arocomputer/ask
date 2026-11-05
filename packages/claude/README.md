@@ -56,6 +56,29 @@ The agent streams Claude Code's events and rewrites ask's report as each model c
 finishes, so token counts show live; the cost arrives with the result. The report names the model
 that did most of the work (`Opus 5.5`).
 
+## Live activity
+
+When ask supplies `ASK_EVENTS`, the agent appends native visible activity to its private JSONL
+file, separately from the final answer on stdout.
+
+Native visible text deltas and assistant snapshots produce `message` records without repeating
+streamed text; tool uses and results produce `tool` and `tool_result`. Thinking/signature blocks
+are omitted.
+
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
+
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
+
 ## Cost limits
 
 Claude Code reports cost only when it ends, so ask can't stop it on cost itself. The agent passes
@@ -86,7 +109,7 @@ are in [Agent environments](../../docs/environment.md).
 | `ASK_NODE` | The Node.js executable to run the agent with. |
 
 The agent also reads ask's contract variables: `ASK_MODEL`, `ASK_EFFORT`, `ASK_ACCESS`, `ASK_TITLE`,
-`ASK_SCHEMA`, `ASK_SESSION`, `ASK_REPORT` and `ASK_MAX_COST` (see [Agents](../../docs/agents.md)).
+`ASK_SCHEMA`, `ASK_SESSION`, `ASK_REPORT`, `ASK_EVENTS` and `ASK_MAX_COST` (see [Agents](../../docs/agents.md)).
 
 ## Testing
 

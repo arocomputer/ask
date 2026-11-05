@@ -93,7 +93,7 @@ test('bounds and sanitizes untrusted visible fields, ignoring hidden and malform
   const activity = events(sink);
   const wire = readFileSync(sink, 'utf8');
   assert.doesNotMatch(wire, /fake-credential|fake-key|github_pat_fakevalue|fake-password|fake-private-key|argument-secret|metadata-secret|hidden-thought|do not project/);
-  assert.ok(activity.some((event) => event.text.includes('[REDACTED]')));
+  assert.ok(activity.some((event) => event.text.includes('[redacted]')));
   const output = activity.find((event) => event.type === 'tool_result');
   assert.ok(output.text.endsWith('…'));
   assert.doesNotMatch(output.text, /[\x00-\x08\x0b-\x1f\x7f-\x9f\u202e]/);

@@ -52,9 +52,33 @@ The agent rewrites ask's report as each Codex turn completes, so token counts sh
 reports no cost. The report names the model by Codex's display name.
 Codex JSON item events also report coarse activity: thinking, running commands, editing files,
 searching, using tools or answering. Only the item type is used; commands, paths, reasoning,
-messages and tool input/output never enter activity. Unknown or malformed events are skipped.
+messages and tool input/output never enter the coarse report activity. Unknown or malformed
+events are skipped.
 The label describes the latest recognized item event, rather than every concurrent operation;
 a completed turn clears it. ask samples it on stderr, so brief activity can be missed.
+
+## Live activity
+
+When ask supplies `ASK_EVENTS`, the agent appends native visible activity to its private JSONL
+file, separately from the final answer on stdout.
+
+Native item snapshots produce new visible text suffixes as `message` and exposed reasoning
+summaries as `reasoning`; tool lifecycle items produce `tool` and `tool_result`. Raw reasoning
+fields are omitted. This transcript is separate from the coarse report activity above.
+
+Every append is one UTF-8 JSON line, at most 16 KiB including its newline. Text and tool
+names lose terminal escapes, controls (except LF/tab) and bidi/format controls; tool names are
+limited to 128 UTF-16 code units without splitting surrogate pairs. Text is sanitized before
+truncation by encoded JSON size, with an ellipsis for truncation; whitespace chunks survive.
+Common credential forms and inherited credential environment values are suppressed best effort,
+which is incomplete, especially across chunks. Treat activity as a sensitive transcript.
+
+The sink must be absolute, pre-created, regular, private (no group/other permission bits) and
+owned by the current user. Each record reopens and validates it without following a final
+symlink. The writer never creates or truncates it, so retries append. A failed or short append
+disables activity for that invocation without retrying or repairing any partial tail; subsequent
+invocations append without repairing it too. Sink failures leave the answer, report and exit
+status unchanged. See [Agents](../../docs/agents.md) for the bundled writer safeguards.
 
 ## Cost limits
 
@@ -84,7 +108,7 @@ the same config and environment. See [Agent environments](../../docs/environment
 | `CODEX_HOME` | Codex's home, for its model cache; `~/.codex` by default. |
 
 The agent also reads ask's contract variables: `ASK_MODEL`, `ASK_EFFORT`, `ASK_ACCESS`, `ASK_TITLE`,
-`ASK_SCHEMA`, `ASK_SESSION` and `ASK_REPORT` (see [Agents](../../docs/agents.md)).
+`ASK_SCHEMA`, `ASK_SESSION`, `ASK_REPORT` and `ASK_EVENTS` (see [Agents](../../docs/agents.md)).
 
 ## Testing
 
