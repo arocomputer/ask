@@ -46,8 +46,11 @@ function keys(onKey: (key: string) => boolean | void): Promise<void> {
   })
 }
 
-/** Asks for one of the options. With `filterable`, typing narrows the list. */
-export async function select<T>(question: string, options: Option<T>[], opts: { filterable?: boolean; start?: number } = {}): Promise<T> {
+/**
+ * Asks for one of the options. With `filterable`, typing narrows the list; with `shortlist`,
+ * only those are shown until something is typed, and typing searches every option.
+ */
+export async function select<T>(question: string, options: Option<T>[], opts: { filterable?: boolean; shortlist?: Option<T>[]; start?: number } = {}): Promise<T> {
   const err = process.stderr
   const st = style(err)
   const size = 7
@@ -55,10 +58,10 @@ export async function select<T>(question: string, options: Option<T>[], opts: { 
   let cursor = opts.start ?? 0
   let drawn = 0
   const draw = () => {
-    const shown = filter(options, query)
+    const shown = !query && opts.shortlist ? opts.shortlist : filter(options, query)
     cursor = Math.min(cursor, Math.max(0, shown.length - 1))
     const top = Math.max(0, Math.min(cursor - Math.floor(size / 2), shown.length - size))
-    const help = opts.filterable ? "[Use arrows to move, type to filter]" : "[Use arrows to move]"
+    const help = opts.shortlist ? "[Use arrows to move, type to search all]" : opts.filterable ? "[Use arrows to move, type to filter]" : "[Use arrows to move]"
     const lines = [`${st.green("?")} ${st.bold(question)} ${query ? st.cyan(query) : st.gray(help)}`]
     const cols = (err.columns || 80) - 4
     for (let i = top; i < Math.min(shown.length, top + size); i++) {
@@ -85,7 +88,7 @@ export async function select<T>(question: string, options: Option<T>[], opts: { 
     if (k === "\x1b[A" || k === "\x10") cursor = (cursor - 1 + shown.length) % Math.max(1, shown.length)
     else if (k === "\x1b[B" || k === "\x0e") cursor = (cursor + 1) % Math.max(1, shown.length)
     else if (k === "\x7f" || k === "\b") query = query.slice(0, -1)
-    else if (opts.filterable && !k.startsWith("\x1b") && k >= " ") {
+    else if ((opts.filterable || opts.shortlist) && !k.startsWith("\x1b") && k >= " ") {
       query += k.replace(/[\r\n]/g, "")
       cursor = 0
     }

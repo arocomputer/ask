@@ -1,83 +1,70 @@
 #!/usr/bin/env bun
-// The ask command: dispatch, help and errors. A first argument that names no command is the
-// prompt. Exit status: 0 success, 1 a failed task or error, 2 a mistake in the call.
+// The ask command. Agents send one JSON request on stdin and read one JSON response on stdout
+// (see protocol.ts). People run the few commands below to set up and look at sessions.
+// Exit status: 0 handled, 1 failed, 2 a request or command ask can't carry out.
 
 import { home } from "./home.ts"
+import { guide, handle } from "./protocol.ts"
 import { open } from "./sessions.ts"
 import { style } from "./term.ts"
 import { main as worker } from "./worker.ts"
-import * as auth from "./cmd/auth.ts"
-import { Usage } from "./cmd/common.ts"
-import * as config from "./cmd/config.ts"
-import * as follow from "./cmd/continue.ts"
 import * as models from "./cmd/models.ts"
-import * as start from "./cmd/run.ts"
 import * as sessions from "./cmd/sessions.ts"
 import * as setup from "./cmd/setup.ts"
 import * as show from "./cmd/show.ts"
-import * as stop from "./cmd/stop.ts"
-import * as wait from "./cmd/wait.ts"
 
 export const version = "3.0.0-dev"
 
 type Command = { help: string; run(h: ReturnType<typeof home>, argv: string[]): Promise<number> }
 
-const commands: Record<string, Command> = { sessions, show, wait, continue: follow, stop, setup, auth, models, config }
+const commands: Record<string, Command> = { setup, models, sessions, show }
 
 function overview(): string {
-  const st = style()
-  const h = (s: string) => st.bold(s)
-  return `Hand tasks to subagents that work in the background.
+  const b = style().bold
+  return `ask hands tasks to subagents that work in the background.
 
-${h("USAGE")}
-  ask <prompt> [flags]
-  ask <command> [flags]
+${b("USAGE")}
+  ask < request.json    For agents: one JSON request on stdin, one JSON response on stdout
+  ask <command>         For people: set up, and look at what subagents did
 
-${h("SESSION COMMANDS")}
-  sessions:    List recent sessions
-  show:        Show a session's steps and answer
-  wait:        Wait for a session and print its answer
-  continue:    Give a finished session its next prompt
-  stop:        Stop a running session
+${b("COMMANDS")}
+  setup:      Choose a provider, paste its key, pick a default model
+  models:     List the models you can use
+  sessions:   List recent sessions
+  show:       Show a session's steps and answer
 
-${h("SETUP COMMANDS")}
-  setup:       Choose a provider, paste its key, pick a default model
-  auth:        Add, remove and check provider keys
-  models:      List the models you can use
-  config:      Read and change settings
+${b("REQUESTS")}
+  {"start": [{"prompt": "Find the retry logic"}], "wait": 300}
+  {"collect": ["k3f9a2"], "wait": 300}
+  {"continue": "k3f9a2", "prompt": "Now add a test", "write": true}
+  {"stop": ["k3f9a2"]}
+  {"show": "k3f9a2"}
 
-${h("FLAGS")}
-  -m, --model provider/model   The model to use (default: ask config get model)
-  -w, --write                  Let it edit files and run commands
-  -C, --dir path               Where it works (default: here)
-  -e, --effort level           Reasoning effort, like low, medium or high
-      --timeout seconds        Stop after this long (default: 900)
-      --schema json            A JSON Schema its answer must match
-      --wait                   Block until it finishes and print the answer
-      --json                   Print results as JSON
-  -h, --help                   Show help for ask or a command
-  -v, --version                Show ask's version
+${b("FILES")}
+  ~/.ask/config.json   {"model": "provider/model", "timeout": 900}
+  ~/.ask/auth.json     {"provider": {"api_key": "..."}}, written by ask setup
 
-${h("EXAMPLES")}
-  $ ask setup
-  $ ask "Where is the retry logic?"
-  $ ask -w --wait "Add a test for parse() and run it"
-  $ git diff | ask "Review this change"
-  $ ask wait k3f9a2
-
-${h("LEARN MORE")}
-  ask <command> --help for more about a command.
+${b("LEARN MORE")}
+  ask help requests     Every request and response field
+  ask help <command>    More about a command
 `
 }
 
 function page(text: string): string {
-  const st = style()
-  return text.replace(/^([A-Z][A-Z ]+)$/gm, (m) => st.bold(m))
+  const b = style().bold
+  return text.replace(/^([A-Z][A-Z ]+)$/gm, (m) => b(m))
+}
+
+async function read(): Promise<string> {
+  let text = ""
+  for await (const chunk of process.stdin) text += chunk
+  return text
 }
 
 export async function main(argv: string[]): Promise<number> {
   const h = home()
   const [first, ...rest] = argv
+  const st = style(process.stderr)
   if (first === "__worker") {
     await worker(h, open(h, rest[0].split("/").pop()!))
     return 0
@@ -86,36 +73,47 @@ export async function main(argv: string[]): Promise<number> {
     process.stdout.write(`ask ${version}\n`)
     return 0
   }
-  if (first === undefined && process.stdin.isTTY) {
-    process.stdout.write(overview())
+  if (first === "help" || first === "-h" || first === "--help") {
+    const topic = rest[0]
+    process.stdout.write(topic === "requests" ? page(guide) : topic && commands[topic] ? page(commands[topic].help) : overview())
     return 0
   }
-  if (first === "help") {
-    const c = rest[0] && commands[rest[0]]
-    process.stdout.write(c ? page(c.help) : overview())
+  if (first === undefined) {
+    if (process.stdin.isTTY) {
+      process.stdout.write(overview())
+      return 0
+    }
+    let request: unknown
+    try {
+      request = JSON.parse(await read())
+    } catch (err) {
+      process.stdout.write(JSON.stringify({ error: { message: `the request isn't JSON: ${(err as Error).message}`, hint: 'send one object, like {"start": [{"prompt": "..."}]}' } }) + "\n")
+      return 2
+    }
+    const response = await handle(h, request)
+    process.stdout.write(JSON.stringify(response) + "\n")
+    return "error" in response ? 2 : 0
+  }
+  const command = commands[first]
+  if (!command) {
+    process.stderr.write(`${st.red("X")} Unknown command ${JSON.stringify(first)}\n${st.gray("  Agents send a JSON request on stdin; ask help shows how")}\n`)
+    return 2
+  }
+  if (rest.includes("-h") || rest.includes("--help")) {
+    process.stdout.write(page(command.help))
     return 0
   }
-  const command = first !== undefined ? commands[first] : undefined
-  const args = command ? rest : argv
-  if (args.includes("-h") || args.includes("--help")) {
-    process.stdout.write(command ? page(command.help) : overview())
-    return 0
-  }
-  return (command ?? start).run(h, args)
+  return command.run(h, rest)
 }
 
-/** Prints an error the way gh does: a red X and the message, then what to do, dimmed. */
+/** Prints an unexpected error as gh does: a red X and the message, and a hint when there is one. */
 function report(err: unknown): number {
   const st = style(process.stderr)
-  const e = err as Error & { hint?: string; code?: string }
-  let message = e?.message ?? String(err)
-  let hint = e?.hint
-  if (e?.code?.startsWith("ERR_PARSE_ARGS")) {
-    message = message.replace(/\. To specify a positional argument.*$/s, "")
-    hint = "ask --help lists the flags"
-  }
-  process.stderr.write(`${st.red("X")} ${message}\n${hint ? st.gray(`  ${hint}`) + "\n" : ""}`)
-  return err instanceof Usage || e?.code?.startsWith("ERR_PARSE_ARGS") ? 2 : 1
+  const e = err as Error & { code?: string }
+  const usage = !!e?.code?.startsWith("ERR_PARSE_ARGS")
+  const message = (e?.message ?? String(err)).replace(/\. To specify a positional argument.*$/s, "")
+  process.stderr.write(`${st.red("X")} ${message}\n${usage ? st.gray("  ask help lists the flags") + "\n" : ""}`)
+  return usage ? 2 : 1
 }
 
 if (import.meta.main ?? process.argv[1] === new URL(import.meta.url).pathname) {

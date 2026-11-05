@@ -5,8 +5,11 @@ import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import type { Protocol } from "../src/provider.ts"
 
-/** One model turn to play back: text, tool calls, or an HTTP error. */
-export type Reply = { text?: string; calls?: { name: string; args: object }[]; status?: number; error?: string; delay?: number }
+/**
+ * One model turn to play back: text, tool calls, or an HTTP error. A reply with `when` answers
+ * only requests whose body mentions it; the others are played in order.
+ */
+export type Reply = { text?: string; calls?: { name: string; args: object }[]; status?: number; error?: string; delay?: number; when?: string }
 
 export type Fake = { url: string; requests: any[]; close(): Promise<void> }
 
@@ -17,7 +20,8 @@ export async function serve(protocol: Protocol, replies: Reply[]): Promise<Fake>
     let body = ""
     for await (const chunk of req) body += chunk
     requests.push(JSON.parse(body))
-    const r = replies[Math.min(n++, replies.length - 1)]
+    const plain = replies.filter((x) => !x.when)
+    const r = replies.find((x) => x.when && body.includes(x.when)) ?? plain[Math.min(n++, plain.length - 1)]
     if (r.delay) await new Promise((ok) => setTimeout(ok, r.delay))
     if (r.status) {
       res.writeHead(r.status, { "content-type": "application/json" })

@@ -24,73 +24,73 @@ async function setup(replies: Reply[]) {
   writeFileSync(join(home, "cache", "models.json"), JSON.stringify(catalog))
   writeFileSync(join(home, "config.json"), JSON.stringify({ model: "fake/m" }))
   writeFileSync(join(home, "auth.json"), JSON.stringify({ fake: { api_key: "k" } }))
-  const ask = (args: string[], input?: string) =>
+  const run = (args: string[], input = "") =>
     new Promise<{ code: number; stdout: string; stderr: string }>((done) => {
       const child = execFile(process.execPath, [cli, ...args], { cwd: project, env: { ...process.env, ASK_HOME: home, NO_COLOR: "1" } }, (err, stdout, stderr) =>
         done({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }),
       )
-      child.stdin!.end(input ?? "")
+      child.stdin!.end(input)
     })
-  return { fake, home, project, ask }
+  /** Sends one JSON request and returns the parsed response. */
+  const ask = async (request: object) => JSON.parse((await run([], JSON.stringify(request))).stdout)
+  return { fake, home, project, run, ask }
 }
 
-describe("cli", () => {
-  test("a session runs in the background and wait prints its answer", async () => {
+describe("requests", () => {
+  test("a started task is collected with its answer", async () => {
     const { ask } = await setup([{ calls: [{ name: "read", args: { path: "port.txt" } }] }, { text: "Port 7341." }])
-    const start = await ask(["Which port?"])
-    const id = start.stdout.trim()
-    assert.match(id, /^[a-z0-9]{6}$/)
-    const r = await ask(["wait", id])
-    assert.equal(r.code, 0)
-    assert.equal(r.stdout, "Port 7341.\n")
+    const started = await ask({ start: [{ prompt: "Which port?" }] })
+    assert.equal(started.tasks[0].state, "running")
+    const done = await ask({ collect: [started.tasks[0].id] })
+    assert.deepEqual(done.tasks, [{ id: started.tasks[0].id, state: "succeeded", answer: "Port 7341." }])
   })
 
-  test("stop ends a running session as stopped", async () => {
+  test("waiting returns once the first task finishes and reports the rest as running", async () => {
+    const { ask } = await setup([
+      { when: "fast", text: "quick" },
+      { when: "slow", text: "late", delay: 20_000 },
+    ])
+    const r = await ask({ start: [{ prompt: "slow one" }, { prompt: "fast one" }], wait: 30 })
+    assert.deepEqual(r.tasks.map((t: any) => t.state), ["running", "succeeded"])
+    assert.equal(r.tasks[1].answer, "quick")
+  })
+
+  test("stop ends a running task as stopped", async () => {
     const { ask } = await setup([{ text: "late", delay: 20_000 }])
-    const id = (await ask(["Slow task"])).stdout.trim()
+    const { tasks } = await ask({ start: [{ prompt: "Slow task" }] })
     await new Promise((ok) => setTimeout(ok, 500))
-    assert.equal((await ask(["stop", id])).code, 0)
-    const r = await ask(["wait", id, "--json"])
-    assert.equal(JSON.parse(r.stdout).state, "stopped")
+    assert.equal((await ask({ stop: [tasks[0].id] })).tasks[0].state, "stopped")
   })
 
-  test("a session whose worker died reads as failed", async () => {
+  test("a task whose worker died reads as failed", async () => {
     const { ask, home } = await setup([{ text: "never", delay: 20_000 }])
-    const id = (await ask(["Task"])).stdout.trim()
-    const { pid } = JSON.parse(readFileSync(join(home, "sessions", id, "lock"), "utf8"))
+    const { tasks } = await ask({ start: [{ prompt: "Task" }] })
+    const { pid } = JSON.parse(readFileSync(join(home, "sessions", tasks[0].id, "lock"), "utf8"))
     process.kill(pid, "SIGKILL")
-    const r = await ask(["wait", id, "--json"])
-    assert.equal(JSON.parse(r.stdout).state, "failed")
-    assert.match(JSON.parse(r.stdout).error.message, /worker exited/)
+    const r = await ask({ collect: [tasks[0].id], wait: 5 })
+    assert.equal(r.tasks[0].state, "failed")
+    assert.match(r.tasks[0].error.message, /worker exited/)
   })
 
   test("continue carries the conversation into the next turn", async () => {
     const { ask, fake } = await setup([{ text: "First answer." }, { text: "Second answer." }])
-    const first = JSON.parse((await ask(["--wait", "--json", "First question"])).stdout)
-    const r = await ask(["continue", first.id, "Second question", "--wait"])
-    assert.equal(r.stdout, "Second answer.\n")
+    const first = await ask({ start: [{ prompt: "First question" }], wait: 30 })
+    const second = await ask({ continue: first.tasks[0].id, prompt: "Second question", wait: 30 })
+    assert.equal(second.tasks[0].answer, "Second answer.")
     assert.deepEqual(fake.requests[1].messages.slice(1).map((m: any) => m.content), ["First question", "First answer.", "Second question"])
   })
 
-  test("a write turn lists the files it changed", async () => {
+  test("a write task lists the files it changed", async () => {
     const { ask, project } = await setup([{ calls: [{ name: "write", args: { path: "new.txt", content: "hi" } }] }, { text: "Done." }])
     execFileSync("git", ["init", "-q"], { cwd: project })
-    const r = await ask(["-w", "--wait", "--json", "Add a file"])
-    assert.deepEqual(JSON.parse(r.stdout).changes, [{ path: "new.txt", change: "added" }])
+    const r = await ask({ start: [{ prompt: "Add a file", write: true }], wait: 30 })
+    assert.deepEqual(r.tasks[0].changes, [{ path: "new.txt", change: "added" }])
   })
 
-  test("auth login checks a piped key before saving it", async () => {
-    const { ask, home } = await setup([{ status: 401, error: "Invalid credential" }])
-    const r = await ask(["auth", "login", "fake"], "bad-key")
-    assert.equal(r.code, 1)
-    assert.match(r.stderr, /refused the key: Invalid credential/)
-    assert.equal(JSON.parse(readFileSync(join(home, "auth.json"), "utf8")).fake.api_key, "k")
-  })
-
-  test("a mistake in the call exits 2 and says what to do", async () => {
-    const { ask } = await setup([{ text: "unused" }])
-    const r = await ask(["--frobnicate", "task"])
+  test("a request ask can't carry out says what to send instead", async () => {
+    const { run } = await setup([{ text: "unused" }])
+    const r = await run([], JSON.stringify({ start: [{ prompt: "x", modle: "fake/m" }] }))
     assert.equal(r.code, 2)
-    assert.match(r.stderr, /^X Unknown option '--frobnicate'\n  ask --help lists the flags\n$/)
+    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, model, write, dir, effort, schema, timeout" })
   })
 })

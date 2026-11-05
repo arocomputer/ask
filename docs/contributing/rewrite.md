@@ -31,15 +31,20 @@ variants, not by argument.
 - One transcript format across protocols, so any model can continue any session. Each
   assistant message keeps its provider-native items, replayed only to the same protocol (for
   encrypted reasoning and thinking signatures).
-- The first agent doorway is a CLI that reads one JSON request on stdin and writes one JSON
-  result on stdout. MCP comes later as a thin wrapper over the same engine.
-- **The human CLI is redone in the spirit of GitHub's `gh`:** colored state symbols, aligned
-  tables that fit the terminal, a spinner on stderr, interactive prompts (arrow keys, type to
-  filter, hidden key entry), bold section headers in help, `--json` on anything that lists or
-  shows. Color and prompts only on a terminal, honoring `NO_COLOR`; piped output is plain and
-  tab-separated. Commands: `ask setup`, `ask auth login|logout|status`, `ask models`,
-  `ask config get|set`, `ask PROMPT`, `ask sessions`, `ask show`, `ask wait`, `ask continue`,
-  `ask stop`.
+- **The JSON request is the agent interface.** `ask` reads one request on stdin and writes one
+  response on stdout: `start` (many tasks at once, optionally waiting), `collect`, `continue`,
+  `stop`, `show`. Every response is `{"tasks": [...]}` or `{"error": {"message", "hint"}}`.
+  The library's `handle` takes the same object, and MCP will wrap it later. `ask help requests`
+  documents it; `protocol.ts` defines it.
+- **The command line is only for people, and small:** `ask setup` (the one interactive command,
+  like `gh auth login`), `ask models`, `ask sessions`, `ask show`. Settings are files:
+  `config.json` for the model and timeout, `auth.json` for keys, or a provider's environment
+  variable. No command wraps editing them.
+- **Looks like gh:** text in the terminal's own color, bold for headers and the subject of a
+  line, gray for details, green ✓ / red X / yellow * only on state symbols, cyan only for what a
+  prompt has selected. Color and prompts only on a terminal, honoring `NO_COLOR`; piped tables
+  are tab-separated.
+- A TUI waits until after phase 3; the case for it is a live view of running subagents.
 
 ## Stripped from the Go version
 
@@ -52,6 +57,8 @@ variants, not by argument.
   the worker's pid.
 - The executable-extension contract, the `x` script, `guard.sh` (its rules become a test),
   `install`/`remove`, and importing OpenCode's key in `ask setup`.
+- The flag commands `ask PROMPT`, `wait`, `continue`, `stop`, `config` and `auth`, and `--json`
+  on each: agents use requests, people use the four commands and the files.
 
 ## Fixed in the harness
 
@@ -68,11 +75,10 @@ variants, not by argument.
 
 1. **Engine.** Catalog, the three protocols, tools, loop, system prompt, as plain functions.
    Tests against fake provider servers, one behavior each.
-2. **Sessions and the human CLI.** Session folders, a detached worker per turn, stop and
-   continue; config and pasted keys; the `gh`-style commands above. The same turn function runs
-   in-process (library) or in the worker (CLI). Agent-facing JSON stays minimal until phase 3.
-   Still to port: `--worktree`, and the library's in-process entry point.
-3. **Interface experiments.** Two or three JSON variants over phase 2, driven by Claude Code
+2. **Sessions, requests and the human CLI.** Session folders, a detached worker per turn; the
+   request protocol as a baseline; the four commands. Still to port: worktrees (a `worktree`
+   task field), and running turns in the host's process for the library.
+3. **Interface experiments.** Two or three variants of the request protocol, driven by Claude Code
    (Sonnet) and Codex on this server, with `experiments/fake2.py` as the subagent model.
    - Waiting: block per call, return the first finished, or start and collect in one call.
    - Referring: random ids, names the caller picks, or no reference needed.

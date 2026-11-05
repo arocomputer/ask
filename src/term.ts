@@ -1,6 +1,10 @@
 // Terminal output in the manner of GitHub's gh: color and symbols only on a terminal (honoring
 // NO_COLOR, CLICOLOR_FORCE and TERM=dumb), tables that fit the width there and turn into
 // tab-separated lines when piped, relative times, and a spinner on stderr.
+//
+// The palette: text in the terminal's own color; bold for headers and the one thing a line is
+// about; gray for details; green, red and yellow only on state symbols and warnings; cyan only
+// for what is selected or chosen in a prompt.
 
 import type { State } from "./sessions.ts"
 
@@ -13,7 +17,7 @@ export function colored(s: Stream): boolean {
   return !!s.isTTY && process.env.TERM !== "dumb"
 }
 
-const codes = { bold: [1, 22], dim: [2, 22], red: [31, 39], green: [32, 39], yellow: [33, 39], magenta: [35, 39], cyan: [36, 39], gray: [90, 39] } as const
+const codes = { bold: [1, 22], red: [31, 39], green: [32, 39], yellow: [33, 39], cyan: [36, 39], gray: [90, 39] } as const
 
 export type Style = Record<keyof typeof codes, (s: string) => string> & { on: boolean }
 
@@ -26,7 +30,10 @@ export function style(s: Stream = process.stdout): Style {
   return out
 }
 
-/** A state's symbol, colored: gh's ✓ and X, a dot while running. */
+/**
+ * A state's symbol, the one place state gets color, as in gh: ✓ green, X red, * yellow while
+ * running, ! yellow while retrying, - gray when stopped.
+ */
 export function symbol(state: State, st: Style): string {
   switch (state) {
     case "succeeded":
@@ -38,14 +45,8 @@ export function symbol(state: State, st: Style): string {
     case "retrying":
       return st.yellow("!")
     case "running":
-      return st.yellow("•")
+      return st.yellow("*")
   }
-}
-
-/** A state as a word in its color. */
-export function stateWord(state: State, st: Style): string {
-  const color = { succeeded: st.green, failed: st.red, stopped: st.gray, retrying: st.yellow, running: st.yellow }[state]
-  return color(state)
 }
 
 /** "just now", "5m ago", "3h ago", "2d ago". */
@@ -129,10 +130,9 @@ const frames = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
 export function spinner(label: string) {
   const err = process.stderr
   if (!err.isTTY) return { update(_: string) {}, stop() {} }
-  const st = style(err)
   let text = label
   let i = 0
-  const draw = () => err.write(`\r${st.yellow(frames[i++ % frames.length])} ${truncate(text, (err.columns || 80) - 3)}\x1b[K`)
+  const draw = () => err.write(`\r${frames[i++ % frames.length]} ${truncate(text, (err.columns || 80) - 3)}\x1b[K`)
   draw()
   const timer = setInterval(draw, 100)
   return {
