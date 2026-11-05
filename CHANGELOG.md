@@ -34,6 +34,10 @@ ask 2 is a rewrite around its own harness. It does not read ask 1's runs; see
 - Remove run names, batches, hooks, model roles, `environment.json`, `ask title`, `ask bench`,
   the settings screen, `ask update`, `ask docs` and sixteen bundled agents. The binary has no
   dependencies.
+- Make `ask clean` keep a worktree while its session is live, git locks it, it contains another
+  worktree, or its work is dirty or unlanded, and say why in the plan. `--contained` removes work
+  whose commits another branch holds but keeps its branch; `--superseded` also removes work a
+  main branch already matches after a rework.
 
 ## v0.3.1 · 2026-11-02
 

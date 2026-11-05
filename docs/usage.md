@@ -61,7 +61,8 @@ ask k3f9a2 · succeeded · GPT-5.5 · write · worktree ~/.ask/worktrees/add-rat
 Several write sessions can then work in parallel without touching each other or your checkout. The
 worktree starts from the committed `HEAD`, so put uncommitted context in the prompt. Set
 `worktree` to `true` in [config](config.md) to give every write session one. Review and merge the
-branch with git as usual; `ask clean` removes worktrees whose branch changed nothing or landed.
+branch with git as usual; `ask clean` removes finished worktrees and keeps anything that may
+still hold work.
 
 ## What a write turn changed
 
