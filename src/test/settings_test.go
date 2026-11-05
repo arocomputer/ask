@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	asksetup "github.com/arocomputer/ask/src/setup"
 )
 
 // TestSettings pins settings.json and ask settings: what each setting changes, the review before a save, and bad values.
@@ -17,6 +19,12 @@ func TestSettings(t *testing.T) {
 		match(t, r.stderr, `✗ .*\.codex/skills`)
 		match(t, s.read(filepath.Join(s.tmp, ".claude", "skills", "ask", "SKILL.md")), `name: ask`)
 		noMatch(t, r.stderr, `(?m)^✓ saved$`)
+		// Keep setup from installing or invoking CLIs found on the test machine.
+		for _, agent := range asksetup.Agents {
+			if err := os.Symlink(fakeBin, filepath.Join(s.home, "agents", agent.Name)); err != nil {
+				t.Fatal(err)
+			}
+		}
 		eq(t, s.ask("setup", "--yes").code, 1)
 	})
 	t.Run("settings choose the default model, worktree folders and branch names", func(t *testing.T) {

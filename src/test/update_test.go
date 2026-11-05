@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"testing"
 )
 
@@ -57,7 +58,9 @@ func TestUpdate(t *testing.T) {
 	z.Close()
 	name := fmt.Sprintf("ask_v9.9.9_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	sum := sha256.Sum256(archive.Bytes())
-	checksums := hex.EncodeToString(sum[:]) + "  " + name + "\n"
+	good := hex.EncodeToString(sum[:]) + "  " + name + "\n"
+	var checksums atomic.Value
+	checksums.Store(good)
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/latest":
@@ -65,7 +68,7 @@ func TestUpdate(t *testing.T) {
 		case "/download/v9.9.9/" + name:
 			rw.Write(archive.Bytes())
 		case "/download/v9.9.9/checksums.txt":
-			rw.Write([]byte(checksums))
+			rw.Write([]byte(checksums.Load().(string)))
 		default:
 			http.NotFound(rw, r)
 		}
@@ -86,12 +89,11 @@ func TestUpdate(t *testing.T) {
 	check := run("update", "--check")
 	eq(t, check.code, 1)
 	match(t, check.stderr, `ask: v9\.9\.9 is out \(you have v0\.1\.0\); update with: ask update`)
-	good := checksums
-	checksums = "0000  " + name + "\n"
+	checksums.Store("0000  " + name + "\n")
 	bad := run("update")
 	match(t, bad.stderr, `checksum mismatch`)
 	eq(t, run("--version").stdout, "v0.1.0\n")
-	checksums = good
+	checksums.Store(good)
 	eq(t, run("update").code, 0)
 	b, _ := os.ReadFile(bin)
 	eq(t, string(b), string(next))
