@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/brand/screen.png" alt="ask: a read-only session finds a bug, and a second turn in the same session fixes it" width="1040">
+  <img src=".github/brand/screen.png" alt="ask: a read-only session finds a bug, and a second turn in the same session fixes it" width="700">
 </p>
 
 <p align="center">
