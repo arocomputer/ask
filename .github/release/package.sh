@@ -1,6 +1,8 @@
 #!/bin/sh
-# Build and verify the same four archives in CI and before publication. Never execute a
-# cross-compiled binary; inspect its Go build metadata and run --version only on the host.
+# Build and verify the same four archives in CI and before publication: ask compiled by Bun
+# into one file for each system, with the license. The version comes from the tag, set in
+# package.json for the build and restored after. Only the host's binary runs, to check its
+# version; the others are checked by file type.
 set -eu
 
 fail() { printf 'package: %s\n' "$*" >&2; exit 1; }
@@ -11,13 +13,19 @@ case $tag in *[!v0-9.rc-]* | '') fail 'invalid version' ;; esac
 printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$' ||
     fail 'expected vX.Y.Z or vX.Y.Z-rc.N without leading zeros'
 [ -n "$out" ] || fail 'output directory is empty'
+command -v bun >/dev/null 2>&1 || fail 'needs bun on PATH'
 mkdir -p "$out"
 [ -z "$(ls -A "$out")" ] || fail 'output directory must be empty (no stale release assets)'
+out=$(cd "$out" && pwd)
+cd "$(dirname "$0")/../.."
 work=$(mktemp -d "${TMPDIR:-/tmp}/ask-package.XXXXXX")
-trap 'rm -rf "$work"' EXIT
-export CGO_ENABLED=0
-host_os=$(go env GOHOSTOS)
-host_arch=$(go env GOHOSTARCH)
+cp package.json "$work/package.json"
+trap 'cp "$work/package.json" package.json; rm -rf "$work"' EXIT
+version=${tag#v}
+npm pkg set version="$version"
+
+host_os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case $(uname -m) in x86_64 | amd64) host_arch=amd64 ;; aarch64 | arm64) host_arch=arm64 ;; *) host_arch=other ;; esac
 
 for os in linux darwin; do
     for arch in amd64 arm64; do
@@ -26,7 +34,8 @@ for os in linux darwin; do
         unpack="$work/verify-$target"
         archive="$out/$target.tar.gz"
         mkdir -p "$stage" "$unpack"
-        GOOS="$os" GOARCH="$arch" ./x build -trimpath -ldflags "-s -w -X main.version=${tag}" -o "$stage/ask" .
+        case $arch in amd64) cpu=x64 ;; arm64) cpu=arm64 ;; esac
+        bun build --compile --minify --target="bun-$os-$cpu" src/cli.ts --outfile "$stage/ask" >/dev/null
         cp LICENSE "$stage/"
         tar -C "$stage" -czf "$archive" ask LICENSE
         printf '%s\n' ask LICENSE > "$work/expected"
@@ -36,12 +45,16 @@ for os in linux darwin; do
         [ -f "$unpack/ask" ] && [ -x "$unpack/ask" ]
         cmp "$stage/ask" "$unpack/ask"
         cmp LICENSE "$unpack/LICENSE"
-        go version -m "$unpack/ask" > "$work/metadata"
-        grep -q "GOOS=$os\$" "$work/metadata" || fail "wrong OS in $target"
-        grep -q "GOARCH=$arch\$" "$work/metadata" || fail "wrong architecture in $target"
-        grep -q 'CGO_ENABLED=0$' "$work/metadata" || fail "CGO enabled in $target"
+        case $os/$arch in
+            linux/amd64) kind='ELF 64-bit.*x86-64' ;;
+            linux/arm64) kind='ELF 64-bit.*(aarch64|ARM)' ;;
+            darwin/amd64) kind='Mach-O 64-bit.*x86_64' ;;
+            darwin/arm64) kind='Mach-O 64-bit.*arm64' ;;
+        esac
+        file "$unpack/ask" | grep -Eq "$kind" || fail "$target is not a $os/$arch binary: $(file -b "$unpack/ask")"
         if [ "$os/$arch" = "$host_os/$host_arch" ]; then
-            [ "$(ASK_NO_UPDATE_CHECK=1 "$unpack/ask" --version)" = "$tag" ] || fail "wrong version in $target"
+            got=$("$unpack/ask" --version)
+            [ "$got" = "ask version $version" ] || fail "$target says \"$got\", not ask version $version"
         fi
     done
 done

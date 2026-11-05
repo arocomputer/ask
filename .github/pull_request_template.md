@@ -4,8 +4,8 @@
 
 ## Verification
 
-- `./x check` —
+- `npm run check && npm test` —
 
-<!-- Covers Go formatting, vet/tests, offline integration, ShellCheck, and guards.
+<!-- Covers the typecheck and the tests under Node and Bun, the project's rules included.
      Add focused test commands and results; state failures, skips, or limitations.
      Update affected docs and CHANGELOG.md for user-visible changes. -->

@@ -95,7 +95,8 @@ if [ ! -f "$work/ask" ] || [ -L "$work/ask" ]; then
   fail "$archive has no ask binary"
 fi
 got=$("$work/ask" --version 2>/dev/null || true)
-[ "$got" = "$version" ] || fail "$archive says it is \"$got\", not $version"
+# Releases before v0.4.0 print the bare tag; later ones print "ask version X.Y.Z".
+[ "$got" = "$version" ] || [ "$got" = "ask version ${version#v}" ] || fail "$archive says it is \"$got\", not $version"
 
 mkdir -p "$dir"
 cp "$work/ask" "$dir/.ask.next"

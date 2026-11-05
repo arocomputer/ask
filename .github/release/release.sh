@@ -5,7 +5,7 @@ set -eu
 fail() { printf 'release: %s\n' "$*" >&2; exit 1; }
 dry=
 if [ "${1-}" = --dry-run ]; then dry=1; shift; fi
-[ "$#" -eq 1 ] || fail 'usage: ./x release [--dry-run] vX.Y.Z[-rc.N]'
+[ "$#" -eq 1 ] || fail 'usage: ./.github/release/release.sh [--dry-run] vX.Y.Z[-rc.N]'
 tag=$1
 case $tag in *[!v0-9.rc-]* | '') fail 'expected a version such as v1.2.3 or v1.2.3-rc.1' ;; esac
 printf '%s\n' "$tag" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$' ||
@@ -51,8 +51,8 @@ if [ "$count" -eq 0 ]; then
     git -C "$work" commit -qm "release: $tag"
     git -C "$work" push -q -u origin "$branch"
     (cd "$work" && gh pr create --base main --head "$branch" --title "release: $tag" \
-        --body "Prepare the changelog for $tag. After merging, run ./x release $tag on main.")
-    printf 'Merge the release PR, update main, then run ./x release %s again.\n' "$tag"
+        --body "Prepare the changelog for $tag. After merging, run ./.github/release/release.sh $tag on main.")
+    printf 'Merge the release PR, update main, then run ./.github/release/release.sh %s again.\n' "$tag"
     exit 0
 fi
 
