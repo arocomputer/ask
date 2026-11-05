@@ -34,10 +34,10 @@ Selecting harness names limits the adapter and package lifecycle suites. Shared 
 shutdown and helper checks still run: they protect ask itself, independent of which vendor CLI
 was selected. Multiple names select separate harness suites, not running agent sessions.
 
-The runner and shared test plumbing live in `test/baymax/`. Harness-specific assertions and
+The runner and shared test plumbing live in `src/test/baymax/`. Harness-specific assertions and
 simulators remain in `packages/NAME/test/`; Baymax's integration profiles describe the small
 amount of configuration needed to drive each simulator through ask. No harness-specific
-production behavior goes into `internal/`.
+production behavior goes into `src/`.
 
 Baymax deliberately disables Go module downloads while building; install the repository's Go
 dependencies beforehand if the module cache is empty. No developer credentials are passed to
@@ -63,7 +63,7 @@ Baymax does not download CLIs, call providers or silently turn offline checks in
 Existing fixtures remain simulators, not independently captured upstream recordings.
 
 For opt-in local startup and complete fake-task timings, see
-[Local latency](../../test/README.md#local-latency-opt-in). Baymax checks behavior;
+[Local latency](../../src/test/README.md#local-latency-opt-in). Baymax checks behavior;
 `ask bench` compares models using task durations, rather than timing a complete ask invocation.
 
 docs  docs/contributing/baymax.md
