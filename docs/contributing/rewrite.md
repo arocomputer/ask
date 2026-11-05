@@ -93,16 +93,72 @@ variants, not by argument.
 4. **Lock.** Done: worktree tasks, change tracking that counts commits, the Go tests' intent
    ported, the project's rules as a test, the Go tree removed, CI and release on Node and Bun,
    an npm package, and the docs, AGENTS.md and changelog rewritten.
-5. **Real providers and sign-ins**, alongside 3.
-   - First real call per protocol, with an OpenCode Go API key in `~/.ask/auth.json`. (Solved:
-     the old key in OpenCode's v1 `auth.json` was a leftover, inactive in OpenCode's credential
-     store; OpenCode itself authenticates with an account sign-in.)
-   - **OpenCode sign-in:** `ask settings` signs in to the OpenCode account the way OpenCode does,
-     with access and refresh tokens, and ask refreshes its own login. Never reuse OpenCode's
-     stored tokens: two programs refreshing one login sign each other out. Find the flow from
-     OpenCode's source and docs before building it; ship it labeled as relying on OpenCode's
-     sign-in, which isn't a published API for other clients.
-   - **ChatGPT sign-in**, the same way, labeled unofficial.
+5. **Sign-ins.** Researched 2026-11-05; design below, not built.
+
+## Phase 5: sign-ins
+
+### OpenCode: no sign-in, a better key
+
+OpenCode's docs give other tools one way in: a Console API key (`oc_sk_...`, from Account ›
+Personal API keys, or a service account's for shared machines), sent as a bearer token
+(opencode.ai/v2/docs/console/harnesses, /console/api). Even tools OpenCode lists as built in,
+like Pi, store such a key. The account sign-in OpenCode itself uses isn't offered to other
+clients; the only OAuth it documents for them is the Console MCP server, which manages a
+workspace rather than calling models. So ask doesn't sign in to OpenCode. Instead:
+
+- `ask settings` says where to make a key (Account › Personal API keys) and what one looks like.
+- Free-tier models (zero price in the catalog) answer 403 to any tool but OpenCode, so ask hides
+  them for the `opencode` and `opencode-go` providers.
+
+### ChatGPT: the documented open-source flow
+
+OpenAI documents "ChatGPT plan usage" for open-source, locally run tools
+(developers.openai.com/siwc/token-sharing-open-source): OAuth with PKCE, dynamic client
+registration, no client secret or partner key, then Responses API requests billed to the user's
+Plus or Pro plan. This replaces copying Codex's login, which we never do.
+
+- **Provider.** `chatgpt`, added to the catalog by ask: the Responses protocol at
+  `https://api.openai.com/v1`, models from the account's own `GET /v1/models` list (`slug`,
+  `display_name`, `visibility: "list"`), cached and refreshed at sign-in and daily. Models are
+  named `chatgpt/SLUG`.
+- **Sign-in** in `ask settings`, labeled **Continue with ChatGPT**: first time
+  `client_id=dynamic_agent_client` with `agent_name_hint=ask` and the host's
+  `ext_agent_host_id`; scopes `openid profile email offline_access resource.invoke
+  chatgpt.tokens.use.direct`; `resource=https://api.openai.com/v1`; fresh `state`, `nonce` and
+  S256 PKCE per attempt; a loopback callback `http://127.0.0.1:PORT/auth/callback`. Later
+  sign-ins reuse the issued `client_id` (`oaiapp_...`) with `id_token_hint`.
+- **Away from the browser** (SSH, a phone): a `127.0.0.1` callback reaches the machine running
+  the browser, not ask's. ask prints the URL and also accepts the address the browser lands on,
+  pasted back: the same code, state and redirect URI, exchanged by ask. OpenAI's own advice for
+  VMs is to sign in locally and copy the credential file; pasting avoids needing a second machine.
+- **Checking.** Verify the ID token's RS256 signature against
+  `https://auth.openai.com/.well-known/jwks.json` with `node:crypto`, and its issuer, audience
+  (the issued client ID), expiry and nonce. Require `chatgpt.tokens.use.direct` among the
+  granted scopes; without it, keep the sign-in but say plan usage is off.
+- **Storage.** The credential record in `auth.json` under `chatgpt` (client ID, subject, email,
+  ID, access and refresh tokens, expiry, scopes), mode 0600, written atomically. The host ID
+  (`urn:uuid:...`, made once) lives apart, in `~/.ask/host.json`, so copied credentials never
+  overwrite it.
+- **Refresh.** Access tokens last an hour; refresh tokens 30 days and rotate. Refresh shortly
+  before expiry, and once on a 401, under a lock shared by every ask process (several workers
+  run at once, and reusing a rotated token fails with `refresh_token_reused`); re-read the
+  record after taking the lock.
+- **Requests.** `store: false`, `stream: true` and `instructions` already hold. This route wants
+  function tools grouped in a namespace (`{"type": "namespace", "name": "ask", "tools": [...]}`)
+  and rejects `max_output_tokens`, `temperature`, `metadata` and others ask doesn't send.
+- **Errors.** Map `subscription_sharing_usage_limit_exceeded` (429: link
+  chatgpt.com/settings/usage, don't retry), `_user_not_eligible` (403: explain, don't retry),
+  `_unsupported_capability` (400: name `error.param`), `_usage_unavailable` and
+  `_user_unavailable` (503: back off) to failures with hints. A disconnect shows only as a
+  failed refresh: then ask asks to sign in again.
+- **Signing out** revokes the refresh token at the revocation endpoint, clears the tokens, and
+  keeps the client ID and host ID for the next sign-in.
+- **Telling the user.** After the first sign-in: "You're using your ChatGPT plan", with where to
+  manage usage. `ask doctor` checks that the sign-in still refreshes.
+- **To confirm live**, since the docs don't say: how calls come back from namespaced tools, and
+  whether `include: ["reasoning.encrypted_content"]` is accepted on this route.
+- **Left out for now:** several ChatGPT accounts at once (sign out to switch), and importing a
+  credential file from another machine.
 
 ## Not now
 
