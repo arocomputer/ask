@@ -59,7 +59,7 @@ func Run(p config.Paths, args []string) (int, error) {
 		return 0, err
 	}
 	if st := term.Styled(os.Stderr); m.Picked && st.On {
-		fmt.Fprintln(os.Stderr, st.Dim("using "+m.Spec+"; ask config model sets your default"))
+		fmt.Fprintln(os.Stderr, st.Dim("No default model, so using "+m.Spec+". Set one with ask config model."))
 	}
 	t := sessions.Turn{Prompt: prompt, Model: m.Spec, Name: m.Name, Effort: m.Effort, Write: opts.B("write") || opts.B("worktree")}
 	if err := cmdutil.Limits(&t, opts, cfg); err != nil {

@@ -76,7 +76,9 @@ func Run(p config.Paths, args []string) (int, error) {
 		} else {
 			for _, e := range page.Events {
 				// Status events are bookkeeping for scripts; the status line says the same.
-				if e.Type != "status" {
+				// On a terminal, the final message is the answer printed below; once is enough.
+				final := s.On && e.Type == "message" && r.State() != "running" && e.Text == r.Turn().Answer
+				if e.Type != "status" && !final {
 					printEvent(s, e)
 				}
 			}
@@ -97,15 +99,32 @@ func Run(p config.Paths, args []string) (int, error) {
 	}
 }
 
-// printEvent renders one event for a person: a dimmed label, then the text, indented.
+// printEvent renders one event. Piped: "type tool: text", stable for scripts. On a terminal: a
+// tool call as its name and input, its result as a dim first line, a message as itself.
 func printEvent(s term.Style, e sessions.Event) {
-	label := e.Type
-	if e.Tool != "" {
-		label += " " + e.Tool
-	}
 	text := term.Safe(strings.ReplaceAll(e.Text, "\n", "\n  "))
 	if n := []rune(text); len(n) > 1000 {
 		text = string(n[:1000]) + "…"
 	}
-	fmt.Fprintf(os.Stderr, "%s: %s\n", s.Dim(label), text)
+	if !s.On {
+		label := e.Type
+		if e.Tool != "" {
+			label += " " + e.Tool
+		}
+		fmt.Fprintf(os.Stderr, "%s: %s\n", label, text)
+		return
+	}
+	switch e.Type {
+	case "tool":
+		fmt.Fprintf(os.Stderr, "%s %s\n", s.Cyan(e.Tool), text)
+	case "tool_result":
+		lines := strings.Split(strings.TrimSpace(e.Text), "\n")
+		first := term.Safe(lines[0])
+		if len(lines) > 1 {
+			first += fmt.Sprintf(" (+%d lines)", len(lines)-1)
+		}
+		fmt.Fprintln(os.Stderr, term.Fit(s.Dim("  └ "+first), term.Columns(os.Stderr)))
+	default:
+		fmt.Fprintln(os.Stderr, text)
+	}
 }

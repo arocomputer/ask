@@ -1,4 +1,4 @@
-// Package status formats what people see on a terminal: status lines, the runs table and
+// Package term formats what people see on a terminal: status lines, the sessions table and
 // help, with color and symbols only where the output is a terminal.
 package term
 
@@ -7,9 +7,13 @@ import (
 	"math"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
+	"unicode/utf8"
+	"unsafe"
 
 	"github.com/arocomputer/ask/internal/config"
 	"github.com/arocomputer/ask/internal/sessions"
@@ -35,7 +39,9 @@ func (s Style) wrap(code, t string) string {
 	return "\x1b[" + code + "m" + t + "\x1b[0m"
 }
 
-// Bold, Dim, Green, Red, Yellow and Cyan apply the eight-color ANSI styles terminals honor.
+// Bold, Dim, Green, Red, Yellow and Cyan apply the eight-color ANSI styles terminals honor;
+// Orange, ask's own color, is from the 256-color palette.
+func (s Style) Orange(t string) string { return s.wrap("38;5;208", t) }
 func (s Style) Bold(t string) string   { return s.wrap("1", t) }
 func (s Style) Dim(t string) string    { return s.wrap("2", t) }
 func (s Style) Green(t string) string  { return s.wrap("32", t) }
@@ -43,11 +49,30 @@ func (s Style) Red(t string) string    { return s.wrap("31", t) }
 func (s Style) Yellow(t string) string { return s.wrap("33", t) }
 func (s Style) Cyan(t string) string   { return s.wrap("36", t) }
 
+// Spinner is the running symbol's frames, dots chasing round a square; a still line shows the first.
+var Spinner = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
+
+// Symbol is a state's colored symbol; frame picks the spinner frame for a running one.
+func (s Style) Symbol(state string, frame int) string {
+	switch state {
+	case "succeeded":
+		return s.Green("✓")
+	case "failed":
+		return s.Red("✗")
+	case "stopped":
+		return s.Dim("-")
+	case "running":
+		return s.Orange(Spinner[frame%len(Spinner)])
+	}
+	return state
+}
+
 // State colors a lifecycle state and, on a terminal, prefixes its symbol.
 func (s Style) State(state string) string {
 	if !s.On {
 		return state
 	}
+	sym := s.Symbol(state, 0)
 	switch state {
 	case "succeeded":
 		return s.Green("✓ " + state)
@@ -56,7 +81,7 @@ func (s Style) State(state string) string {
 	case "stopped":
 		return s.Dim("- " + state)
 	case "running":
-		return s.Yellow("! " + state)
+		return sym + " " + s.Orange(state)
 	}
 	return state
 }
@@ -110,8 +135,11 @@ func Safe(s string) string {
 
 // Line is a session's status line, for its latest turn. Piped:
 // "ask ID · state · model · time · changes · usage · error", plain and stable for scripts.
-// On a terminal it starts with a colored state symbol and a bold ID, and dims the details.
-func Line(ses *sessions.Session, s Style) string {
+// On a terminal it starts with the state's symbol and a bold ID, and dims the details.
+func Line(ses *sessions.Session, s Style) string { return Spinning(ses, s, 0) }
+
+// Spinning is Line with the running symbol at a given spinner frame, for a line redrawn in place.
+func Spinning(ses *sessions.Session, s Style, frame int) string {
 	state := ses.State()
 	t := ses.Turn()
 	parts := []string{}
@@ -170,7 +198,11 @@ func Line(ses *sessions.Session, s Style) string {
 		}
 		return strings.Join(all, " · ")
 	}
-	line := s.State(state) + " " + s.Bold(ses.ID)
+	// The symbol says the state, except stopped, whose dash alone says little.
+	if state == "stopped" {
+		parts = append([]string{"stopped"}, parts...)
+	}
+	line := s.Symbol(state, frame) + " " + s.Bold(ses.ID)
 	if len(parts) > 0 {
 		line += " · " + strings.Join(parts, " · ")
 	}
@@ -292,4 +324,40 @@ func (s Style) Success(text string) string {
 		return text
 	}
 	return s.Green("✓") + " " + text
+}
+
+// Columns is how wide the terminal behind f is: what it reports, else $COLUMNS, else 80.
+func Columns(f *os.File) int {
+	var size struct{ Rows, Cols, X, Y uint16 }
+	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), syscall.TIOCGWINSZ, uintptr(unsafe.Pointer(&size))); e == 0 && size.Cols > 0 {
+		return int(size.Cols)
+	}
+	if n, err := strconv.Atoi(os.Getenv("COLUMNS")); err == nil && n > 0 {
+		return n
+	}
+	return 80
+}
+
+// Fit cuts a styled line to n columns, keeping its color codes, so a line redrawn in place
+// never wraps.
+func Fit(line string, n int) string {
+	if Width(line) <= n {
+		return line
+	}
+	var b strings.Builder
+	seen := 0
+	for i := 0; i < len(line); {
+		if loc := escape.FindStringIndex(line[i:]); loc != nil && loc[0] == 0 {
+			b.WriteString(line[i : i+loc[1]])
+			i += loc[1]
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(line[i:])
+		if seen < n-1 {
+			b.WriteRune(r)
+			seen++
+		}
+		i += size
+	}
+	return b.String() + "…\x1b[0m"
 }

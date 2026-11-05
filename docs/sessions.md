@@ -68,6 +68,9 @@ it; `--json` gives the records.
 latest answer on stdout once finished. Activity is what the subagent did, across every turn:
 its messages, each tool call with a one-line summary of its input, and each result, clipped.
 
+Piped, each event is `type tool: text`, as below; on a terminal, a tool call is its name and
+input, its result one dim line, and the final message is not repeated above the answer.
+
 ```text
 tool grep: expiry in auth
 tool_result grep: auth/token.go:42:    if exp < now {

@@ -51,7 +51,7 @@ func Run(p config.Paths, args []string) (int, error) {
 		return 0, err
 	}
 	e := extension.Load(p.Extensions + "/" + name)
-	fmt.Fprintf(os.Stderr, "installed %s: %s\n", name, provides(e))
+	done(fmt.Sprintf("installed %s: %s", name, provides(e)))
 	return 0, nil
 }
 
@@ -67,8 +67,16 @@ func Remove(p config.Paths, args []string) (int, error) {
 	if err := extension.Remove(p, words[0]); err != nil {
 		return 0, err
 	}
-	fmt.Fprintf(os.Stderr, "removed %s\n", words[0])
+	done("removed " + words[0])
 	return 0, nil
+}
+
+// done confirms a change: plain when piped, with a check mark and a capital on a terminal.
+func done(text string) {
+	if st := term.Styled(os.Stderr); st.On {
+		text = st.Success(strings.ToUpper(text[:1]) + text[1:])
+	}
+	fmt.Fprintln(os.Stderr, text)
 }
 
 // entry is one extension as ask extensions --json prints it.

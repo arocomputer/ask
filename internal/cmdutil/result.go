@@ -108,20 +108,36 @@ func Scope(p config.Paths, all bool) []*sessions.Session {
 // Wait polls until the latest turn of one of the sessions finishes, then prints it: the answer
 // on stdout and the status line on stderr, or the result record with json. Exit 1 unless it
 // succeeded.
+//
+// On a terminal it redraws one status line in place meanwhile, its spinner turning.
 func Wait(selected []*sessions.Session, asJSON bool) (int, error) {
-	for {
+	st := term.Styled(os.Stderr)
+	clear := func() {}
+	for frame := 0; ; frame++ {
 		for _, s := range selected {
 			if err := s.Reload(); err != nil {
+				clear()
 				return 0, err
 			}
 			if s.State() != "running" {
-				if len(selected) > 1 {
+				clear()
+				if len(selected) > 1 && !st.On {
 					fmt.Fprintln(os.Stderr, "ask: completed "+s.ID)
 				}
 				return Print(s, asJSON)
 			}
 		}
-		time.Sleep(250 * time.Millisecond)
+		delay := 250 * time.Millisecond
+		if st.On {
+			delay = 100 * time.Millisecond
+			line := term.Spinning(selected[0], st, frame)
+			if len(selected) > 1 {
+				line = st.Symbol("running", frame) + fmt.Sprintf(" waiting for %d sessions", len(selected))
+			}
+			fmt.Fprint(os.Stderr, "\r"+term.Fit(line, term.Columns(os.Stderr)-1)+"\x1b[K")
+			clear = func() { fmt.Fprint(os.Stderr, "\r\x1b[K") }
+		}
+		time.Sleep(delay)
 	}
 }
 

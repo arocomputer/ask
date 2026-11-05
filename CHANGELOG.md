@@ -33,8 +33,9 @@ ask 2 is a rewrite around its own harness. It does not read ask 1's runs; see
   opencode-go/glm-5.3?`.
 - Render status, tables and help the way gh does: colored states with `✓ ✗ ! -` symbols, bold
   IDs, dimmed details and uppercase sections on a terminal; plain stable lines and
-  tab-separated lists when piped. Help pages split common flags from advanced ones, and
-  `ask config KEY VALUE` confirms the change.
+  tab-separated lists when piped. A running session shows an orange spinner that turns while
+  `ask wait` waits, and a launch on a terminal prints one line instead of the ID twice. Help
+  pages split common flags from advanced ones, and changes are confirmed with `✓`.
 - Add `ask setup` as plain prompts, offering the keys OpenCode already holds.
 - Keep Claude Code and Codex as built-in extensions under contract 4, without their environment
   policy; the Claude harness no longer refuses the `opusplan` alias.

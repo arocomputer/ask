@@ -44,9 +44,19 @@ func Launch(p config.Paths, s *sessions.Session, wait, asJSON bool, undo func())
 		fmt.Fprintln(os.Stdout, config.JSON(map[string]any{"session_id": s.ID, "turn": len(s.Turns), "state": "running"}, false))
 		return 0, nil
 	}
-	fmt.Fprintln(os.Stdout, s.ID)
-	if st := term.Styled(os.Stderr); st.On {
-		fmt.Fprintf(os.Stderr, "%s %s started · %s%s\n", st.Yellow("!"), st.Bold(s.ID), term.TurnModel(s.Turn()), st.Dim(" · ask wait "+s.ID))
+	// On a terminal the status line already shows the ID, so stdout repeats it only for a
+	// script capturing it.
+	st := term.Styled(os.Stderr)
+	if !st.On || !term.Styled(os.Stdout).On {
+		fmt.Fprintln(os.Stdout, s.ID)
+	}
+	if st.On {
+		t := s.Turn()
+		line := st.Symbol("running", 0) + " " + st.Bold(s.ID) + " · " + term.TurnModel(t)
+		if t.Write {
+			line += " · write"
+		}
+		fmt.Fprintln(os.Stderr, line+st.Dim(" · ask wait "+s.ID))
 	}
 	return 0, nil
 }

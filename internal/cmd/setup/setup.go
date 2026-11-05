@@ -14,6 +14,7 @@ import (
 	"github.com/arocomputer/ask/internal/config"
 	"github.com/arocomputer/ask/internal/extension"
 	"github.com/arocomputer/ask/internal/provider"
+	"github.com/arocomputer/ask/internal/term"
 )
 
 // Help is the command's page.
@@ -101,6 +102,13 @@ func Run(p config.Paths, args []string) (int, error) {
 		a := strings.ToLower(ask(prompt + " [Y/n] "))
 		return a == "" || a == "y" || a == "yes"
 	}
+	st := term.Styled(os.Stderr)
+	done := func(text string) {
+		if st.On {
+			text = st.Success(text)
+		}
+		fmt.Fprintln(os.Stderr, text)
+	}
 	auth, err := p.ReadAuth()
 	if err != nil {
 		return 0, err
@@ -108,7 +116,7 @@ func Run(p config.Paths, args []string) (int, error) {
 	known := opencodeKeys()
 	for _, spec := range provider.Known {
 		if config.Credential(auth, spec.Name) != "" {
-			fmt.Fprintln(os.Stderr, spec.Name+": credential present")
+			done(spec.Name + ": credential present")
 			continue
 		}
 		key := known[spec.Name]
@@ -125,7 +133,7 @@ func Run(p config.Paths, args []string) (int, error) {
 		if err := p.WriteAuth(auth); err != nil {
 			return 0, err
 		}
-		fmt.Fprintln(os.Stderr, spec.Name+": saved to "+filepath.Join(p.Home, "auth.json"))
+		done(spec.Name + ": saved to " + config.Tilde(filepath.Join(p.Home, "auth.json")))
 	}
 	catalog := cmdutil.CachePath(p)
 	if _, err := os.Stat(catalog); err != nil {
@@ -148,10 +156,11 @@ func Run(p config.Paths, args []string) (int, error) {
 				if err := p.WriteConfig(cfg); err != nil {
 					return 0, err
 				}
+				done("default model: " + m)
 			}
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "default model: "+cfg.S("model"))
+		done("default model: " + cfg.S("model"))
 	}
 	for _, h := range harnesses {
 		if _, err := exec.LookPath(h.CLI); err != nil {
@@ -174,7 +183,7 @@ func Run(p config.Paths, args []string) (int, error) {
 		current, _ := os.ReadFile(filepath.Join(h.SkillDir, "SKILL.md"))
 		switch {
 		case string(current) == Skill:
-			fmt.Fprintln(os.Stderr, h.Name+": skill current")
+			done(h.Name + ": skill current")
 			continue
 		case len(current) > 0 && !strings.Contains(string(current), mark):
 			fmt.Fprintln(os.Stderr, h.Name+": skill is your own; left alone")
@@ -187,6 +196,7 @@ func Run(p config.Paths, args []string) (int, error) {
 			if err := os.WriteFile(filepath.Join(h.SkillDir, "SKILL.md"), []byte(Skill), 0644); err != nil {
 				return 0, err
 			}
+			done(h.Name + ": skill written")
 		}
 	}
 	return 0, nil

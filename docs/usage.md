@@ -117,16 +117,18 @@ as without `--json`.
 ## Output
 
 stdout is the one thing the command is for: the ID at launch, the answer from `wait`. Status
-goes to stderr. On a terminal it is colored, with the symbols gh uses, and a launch also says
-how to collect the session:
+goes to stderr. On a terminal it is colored, with gh's symbols and an orange spinner for a
+running session, which turns in place while `wait` waits. A launch prints one line that says
+how to collect the session; the bare ID goes to stdout only when a script captures it:
 
 ```text
-! k3f9a2 started · GLM 5.3 · ask wait k3f9a2
+⣾ k3f9a2 · GLM 5.3 · ask wait k3f9a2
 ✓ k3f9a2 · GLM 5.3 · 14.2s · 31.0k in · 812 out · 20.1k cached · $0.09
 ✗ k3f9a2 · GLM 5.3 · 2.1s · the provider rejected the credential: ...
+- k3f9a2 · stopped · GLM 5.3 · 3.9s
 ```
 
-Piped, the same lines are plain and stable for scripts, and the launch prints only the ID:
+Piped, the same lines are plain and stable for scripts, and the launch prints the ID:
 
 ```text
 ask k3f9a2 · succeeded · GLM 5.3 · 14.2s · 31.0k in · 812 out · 20.1k cached · $0.09

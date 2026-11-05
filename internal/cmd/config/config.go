@@ -39,7 +39,24 @@ func Run(p cfg.Paths, args []string) (int, error) {
 	}
 	switch len(words) {
 	case 0:
-		fmt.Fprintln(os.Stdout, cfg.JSON(current, true))
+		// A terminal gets aligned key and value; a script gets the JSON.
+		st := term.Styled(os.Stdout)
+		if !st.On {
+			fmt.Fprintln(os.Stdout, cfg.JSON(current, true))
+			return 0, nil
+		}
+		if len(current) == 0 {
+			fmt.Fprintln(os.Stderr, st.Dim("Nothing set. ask config model provider/model sets a default model."))
+		}
+		for _, k := range cfg.Keys {
+			if current.Has(k) {
+				v := cfg.JSON(current.Get(k), false)
+				if text, ok := current.Get(k).(string); ok {
+					v = text
+				}
+				fmt.Fprintf(os.Stdout, "%s  %s\n", st.Dim(fmt.Sprintf("%-9s", k)), v)
+			}
+		}
 		return 0, nil
 	case 1:
 		if !current.Has(words[0]) {
@@ -98,7 +115,7 @@ func Run(p cfg.Paths, args []string) (int, error) {
 		return 0, err
 	}
 	if st.On {
-		fmt.Fprintln(os.Stderr, st.Success("Set "+key+" to "+cfg.JSON(current[key], false)))
+		fmt.Fprintln(os.Stderr, st.Success("Set "+key+" to "+fmt.Sprint(current[key])))
 	}
 	return 0, nil
 }

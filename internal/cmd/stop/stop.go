@@ -39,6 +39,10 @@ func Run(p config.Paths, args []string) (int, error) {
 		fmt.Fprintln(os.Stderr, term.Line(r, term.Styled(os.Stderr)))
 		return 0, nil
 	}
-	fmt.Fprintf(os.Stderr, "ask %s · not running\n", r.ID)
+	if st := term.Styled(os.Stderr); st.On {
+		fmt.Fprintf(os.Stderr, "%s %s is not running\n", st.Dim("-"), st.Bold(r.ID))
+	} else {
+		fmt.Fprintf(os.Stderr, "ask %s · not running\n", r.ID)
+	}
 	return 1, nil
 }

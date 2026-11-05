@@ -97,6 +97,19 @@ func Run(p config.Paths, args []string) (int, error) {
 		fmt.Fprintln(os.Stdout, config.JSON(out, true))
 		return 0, nil
 	}
+	if st := term.Styled(os.Stdout); st.On {
+		rows := [][]string{}
+		for _, m := range out {
+			rows = append(rows, []string{m.ID, m.Name})
+		}
+		fmt.Fprint(os.Stdout, term.Table(st, []string{"model", "name"}, rows, func(column int, text string) string {
+			if column == 1 {
+				return st.Dim(text)
+			}
+			return text
+		}))
+		return 0, nil
+	}
 	for _, m := range out {
 		if m.Name != "" {
 			fmt.Fprintf(os.Stdout, "%s\t%s\n", m.ID, m.Name)

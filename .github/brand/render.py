@@ -57,12 +57,12 @@ def draw(lines):
 # A read session finds the bug; a second turn in the same session fixes it.
 LINES = [
     [("$ ", "prompt"), ('ask --wait "Why does login fail?"', "text")],
-    [("✓ succeeded ", "success"), ("k3f9a2", "id"), (" · GLM 5.3 · 48s", "dim")],
+    [("✓ ", "success"), ("k3f9a2", "id"), (" · GLM 5.3", "text"), (" · 48s", "dim")],
     [("The expiry check compares seconds with", "text")],
     [("milliseconds in auth/token.go:42.", "text")],
     [],
     [("$ ", "prompt"), ('ask continue k3f9a2 --wait -w "Fix it."', "text")],
-    [("✓ succeeded ", "success"), ("k3f9a2", "id"), (" · turn 2 · 1 file changed", "dim")],
+    [("✓ ", "success"), ("k3f9a2", "id"), (" · GLM 5.3 · turn 2 · write", "text"), (" · 1 file changed", "dim")],
     [("Fixed: the expiry is now in milliseconds.", "text")],
     [("go test ./auth passes.", "text")],
 ]
