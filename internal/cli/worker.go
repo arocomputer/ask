@@ -2,19 +2,23 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/arocomputer/ask/internal/agent"
 	"github.com/arocomputer/ask/internal/home"
+	"github.com/arocomputer/ask/internal/hooks"
 	"github.com/arocomputer/ask/internal/process"
 	"github.com/arocomputer/ask/internal/runs"
+	"github.com/arocomputer/ask/internal/status"
 )
 
 // The private launch protocol admits either fresh prepared tasks or smart recovery of a
@@ -22,6 +26,7 @@ import (
 // keep prompts out of argv and the environment. They close before agents start.
 type launchRequest struct {
 	Name          string
+	Notes         []hooks.Note
 	Tasks         []home.TaskRecord
 	WorktreeLabel string // preparation's placeholder, replaced with the worker's fresh ID
 	Recover       string // a pinned run directory, mutually exclusive with new tasks
@@ -31,8 +36,10 @@ type launchRequest struct {
 }
 
 type launchReply struct {
-	ID    string
-	Error string
+	ID         string
+	Error      string
+	Usage      bool
+	Diagnostic string // formatted status only; never agent output or lifecycle log content
 }
 
 // startWorker detaches from the terminal and the launcher's process group. Unlike agents,
@@ -80,10 +87,21 @@ func startWorker(p home.Paths, launch launchRequest) (int, error) {
 	}
 	requestW.Close()
 	var reply launchReply
-	if err := json.NewDecoder(replyR).Decode(&reply); err != nil {
-		return 0, fmt.Errorf("worker readiness was not confirmed: %w; inspect ask runs before retrying", err)
+	decoder := json.NewDecoder(replyR)
+	for {
+		if err := decoder.Decode(&reply); err != nil {
+			return 0, fmt.Errorf("worker readiness was not confirmed: %w; inspect ask runs before retrying", err)
+		}
+		if reply.Diagnostic == "" {
+			break
+		}
+		fmt.Fprintln(os.Stderr, reply.Diagnostic)
+		reply = launchReply{}
 	}
 	if reply.Error != "" {
+		if reply.Usage {
+			return 0, home.Usage("cannot start worker: %s", reply.Error)
+		}
 		return 0, fmt.Errorf("cannot start worker: %s", reply.Error)
 	}
 	if reply.ID == "" {
@@ -119,6 +137,11 @@ func runWorker() int {
 		}
 		syscall.CloseOnExec(fd)
 	}
+	// NewFile can apply deadlines to an inherited pipe only if it is nonblocking.
+	if err := syscall.SetNonblock(4, true); err != nil {
+		fmt.Fprintln(os.Stderr, "ask: cannot configure internal worker reply pipe")
+		return 1
+	}
 	request := os.NewFile(3, "launch-request")
 	reply := os.NewFile(4, "launch-reply")
 	defer request.Close()
@@ -126,7 +149,9 @@ func runWorker() int {
 	process.Listen()
 	signal.Ignore(syscall.SIGHUP)
 	fail := func(err error) int {
-		_ = json.NewEncoder(reply).Encode(launchReply{Error: err.Error()})
+		process.AwaitShutdown()
+		var usage *home.UsageError
+		_ = json.NewEncoder(reply).Encode(launchReply{Error: err.Error(), Usage: errors.As(err, &usage)})
 		return 1
 	}
 	var launch launchRequest
@@ -140,8 +165,24 @@ func runWorker() int {
 	p := home.New()
 	fresh := launch.Recover == ""
 	var r *runs.Run
+	var log *os.File
+	var admission sync.Mutex
+	admitted := false
+	// Signal shutdown exits without defers. Serialize creation and acknowledgment with
+	// cleanup so neither a half-created record nor an acknowledged run can be deleted.
+	process.OnStop(func() {
+		admission.Lock()
+		defer admission.Unlock()
+		if fresh && r != nil && !admitted {
+			_ = runs.DiscardUnadmitted(r)
+		} else if admitted {
+			_, _ = fmt.Fprintln(log, "stopped")
+		}
+	})
+	defer process.OnStop(nil)
 	var selected []int
 	var err error
+	admission.Lock()
 	if fresh {
 		tasks := make([]home.Object, len(launch.Tasks))
 		id := runs.NewID()
@@ -157,40 +198,65 @@ func runWorker() int {
 		r, _, err = runs.Open(p, launch.Recover)
 		if err == nil && launch.Selected != nil {
 			if *launch.Selected < 0 || *launch.Selected >= len(r.Tasks) {
+				admission.Unlock()
 				return fail(fmt.Errorf("invalid recovery position"))
 			}
 			selected = []int{*launch.Selected}
 		}
 	}
 	if err != nil {
+		admission.Unlock()
 		return fail(err)
 	}
 	flags := os.O_CREATE | os.O_APPEND | os.O_WRONLY
 	if fresh {
 		flags |= os.O_EXCL
 	}
-	log, err := os.OpenFile(filepath.Join(r.Dir, "worker.log"), flags, 0600)
+	log, err = os.OpenFile(filepath.Join(r.Dir, "worker.log"), flags, 0600)
 	if err != nil {
 		if fresh {
-			_ = runs.Delete(r)
+			_ = runs.DiscardUnadmitted(r)
 		}
+		admission.Unlock()
 		return fail(err)
 	}
+	admission.Unlock()
 	defer log.Close()
 	// Only constant lifecycle messages enter this log. Never copy agent output, hook notes,
 	// prompts, environment, or arbitrary errors into it; results retain the normal contract.
-	defer process.OnStop(nil)
-	admitted := false
+	if err := reply.SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		if fresh {
+			_ = runs.DiscardUnadmitted(r)
+		}
+		return fail(err)
+	}
+	var reportError error
+	report := func(e runs.Event) {
+		admission.Lock()
+		defer admission.Unlock()
+		if !admitted && (e.Kind == "recovery" || e.Kind == "note") && reportError == nil {
+			reportError = json.NewEncoder(reply).Encode(launchReply{Diagnostic: status.EventLine(r, e)})
+		}
+	}
+	for _, note := range launch.Notes {
+		report(runs.Event{Kind: "note", Note: note})
+	}
 	execute := runs.Execute
 	if !fresh {
 		execute = runs.Continue
 	}
-	results, err := execute(agent.New(p), r, launch.Jobs, launch.Hooks, func(runs.Event) {}, func() error {
+	results, err := execute(agent.New(p), r, launch.Jobs, launch.Hooks, report, func() error {
+		admission.Lock()
+		defer admission.Unlock()
+		if process.Stopping() {
+			return fmt.Errorf("ask was stopped")
+		}
+		if reportError != nil {
+			return reportError
+		}
 		if _, err := fmt.Fprintln(log, "started"); err != nil {
 			return err
 		}
-		// Unadmitted recovery contenders must not write "stopped" into the owner's log.
-		process.OnStop(func() { _, _ = fmt.Fprintln(log, "stopped") })
 		if err := json.NewEncoder(reply).Encode(launchReply{ID: r.ID}); err != nil {
 			return err
 		}
@@ -201,7 +267,7 @@ func runWorker() int {
 	if err != nil {
 		if !admitted {
 			if fresh {
-				_ = runs.Delete(r)
+				_ = runs.DiscardUnadmitted(r)
 			}
 			return fail(err)
 		}

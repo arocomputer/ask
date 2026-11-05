@@ -182,7 +182,7 @@ Options for a follow-up
 Follow-ups keep their directory and inherit model/access; -m, -r and -w override.
 Recovery keeps saved task options and returns the existing run ID by default.
 --wait blocks for results, --jobs N sets parallelism, --no-hooks skips hooks.
-With --wait, recovery diagnostics go to stderr.
+Recovery decisions and blockers go to stderr before detached admission, or with --wait.
 Use - to read a follow-up prompt from stdin.
 See ask help run for other follow-up options.
 

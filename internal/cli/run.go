@@ -123,8 +123,8 @@ func prepare(a *agent.Registry, items []any, defaults home.Object, label string,
 
 // runName names a new run before its tasks are prepared, so worktrees and branches carry it:
 // a single follow-up takes over its conversation's name; otherwise name hooks may rename the
-// first prompt's slug, and a number keeps it apart from earlier runs. defaults are the options
-// a batch applies to tasks that don't set their own, or nil.
+// first prompt's slug. Create chooses any uniqueness suffix under its claim lock. defaults
+// are the options a batch applies to tasks that don't set their own, or nil.
 func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool) (string, []hooks.Note) {
 	prompts := []string{}
 	worktree := false
@@ -155,7 +155,7 @@ func runName(a *agent.Registry, items []any, defaults home.Object, hooksOn bool)
 			name = clean
 		}
 	}
-	return runs.Unique(a.Paths, name), notes
+	return name, notes
 }
 
 // reporter serializes complete status lines from parallel tasks to stderr.
@@ -251,7 +251,7 @@ func runPrompt(a *agent.Registry, opts home.Object, prompt string) (int, error) 
 		return 0, e
 	}
 	if !opts.B("--wait") {
-		return startWorker(a.Paths, launchRequest{Name: name, Tasks: home.TaskRecords(tasks), WorktreeLabel: id, Jobs: 1, Hooks: !opts.B("--no-hooks")})
+		return startWorker(a.Paths, launchRequest{Name: name, Notes: notes, Tasks: home.TaskRecords(tasks), WorktreeLabel: id, Jobs: 1, Hooks: !opts.B("--no-hooks")})
 	}
 	r, e := runs.Create(a.Paths, id, name, tasks)
 	if e != nil {
@@ -428,7 +428,7 @@ func batch(a *agent.Registry, opts home.Object, words []string) (int, error) {
 			return 0, e
 		}
 		if !opts.B("--wait") {
-			return startWorker(a.Paths, launchRequest{Name: name, Tasks: home.TaskRecords(tasks), WorktreeLabel: id, Jobs: jobs, Hooks: !opts.B("--no-hooks")})
+			return startWorker(a.Paths, launchRequest{Name: name, Notes: notes, Tasks: home.TaskRecords(tasks), WorktreeLabel: id, Jobs: jobs, Hooks: !opts.B("--no-hooks")})
 		}
 		r, e = runs.Create(a.Paths, id, name, tasks)
 		if e != nil {

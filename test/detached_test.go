@@ -34,6 +34,121 @@ func TestDetached(t *testing.T) {
 		}
 		return r
 	}
+	t.Run("SIGTERM before admission removes only the fresh unadmitted record", func(t *testing.T) {
+		s := fresh(t)
+		// A legacy reused worktree reads settings while reserving its location, after
+		// creation and the run lock but before admission. The FIFO holds that boundary.
+		if err := syscall.Mkfifo(filepath.Join(s.home, "settings.json"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		requestR, requestW, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer requestR.Close()
+		defer requestW.Close()
+		replyR, replyW, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer replyR.Close()
+		defer replyW.Close()
+		cmd := exec.Command(askBin, "__ask_worker")
+		cmd.Dir = s.tmp
+		for k, v := range s.env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+		cmd.ExtraFiles = []*os.File{requestR, replyW}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = cmd.Process.Kill() })
+		requestR.Close()
+		replyW.Close()
+		request := home.O("Jobs", 1, "Tasks", []any{home.O("id", "1", "model", "fake:small", "prompt", "fresh", "dir", s.tmp, "timeout", 5, "reuse", true, "worktree", "legacy", "continues", "earlier")})
+		if _, err := requestW.Write([]byte(home.JSON(request, false))); err != nil {
+			t.Fatal(err)
+		}
+		requestW.Close()
+		until(t, func() bool {
+			entries, _ := os.ReadDir(filepath.Join(s.home, "runs"))
+			return len(entries) == 1 && runs.Owner(&runs.Run{Dir: filepath.Join(s.home, "runs", entries[0].Name())}) == cmd.Process.Pid
+		})
+		if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("worker did not stop during admission")
+		}
+		eq(t, cmd.ProcessState.ExitCode(), 130)
+		eq(t, len(s.dirs()), 0)
+		eq(t, len(s.calls()), 0)
+	})
+	t.Run("relative home supports snapshots waits and recovery", func(t *testing.T) {
+		s := fresh(t)
+		s.env["ASK_HOME"] = "home"
+		id := launch(t, s, []string{"hang"}, map[string]string{"FAKE_HANG": "hang"})
+		shown := s.ask("show", "--json", id)
+		eq(t, shown.code, 1)
+		eq(t, obj(t, shown.stdout).s("state"), "running")
+		listed := s.ask("runs", "--json")
+		eq(t, listed.code, 0)
+		eq(t, objects(t, listed.stdout)[0].s("run_id"), id)
+		eq(t, s.ask("stop", id).code, 0)
+		eq(t, s.ask("continue", filepath.Join("home", "runs", s.latest())).stdout, id+"\n")
+		waited := s.ask("wait", "--json", id)
+		eq(t, waited.code, 0)
+		eq(t, obj(t, waited.stdout).s("run_id"), id)
+		eq(t, s.ask("show", "--json", id).code, 0)
+		eq(t, len(s.dirs()), 1)
+	})
+	t.Run("name hook notes reach detached callers safely on stderr", func(t *testing.T) {
+		s := fresh(t)
+		s.hook("namer", []string{"name"}, `printf 'bad\033[31m note\n' >&2; exit 3`)
+		out := s.ask("-m", "fake:small", "inspect notes")
+		eq(t, out.code, 0)
+		match(t, out.stdout, `^[a-z0-9]{6}\n$`)
+		match(t, out.stderr, `note · hook namer · failed`)
+		noMatch(t, out.stderr, "\x1b")
+		eq(t, s.ask("wait", strings.TrimSpace(out.stdout)).stdout, "fake: inspect notes\n")
+	})
+	t.Run("missing worktree recovery tells the detached caller it will restart", func(t *testing.T) {
+		s := fresh(t)
+		dir, git := s.repo()
+		id := launch(t, s, []string{"-w", "--worktree", "-C", dir, "hang"}, map[string]string{"FAKE_HANG": "hang"})
+		until(t, func() bool { return len(s.calls()) == 1 })
+		eq(t, s.ask("stop", id).code, 0)
+		git("worktree", "remove", "--force", s.calls()[0].s("cwd"))
+		out := s.ask("continue", id)
+		eq(t, out.code, 0)
+		eq(t, out.stdout, id+"\n")
+		match(t, out.stderr, `saved worktree is missing or changed; rerunning`)
+		eq(t, s.ask("wait", id).stdout, "fake: hang\n")
+		eq(t, s.calls()[1].s("session"), "")
+		eq(t, len(s.dirs()), 1)
+	})
+	t.Run("partial recovery explains blockers before returning the batch ID", func(t *testing.T) {
+		s := fresh(t)
+		first := s.run([]string{"batch", "--wait", "-m", "fake:small", "-"}, `[{"id":"blocked","prompt":"bad"},{"id":"retry","prompt":"bad"}]`, map[string]string{"FAKE_FAIL": "bad"})
+		eq(t, first.code, 1)
+		id := strings.SplitN(s.latest(), "-", 3)[1]
+		r := open(t, s, id)
+		results := s.runFile("results.json")
+		results[0]["error"] = "authentication required"
+		s.json(filepath.Join(r.Dir, "results.json"), results)
+		out := s.ask("continue", id)
+		eq(t, out.code, 0)
+		eq(t, out.stdout, id+"\n")
+		match(t, out.stderr, `blocked: authentication required`)
+		match(t, out.stderr, `continuing saved conversation`)
+		eq(t, s.ask("wait", "--json", id).code, 1)
+		jsonEqual(t, s.runFile("results.json")[0], results[0])
+		eq(t, len(s.calls()), 3)
+	})
 	t.Run("acknowledges a locked worker detached from the launcher and stops its agent", func(t *testing.T) {
 		s := fresh(t)
 		id := launch(t, s, []string{"hang"}, map[string]string{"FAKE_HANG": "hang"})
@@ -41,6 +156,9 @@ func TestDetached(t *testing.T) {
 		owner := runs.Owner(r)
 		if owner <= 0 {
 			t.Fatal("launch returned without a live owner")
+		}
+		if err := runs.DiscardUnadmitted(r); err == nil {
+			t.Fatal("cleanup deleted another worker's active run")
 		}
 		group, err := syscall.Getpgid(owner)
 		if err != nil || group != owner {
@@ -81,33 +199,35 @@ func TestDetached(t *testing.T) {
 		}
 		eq(t, len(s.calls()), 1)
 	})
-	t.Run("concurrent prompts with the same readable name cannot execute each other's work", func(t *testing.T) {
+	t.Run("concurrent identical prompts get matching unique run and worktree names", func(t *testing.T) {
 		s := fresh(t)
-		prompts := []string{"review login security race alpha", "review login security race bravo"}
+		dir, _ := s.repo()
+		// Both launchers choose their name before either worker can claim it.
+		s.hook("barrier", []string{"name"}, `touch "$HOME/ready-$PPID"
+while [ "$(find "$HOME" -name 'ready-*' | wc -l | tr -d ' ')" -lt 2 ]; do sleep 0.01; done`)
+		prompts := []string{"review login security race", "review login security race"}
 		started := make([]*running, len(prompts))
 		for i, prompt := range prompts {
-			started[i] = s.start([]string{"run", "-m", "fake:small", prompt}, "", map[string]string{"FAKE_SLOW": "review"})
+			started[i] = s.start([]string{"run", "-m", "fake:small", "-w", "--worktree", "-C", dir, prompt}, "", map[string]string{"FAKE_SLOW": "review", "FAKE_WRITE": "kept.txt=change"})
 		}
-		successes := 0
+		names := map[string]bool{}
 		for i, process := range started {
 			out := process.wait(t)
-			if out.code != 0 {
-				eq(t, out.code, 1)
-				eq(t, out.stdout, "")
-				match(t, out.stderr, `claimed concurrently`)
-				continue
-			}
-			successes++
+			eq(t, out.code, 0)
 			match(t, out.stdout, `^[a-z0-9]{6}\n$`)
 			id := strings.TrimSpace(out.stdout)
 			t.Cleanup(func() { s.ask("stop", id) })
 			eq(t, open(t, s, id).Tasks[0].S("prompt"), prompts[i])
 			eq(t, s.ask("wait", id).stdout, "fake: "+prompts[i]+"\n")
+			r := open(t, s, id)
+			names[r.Name] = true
+			worktree := obj(t, s.ask("show", "--json", id).stdout)["worktree"].(map[string]any)
+			eq(t, filepath.Base(worktree["path"].(string)), r.Name)
+			eq(t, worktree["branch"], "ask/"+r.Name)
 		}
-		if successes == 0 {
-			t.Fatal("neither concurrent launch was admitted")
-		}
-		eq(t, len(s.calls()), successes)
+		eq(t, names, map[string]bool{"review-login-security-race": true, "review-login-security-race-2": true})
+		eq(t, len(s.calls()), 2)
+		eq(t, len(s.dirs()), 2)
 	})
 	t.Run("private lifecycle logs never copy prompts credentials answers or diagnostics", func(t *testing.T) {
 		s := fresh(t)
@@ -156,7 +276,7 @@ printf 'private answer\n'`)
 		id := launch(t, s, []string{"-c", prior, "hang"}, map[string]string{"FAKE_HANG": "hang"})
 		until(t, func() bool { return len(s.calls()) == 2 })
 		out := s.ask("run", "-c", prior, "other")
-		eq(t, out.code, 1)
+		eq(t, out.code, 2)
 		eq(t, out.stdout, "")
 		match(t, out.stderr, `already in use`)
 		eq(t, len(s.calls()), 2)
@@ -307,7 +427,11 @@ printf 'private answer\n'`)
 			}
 			before := s.read(filepath.Join(r.Dir, "results.json"))
 			out := s.ask("continue", id)
-			eq(t, out.code, 1)
+			if failure == "blocked" {
+				eq(t, out.code, 2)
+			} else {
+				eq(t, out.code, 1)
+			}
 			eq(t, out.stdout, "")
 			if failure == "blocked" {
 				match(t, out.stderr, `blocked: authentication required`)

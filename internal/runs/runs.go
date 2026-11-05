@@ -29,6 +29,9 @@ import (
 type Run struct {
 	ID, Name, Dir, Created string
 	Tasks, Results         []home.Object
+	// Closing any descriptor of a process-owned record lock releases it. Keep
+	// execution's deferred close from dropping an overlapping cleanup's lock.
+	lockMu sync.Mutex
 }
 
 // Label is the name people and agents use for a run: its Name, or its ID when it has none.
@@ -78,6 +81,10 @@ func Ref(r *Run, index int) string {
 
 // load reads task-position results and refuses damaged results instead of silently rerunning them.
 func load(dir string) (*Run, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
 	b, err := os.ReadFile(filepath.Join(dir, "tasks.json"))
 	var records []home.TaskRecord
 	if err != nil || json.Unmarshal(b, &records) != nil || len(records) == 0 {
@@ -104,12 +111,12 @@ func load(dir string) (*Run, error) {
 	}
 
 	created, id, name := folder(filepath.Base(dir))
-	return &Run{id, name, dir, created, tasks, results}, nil
+	return &Run{ID: id, Name: name, Dir: dir, Created: created, Tasks: tasks, Results: results}, nil
 }
 
-// Create writes prepared tasks once and returns their run folder; name may be empty.
-// Serialize claims so concurrent name selection cannot create unrelated runs with the same
-// handle or overwrite an ID. A follow-up may reuse its conversation's name.
+// Create writes prepared tasks once with an absolute run directory; name may be empty.
+// Name selection and creation share a lock, including relabeling fresh worktrees when a
+// suffix is needed. A single conversation's follow-up keeps its inherited name and worktree.
 func Create(p home.Paths, id, name string, tasks []home.Object) (*Run, error) {
 	if err := os.MkdirAll(p.Runs, 0700); err != nil {
 		return nil, err
@@ -119,19 +126,43 @@ func Create(p home.Paths, id, name string, tasks []home.Object) (*Run, error) {
 		return nil, err
 	}
 	defer claim.Close()
-	if err := syscall.Flock(int(claim.Fd()), syscall.LOCK_EX); err != nil {
-		return nil, err
+	for {
+		if process.Stopping() {
+			return nil, fmt.Errorf("ask was stopped")
+		}
+		err := syscall.Flock(int(claim.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			break
+		}
+		if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
+			return nil, err
+		}
+		// Let a stopping worker finish its creation cleanup even while another launcher
+		// holds the claim. A blocking flock would strand the signal handler.
+		time.Sleep(10 * time.Millisecond)
 	}
 	for _, n := range find.List(p.Runs) {
 		_, existingID, existingName := folder(n)
 		if existingID == id || existingName == id {
 			return nil, home.Usage("run ID %s is already claimed; retry", id)
 		}
-		if name != "" && (existingID == name || existingName == name) {
-			if len(tasks) != 1 || tasks[0].S("continues") != name || existingID == name {
-				return nil, home.Usage("run name %s was claimed concurrently; retry using a new run", name)
-			}
+		if name != "" && existingID == name && len(tasks) == 1 && tasks[0].S("continues") == name {
+			return nil, home.Usage("run name %s would shadow an existing ID", name)
 		}
+	}
+	if name != "" && (len(tasks) != 1 || tasks[0].S("continues") != name) {
+		chosen := Unique(p, name)
+		if chosen != name {
+			prepared := make([]home.Object, len(tasks))
+			for i, task := range tasks {
+				prepared[i] = task.Clone()
+				if task.B("worktree") && !task.B("continues") && !task.B("reuse") {
+					prepared[i].Set("worktree", chosen+strings.TrimPrefix(task.S("worktree"), name))
+				}
+			}
+			tasks = prepared
+		}
+		name = chosen
 	}
 	stamp := time.Now().UTC().Format("20060102T150405.000")
 	stamp = strings.ReplaceAll(stamp, ".", "")
@@ -144,6 +175,7 @@ func Create(p home.Paths, id, name string, tasks []home.Object) (*Run, error) {
 		return nil, e
 	}
 	if e := home.WriteJSON(filepath.Join(dir, "tasks.json"), home.TaskRecords(tasks)); e != nil {
+		_ = os.RemoveAll(dir)
 		return nil, e
 	}
 	return load(dir)
@@ -151,7 +183,10 @@ func Create(p home.Paths, id, name string, tasks []home.Object) (*Run, error) {
 
 // Open resolves RUN[/TASK] or a directory; index -1 selects all results of a batch.
 func Open(p home.Paths, ref string) (*Run, int, error) {
-	if strings.HasPrefix(ref, ".") || strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, "~") {
+	// A bare relative path must look like a run, rather than shadowing a readable
+	// handle just because an unrelated directory with that name exists in cwd.
+	info, statErr := os.Stat(filepath.Join(ref, "tasks.json"))
+	if statErr == nil && !info.IsDir() || strings.HasPrefix(ref, ".") || filepath.IsAbs(ref) || strings.HasPrefix(ref, "~") {
 		info, e := os.Stat(ref)
 		if e != nil || !info.IsDir() {
 			return nil, -1, home.Usage("no run at %s; see `ask runs`", ref)
@@ -713,11 +748,17 @@ func Continue(a *agent.Registry, r *Run, jobs int, enabled bool, report func(Eve
 }
 
 func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report func(Event), ready func() error, selected ...int) ([]home.Object, error) {
+	r.lockMu.Lock()
 	owner, e := lock(r)
+	r.lockMu.Unlock()
 	if e != nil {
 		return nil, e
 	}
-	defer owner.Close()
+	defer func() {
+		r.lockMu.Lock()
+		defer r.lockMu.Unlock()
+		owner.Close()
+	}()
 	// Another invocation may have finished after this run was opened but before we took the lock.
 	current, e := load(r.Dir)
 	if e != nil {
@@ -754,9 +795,8 @@ func execute(a *agent.Registry, r *Run, jobs int, enabled, smart bool, report fu
 		}
 		return nil, home.Usage("%s is complete; give a prompt to continue the conversation", r.ID)
 	}
-	planned := *r
-	planned.Tasks = tasks
-	release, e := lockContinuations(a.Paths, &planned, todo)
+	planned := &Run{ID: r.ID, Name: r.Name, Tasks: tasks}
+	release, e := lockContinuations(a.Paths, planned, todo)
 	if e != nil {
 		return nil, e
 	}
@@ -986,3 +1026,38 @@ func All(p home.Paths) []*Run { return Recent(p, -1, nil) }
 
 // Delete removes a run's record folder.
 func Delete(r *Run) error { return os.RemoveAll(r.Dir) }
+
+// DiscardUnadmitted removes a fresh run only if no other execution owns it or has
+// recorded work. The caller must prevent its own admission and task starts while this runs.
+// Use the same Run passed to Execute. Recovery callers must never use it: their saved
+// state predates this launch.
+func DiscardUnadmitted(r *Run) error {
+	r.lockMu.Lock()
+	defer r.lockMu.Unlock()
+	held, err := lock(r)
+	if err != nil {
+		return err
+	}
+	defer held.Close()
+	current, err := load(r.Dir)
+	if err != nil {
+		return err
+	}
+	for i, result := range current.Results {
+		if result != nil {
+			return fmt.Errorf("run %s already has results", r.ID)
+		}
+		if _, err := os.Stat(recoveryPath(r, i)); !os.IsNotExist(err) {
+			return fmt.Errorf("run %s already has recovery state", r.ID)
+		}
+	}
+	if b, err := os.ReadFile(pendingPath(r)); err == nil {
+		var pending pendingRecord
+		if json.Unmarshal(b, &pending) != nil || pending.PID != os.Getpid() {
+			return fmt.Errorf("run %s was admitted by another worker", r.ID)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return Delete(r)
+}

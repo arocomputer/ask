@@ -19,6 +19,9 @@ func New() Paths {
 	if root == "" {
 		root = filepath.Join(h, ".ask")
 	}
+	if absolute, err := filepath.Abs(root); err == nil {
+		root = absolute
+	}
 	bin, _ := os.Executable()
 	if real, err := filepath.EvalSymlinks(bin); err == nil {
 		bin = real

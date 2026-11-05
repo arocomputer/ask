@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix detached launches with relative `ASK_HOME`, remove fresh unadmitted records on SIGTERM,
+  preserve usage error exit status, and report name-hook notes and recovery decisions on stderr
+  before admission. Concurrent launches choose unique matching run and worktree names atomically.
+
 - Require `-` for follow-up prompts on stdin, so pipe timing cannot change recovery behavior.
 - Add `ask runs --json` metadata and `ask wait --json` results with stable run IDs and batch
   positions. Report running and stopped selections in `ask show --json` with exit status 1;

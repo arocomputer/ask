@@ -79,13 +79,19 @@ func TestCreate(t *testing.T) {
 		close(gate)
 		wg.Wait()
 		close(claimed)
-		if len(claimed) != 1 {
+		if len(claimed) != 2 {
 			t.Fatalf("got %d successful claims", len(claimed))
 		}
-		r := <-claimed
-		opened, _, err := Open(p, "same-name")
-		if err != nil || opened.ID != r.ID || opened.Tasks[0].S("prompt") != r.ID {
-			t.Fatalf("name resolved the wrong work: %v %v", opened, err)
+		names := map[string]bool{}
+		for r := range claimed {
+			names[r.Name] = true
+			opened, _, err := Open(p, r.Name)
+			if err != nil || opened.ID != r.ID || opened.Tasks[0].S("prompt") != r.ID {
+				t.Fatalf("name resolved the wrong work: %v %v", opened, err)
+			}
+		}
+		if !names["same-name"] || !names["same-name-2"] {
+			t.Fatalf("unexpected names: %v", names)
 		}
 	})
 	t.Run("duplicate IDs cannot overwrite or shadow existing work", func(t *testing.T) {
@@ -98,8 +104,9 @@ func TestCreate(t *testing.T) {
 		if _, err := Create(p, "abc123", "different", []home.Object{home.O("prompt", "replacement")}); err == nil {
 			t.Fatal("duplicate ID accepted")
 		}
-		if _, err := Create(p, "new123", "abc123", []home.Object{home.O("prompt", "shadow")}); err == nil {
-			t.Fatal("name shadowing an ID accepted")
+		other, err := Create(p, "new123", "abc123", []home.Object{home.O("id", "1", "prompt", "shadow")})
+		if err != nil || other.Name != "abc123-2" {
+			t.Fatalf("name shadowed an ID: %v %v", other, err)
 		}
 		r, _, err := Open(p, "abc123")
 		if err != nil || r.Tasks[0].S("prompt") != "original" {
