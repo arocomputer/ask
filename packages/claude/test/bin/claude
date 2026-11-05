@@ -5,8 +5,10 @@
  * Every call is appended to $FAKE_LOG as one JSON line {pid, argv, stdin, cwd}. The answer is
  * $FAKE_ANSWER (default: the last prompt line). A prompt containing $FAKE_FAIL fails, $FAKE_HANG
  * never returns, $FAKE_SLOW answers after 300 ms. $FAKE_EXIT is the exit code after an answer.
+ * FAKE_EVENT_FILE (or FAKE_EVENTS) adds native JSONL, optionally split into byte chunks.
+ * FAKE_EVENT_GATE_AFTER pauses after that line until FAKE_EVENT_GATE exists, for live assertions.
  */
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
 if (argv.includes('--help')) {
@@ -31,6 +33,16 @@ else {
   const stream = (event) => console.log(JSON.stringify({ type: 'stream_event', event }));
   stream({ type: 'message_start', message: { id: 'msg_1', usage: { ...usage, output_tokens: 1 } } });
   if (process.env.FAKE_BLOCK) stream({ type: 'content_block_start', content_block: JSON.parse(process.env.FAKE_BLOCK) });
+  const events = process.env.FAKE_EVENT_FILE ? readFileSync(process.env.FAKE_EVENT_FILE, 'utf8') : process.env.FAKE_EVENTS || '';
+  let count = 0;
+  for (const line of events.split('\n').filter(Boolean)) {
+    const bytes = Buffer.from(line + '\n');
+    const size = Number(process.env.FAKE_EVENT_CHUNK_SIZE) || bytes.length;
+    for (let i = 0; i < bytes.length; i += size) process.stdout.write(bytes.subarray(i, i + size));
+    if (++count === Number(process.env.FAKE_EVENT_GATE_AFTER)) {
+      while (!existsSync(process.env.FAKE_EVENT_GATE)) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
   if (FAKE_PAUSE) await new Promise((resolve) => setTimeout(resolve, Number(FAKE_PAUSE)));
   stream({ type: 'message_delta', usage: { ...usage, output_tokens: 7 } });
   console.log(

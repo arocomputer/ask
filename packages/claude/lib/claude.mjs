@@ -17,6 +17,7 @@ import { accessSync, constants, readFileSync, renameSync, statSync, writeFileSyn
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { environmentArgs } from './environment.mjs';
+import { createActivity } from './activity.mjs';
 
 // The current models; ask models also lists any ids added in ~/.ask/models.json.
 const MODELS = ['fable-5.1', 'opus-5.5', 'sonnet-5.5', 'haiku-4.5'];
@@ -169,6 +170,7 @@ await adapter({
     let call;
     let result;
     let so = { input: 0, output: 0, cached: 0 };
+    const activityEvent = createActivity();
     const onLine = (line) => {
       let event;
       try {
@@ -176,8 +178,11 @@ await adapter({
       } catch {
         return;
       }
+      if (!event || typeof event !== 'object') return;
+      // Optional activity must never interfere with the answer, usage or session report.
+      try { activityEvent(event); } catch {}
       if (event.type === 'result') result = event;
-      const e = event.type === 'stream_event' ? event.event : {};
+      const e = event.type === 'stream_event' ? event.event || {} : {};
       if (e.type === 'content_block_start') {
         const block = e.content_block || {};
         let activity;

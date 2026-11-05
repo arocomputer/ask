@@ -12,6 +12,7 @@ import { accessSync, constants, mkdtempSync, readFileSync, rmSync, renameSync, s
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { checkEnvironment } from './environment.mjs';
+import { createActivity } from './activity.mjs';
 
 // Put before a new read run's prompt, so the answer comes from the code rather than a guess.
 const GROUNDING = 'Answer from the files in your working directory: search and read them before answering. Never guess file names, functions or facts; if you cannot find something, say so.\n\n';
@@ -212,6 +213,7 @@ await adapter({
       args.push(...(session ? [session, '-'] : ['-']));
       // --json streams events on stdout; each finished turn reports its tokens (Codex reports no cost).
       const usage = { input: 0, output: 0, cached: 0 };
+      const activityEvent = createActivity();
       let sessionId;
       let activity = '';
       const activities = new Map([
@@ -223,12 +225,13 @@ await adapter({
         let event;
         try { event = JSON.parse(line); } catch { return; }
         if (!event || typeof event !== 'object') return;
+        // Optional activity must never interfere with the answer, usage or session report.
+        try { activityEvent(event); } catch {}
         if (event.type === 'thread.started' && typeof event.thread_id === 'string') {
           sessionId = event.thread_id;
           report({ session: sessionId });
         }
-        // Only fixed labels derived from item types cross the report boundary. Never inspect
-        // command text, paths, reasoning, tool arguments/results, or message content.
+        // The report keeps fixed labels only; visible text belongs in the optional activity sink.
         if (['item.started', 'item.updated', 'item.completed'].includes(event.type)) {
           const category = activities.get(event.item?.type);
           if (category && category !== activity) {

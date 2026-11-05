@@ -7,8 +7,10 @@
  * $FAKE_SLOW answers after 300 ms; $FAKE_PAUSE waits that many ms after reporting usage. $FAKE_EXIT is the exit code after an answer; $FAKE_IGNORE_TERM
  * makes it ignore SIGTERM. $FAKE_EVENTS streams extra JSONL before usage, waiting
  * $FAKE_EVENT_PAUSE ms after each line.
+ * FAKE_EVENT_FILE supplies those events from a fixture; FAKE_EVENT_CHUNK_SIZE splits their bytes.
+ * FAKE_EVENT_GATE_AFTER pauses after that line until FAKE_EVENT_GATE exists, for live assertions.
  */
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
 if (argv[0] === 'app-server') {
@@ -51,8 +53,15 @@ else {
     process.exitCode = 1;
   } else {
     writeFileSync(after('-o'), FAKE_ANSWER ?? `codex: ${stdin.trim().split('\n').pop()}`);
-    for (const line of (process.env.FAKE_EVENTS || '').split('\n').filter(Boolean)) {
-      console.log(line);
+    const events = process.env.FAKE_EVENT_FILE ? readFileSync(process.env.FAKE_EVENT_FILE, 'utf8') : process.env.FAKE_EVENTS || '';
+    let count = 0;
+    for (const line of events.split('\n').filter(Boolean)) {
+      const bytes = Buffer.from(line + '\n');
+      const size = Number(process.env.FAKE_EVENT_CHUNK_SIZE) || bytes.length;
+      for (let i = 0; i < bytes.length; i += size) process.stdout.write(bytes.subarray(i, i + size));
+      if (++count === Number(process.env.FAKE_EVENT_GATE_AFTER)) {
+        while (!existsSync(process.env.FAKE_EVENT_GATE)) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
       if (process.env.FAKE_EVENT_PAUSE) await new Promise((resolve) => setTimeout(resolve, Number(process.env.FAKE_EVENT_PAUSE)));
     }
     const usage = { input_tokens: 100, cached_input_tokens: 40, output_tokens: 8, reasoning_output_tokens: 2 };
