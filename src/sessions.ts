@@ -39,8 +39,7 @@ export type Turn = {
   changes?: Change[]
 }
 
-/** session.json. `name` is what the caller calls it, when it gave one. */
-export type Record = { id: string; created: string; dir: string; name?: string; turns: Turn[] }
+export type Record = { id: string; created: string; dir: string; turns: Turn[] }
 
 export type Session = Record & { folder: string }
 
@@ -51,7 +50,7 @@ export function now(): string {
 }
 
 /** Creates a session folder with its first turn, marked running. */
-export function create(h: Home, dir: string, turn: Omit<Turn, "state" | "started">, name?: string): Session {
+export function create(h: Home, dir: string, turn: Omit<Turn, "state" | "started">): Session {
   mkdirSync(h.sessions, { recursive: true, mode: 0o700 })
   for (;;) {
     const id = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join("")
@@ -62,7 +61,7 @@ export function create(h: Home, dir: string, turn: Omit<Turn, "state" | "started
       continue
     }
     const created = now()
-    const s: Session = { id, created, dir, ...(name ? { name } : {}), turns: [{ ...turn, state: "running", started: created }], folder }
+    const s: Session = { id, created, dir, turns: [{ ...turn, state: "running", started: created }], folder }
     save(s)
     return s
   }

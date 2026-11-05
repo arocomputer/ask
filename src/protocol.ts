@@ -10,8 +10,8 @@
 //   {"show": ID}                                 the session with the steps of its latest turn
 // TASK is {"prompt", "model"?, "write"?, "dir"?, "effort"?, "schema"?, "timeout"?}.
 //
-// Every response is {"tasks": [RESULT, ...]}, or {"error": {"message", "hint"}} for a request ask
-// can't carry out. RESULT is {"id", "state", "answer"?, "error"?, "changes"?, "retrying"?,
+// Every response is {"tasks": [RESULT, ...]} with a "hint" when the caller should change how it
+// waits, or {"error": {"message", "hint"}} for a request ask can't carry out. RESULT is {"id", "state", "answer"?, "error"?, "changes"?, "retrying"?,
 // "activity"?, "resumed"?}; state is running, retrying, succeeded, failed or stopped. collect
 // restarts a turn whose worker was stopped, from where its transcript ends.
 
@@ -19,7 +19,7 @@ import { rmSync, statSync } from "node:fs"
 import { resolve as absolute } from "node:path"
 import { resolve as model, type Home, readJSON, type Config } from "./home.ts"
 import type { Failure } from "./loop.ts"
-import { alive, claim, create, latest, list, lock, now, open, reload, save, status, transcript, unlock, worker, type Change, type Session, type State } from "./sessions.ts"
+import { alive, claim, create, latest, lock, now, open, reload, save, status, transcript, unlock, worker, type Change, type Session, type State } from "./sessions.ts"
 import { activity, steps } from "./steps.ts"
 import { launch } from "./worker.ts"
 
@@ -38,7 +38,7 @@ REQUESTS
       whose worker was stopped is restarted where it left off.
   {"continue": ID, "prompt": "...", "wait": seconds, ...}
       Give a finished session its next prompt. It keeps the conversation. Takes TASK's
-      fields, except dir and name.
+      fields, except dir.
   {"continue": ID, "wait": seconds}
       Without a prompt, resume a stopped or failed turn where it left off.
   {"stop": [ID, ...]}
@@ -65,7 +65,8 @@ RESPONSE
   activity   Its latest step, while it runs
   resumed    How many times ask restarted it after its worker was stopped. collect does
              that by itself. Where background work stops when a command ends, collect then
-             waits for every task listed rather than the first, so wait as long as you can.
+             waits for every task listed rather than the first, and the response carries a
+             hint: subagents only make progress while you wait, so wait as long as you can.
   A request ask can't carry out gets {"error": {"message", "hint"}} and exit status 2.
 
 EXAMPLE
@@ -74,7 +75,7 @@ EXAMPLE
   EOF
 `
 
-export type Task = { prompt: string; name?: string; model?: string; write?: boolean; dir?: string; effort?: string; schema?: object; timeout?: number }
+export type Task = { prompt: string; model?: string; write?: boolean; dir?: string; effort?: string; schema?: object; timeout?: number }
 
 export type Request =
   | { start: Task[]; wait?: number }
@@ -85,7 +86,6 @@ export type Request =
 
 export type Result = {
   id: string
-  name?: string
   state: State
   answer?: string
   error?: Failure
@@ -100,7 +100,11 @@ export type Result = {
   steps?: string[]
 }
 
-export type Response = { tasks: Result[] } | { error: Failure }
+/** `hint` appears when the tasks need the caller to do something differently. */
+export type Response = { tasks: Result[]; hint?: string } | { error: Failure }
+
+const fragileHint =
+  "This environment stops subagents when your command ends, so they only make progress while you wait. Collect again with the longest wait your shell allows."
 
 /** A request ask can't carry out, with what to send instead. */
 export class Invalid extends Error {
@@ -111,13 +115,15 @@ export class Invalid extends Error {
   }
 }
 
-const taskKeys = ["prompt", "name", "model", "write", "dir", "effort", "schema", "timeout"]
+const taskKeys = ["prompt", "model", "write", "dir", "effort", "schema", "timeout"]
 const ops = ["start", "collect", "continue", "stop", "show"]
 
 /** Parses and carries out one request. Never throws: failures become `{"error"}`. */
 export async function handle(h: Home, request: unknown): Promise<Response> {
   try {
-    return { tasks: await carry(h, request) }
+    const tasks = await carry(h, request)
+    const fragile = tasks.some((t) => t.resumed) && tasks.some((t) => t.state === "running" || t.state === "retrying")
+    return fragile ? { tasks, hint: fragileHint } : { tasks }
   } catch (err) {
     const e = err as Invalid
     return { error: { message: e.message, ...(e.hint ? { hint: e.hint } : {}) } }
@@ -135,12 +141,6 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       only(req, ["start", "wait"])
       if (!Array.isArray(req.start) || !req.start.length) throw new Invalid("start takes a list of tasks", '{"start": [{"prompt": "..."}]}')
       const tasks = req.start.map((t, i) => task(t, `start[${i}]`))
-      const names = tasks.map((t) => t.name).filter((n) => n !== undefined)
-      if (new Set(names).size !== names.length) throw new Invalid("each task in a start request needs its own name")
-      for (const n of names) {
-        const taken = list(h).find((s) => s.name === n && ["running", "retrying"].includes(status(s).state))
-        if (taken) throw new Invalid(`${n} is the name of a session that is still running`, `{"collect": ["${n}"]}, or choose another name`)
-      }
       const ready: { t: Task; dir: string; model: string }[] = []
       for (const [i, t] of tasks.entries()) ready.push({ t, dir: folder(t.dir, `start[${i}]`), model: await chosen(h, t.model) })
       const started: Session[] = []
@@ -152,7 +152,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       return collect(ids(req.collect, "collect").map((id) => find(h, id)), wait ?? 600)
     }
     case "continue": {
-      only(req, ["continue", "wait", ...taskKeys.filter((k) => k !== "dir" && k !== "name")])
+      only(req, ["continue", "wait", ...taskKeys.filter((k) => k !== "dir")])
       if (typeof req.continue !== "string") throw new Invalid("continue takes a session id", '{"continue": "k3f9a2", "prompt": "..."}')
       const found = find(h, req.continue)
       const s = lost(found) ?? found
@@ -211,7 +211,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
 /** A session's latest turn as the agent sees it: small, with detail only where it helps. */
 export function result(s: Session): Result {
   const t = status(s)
-  const r: Result = { id: s.id, ...(s.name ? { name: s.name } : {}), state: t.state }
+  const r: Result = { id: s.id, state: t.state }
   if (t.answer !== undefined) r.answer = t.answer
   if (t.error) r.error = t.error
   if (t.changes?.length) r.changes = t.changes
@@ -281,19 +281,14 @@ function folder(dir: string | undefined, where: string): string {
 
 /** Creates and launches a session for a task already checked. */
 function begin(h: Home, t: Task, dir: string, model: string): Session {
-  const s = create(
-    h,
-    dir,
-    {
-      prompt: t.prompt,
-      model,
-      write: t.write ?? false,
-      effort: t.effort,
-      schema: t.schema,
-      timeout: t.timeout ?? defaultTimeout(h),
-    },
-    t.name,
-  )
+  const s = create(h, dir, {
+    prompt: t.prompt,
+    model,
+    write: t.write ?? false,
+    effort: t.effort,
+    schema: t.schema,
+    timeout: t.timeout ?? defaultTimeout(h),
+  })
   try {
     launch(s)
   } catch (err) {
@@ -352,13 +347,10 @@ function defaultTimeout(h: Home): number {
   return readJSON<Config>(h.config, {}).timeout ?? 900
 }
 
-/** A session by id, or by the name its caller gave it (the most recent, if reused). */
-function find(h: Home, ref: string): Session {
+function find(h: Home, id: string): Session {
   try {
-    return open(h, ref)
+    return open(h, id)
   } catch (err) {
-    const named = list(h).find((s) => s.name === ref)
-    if (named) return named
     throw new Invalid((err as Error).message.replace(/; ask sessions lists them$/, ""))
   }
 }
@@ -368,8 +360,6 @@ function task(v: unknown, where: string): Task {
   const t = v as Record<string, unknown>
   only(t, taskKeys, where)
   if (typeof t.prompt !== "string" || !t.prompt.trim()) throw new Invalid(`${where} needs a prompt`)
-  if (t.name !== undefined && (typeof t.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/.test(t.name)))
-    throw new Invalid(`${where}.name must be letters, digits and dashes, at most 40`)
   for (const k of ["model", "dir", "effort"]) if (t[k] !== undefined && typeof t[k] !== "string") throw new Invalid(`${where}.${k} must be a string`)
   if (t.write !== undefined && typeof t.write !== "boolean") throw new Invalid(`${where}.write must be true or false`)
   if (t.schema !== undefined && (!t.schema || typeof t.schema !== "object" || Array.isArray(t.schema))) throw new Invalid(`${where}.schema must be a JSON Schema object`)

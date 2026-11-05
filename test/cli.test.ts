@@ -96,6 +96,16 @@ describe("cli", () => {
     assert.deepEqual(r.tasks.map((t: any) => t.state), ["succeeded", "succeeded"])
   })
 
+  test("a response says to wait longer while restarted tasks are still running", async () => {
+    const { ask, home, fake } = await setup([{ text: "late", delay: 3_000 }])
+    const { tasks } = await ask({ start: [{ prompt: "slow" }] })
+    while (!fake.requests.length) await new Promise((ok) => setTimeout(ok, 20))
+    process.kill(JSON.parse(readFileSync(join(home, "sessions", tasks[0].id, "lock"), "utf8")).pid, "SIGKILL")
+    const r = await ask({ collect: [tasks[0].id], wait: 1 })
+    assert.equal(r.tasks[0].state, "running")
+    assert.match(r.hint, /only make progress while you wait/)
+  })
+
   test("continue without a prompt resumes a stopped turn", async () => {
     const { ask, fake } = await setup([{ when: "Task", text: "Done.", delay: 3_000 }])
     const { tasks } = await ask({ start: [{ prompt: "Task" }] })
@@ -156,6 +166,6 @@ describe("cli", () => {
     const { run } = await setup([{ text: "unused" }])
     const r = await run([], JSON.stringify({ start: [{ prompt: "x", modle: "fake/m" }] }))
     assert.equal(r.code, 2)
-    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, name, model, write, dir, effort, schema, timeout" })
+    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, model, write, dir, effort, schema, timeout" })
   })
 })
