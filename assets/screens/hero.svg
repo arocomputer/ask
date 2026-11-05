@@ -1,19 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="870" viewBox="0 0 1400 870">
-<rect width="1400" height="870" fill="#005f8f"/>
-<g transform="translate(114 95)">
-<rect width="1172" height="680" rx="16" fill="#151718"/>
-<circle cx="48" cy="48" r="14" fill="#ff5f57"/>
-<circle cx="84" cy="48" r="14" fill="#febc2e"/>
-<circle cx="120" cy="48" r="14" fill="#28c840"/>
-<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="26">
-<text y="120"><tspan x="40.0" fill="#8b949e" font-weight="400">$&#160;</tspan><tspan x="71.2" fill="#ffffff" font-weight="600">ask&#160;--wait&#160;-m&#160;claude:sonnet-5.5&#160;&quot;Why&#160;does&#160;the&#160;login&#160;test&#160;fail?&quot;</tspan></text>
-<text y="172"><tspan x="40.0" fill="#e6edf3" font-weight="400">ask&#160;login-test-fail&#160;·&#160;</tspan><tspan x="383.2" fill="#3fb950" font-weight="400">succeeded</tspan><tspan x="539.2" fill="#8b949e" font-weight="400">·&#160;Sonnet&#160;5.5&#160;·&#160;48.0s&#160;·&#160;$0.09</tspan></text>
-<text y="224"><tspan x="40.0" fill="#e6edf3" font-weight="400">The&#160;expiry&#160;check&#160;compares&#160;seconds&#160;with&#160;milliseconds,&#160;auth/token.go:42.</tspan></text>
-<text y="276"></text>
-<text y="328"><tspan x="40.0" fill="#8b949e" font-weight="400">$&#160;</tspan><tspan x="71.2" fill="#ffffff" font-weight="600">ask&#160;batch&#160;--wait&#160;-w&#160;--worktree&#160;review.json</tspan></text>
-<text y="380"><tspan x="40.0" fill="#ffffff" font-weight="600">ask&#160;review-session-code&#160;·&#160;batch&#160;of&#160;3&#160;·&#160;3&#160;at&#160;a&#160;time</tspan></text>
-<text y="432"><tspan x="40.0" fill="#3fb950" font-weight="400">✔&#160;</tspan><tspan x="71.2" fill="#e6edf3" font-weight="400">claude&#160;&#160;&#160;&#160;</tspan><tspan x="227.2" fill="#e6edf3" font-weight="400">Sonnet&#160;5.5&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</tspan><tspan x="539.2" fill="#8b949e" font-weight="400">2:31&#160;·&#160;2&#160;files&#160;changed&#160;·&#160;$0.24</tspan></text>
-<text y="484"><tspan x="40.0" fill="#3fb950" font-weight="400">✔&#160;</tspan><tspan x="71.2" fill="#e6edf3" font-weight="400">codex&#160;&#160;&#160;&#160;&#160;</tspan><tspan x="227.2" fill="#e6edf3" font-weight="400">GPT-6.1&#160;Sol&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;</tspan><tspan x="539.2" fill="#8b949e" font-weight="400">3:05&#160;·&#160;3&#160;files&#160;changed</tspan></text>
-<text y="536"><tspan x="40.0" fill="#8b949e" font-weight="400">…&#160;</tspan><tspan x="71.2" fill="#e6edf3" font-weight="400">opencode&#160;&#160;</tspan><tspan x="227.2" fill="#e6edf3" font-weight="400">Deepseek&#160;4.1&#160;Flash&#160;&#160;</tspan><tspan x="539.2" fill="#8b949e" font-weight="400">write&#160;·&#160;worktree&#160;·&#160;1:48</tspan></text>
-<text y="588"><tspan x="40.0" fill="#8b949e" font-weight="400">2&#160;succeeded&#160;·&#160;0&#160;failed&#160;·&#160;3:05&#160;·&#160;reported:&#160;173.5k&#160;in&#160;·&#160;5.7k&#160;out</tspan></text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="907" viewBox="0 0 1400 907">
+<rect width="100%" height="100%" fill="#005f8f"/>
+<g transform="translate(125 123)">
+<rect width="1150" height="660" rx="11" fill="#151718"/>
+<circle cx="47" cy="48" r="14" fill="#ff5f57"/>
+<circle cx="91" cy="48" r="14" fill="#febc2e"/>
+<circle cx="135" cy="48" r="14" fill="#28c840"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="31">
+<text y="175"><tspan x="40.0" fill="#d798d8">$&#160;</tspan><tspan x="77.2" fill="#d1d5d6">ask&#160;--wait&#160;&quot;Why&#160;does&#160;login&#160;fail?&quot;</tspan></text>
+<text y="229"></text>
+<text y="283"><tspan x="40.0" fill="#969b9c">ask&#160;login-fail&#160;·&#160;</tspan><tspan x="356.2" fill="#86b7a2">succeeded</tspan><tspan x="523.6" fill="#969b9c">&#160;·&#160;Sonnet&#160;5.5&#160;·&#160;48s</tspan></text>
+<text y="337"><tspan x="40.0" fill="#d1d5d6">The&#160;expiry&#160;check&#160;compares&#160;seconds&#160;with</tspan></text>
+<text y="391"><tspan x="40.0" fill="#d1d5d6">milliseconds&#160;in&#160;auth/token.go:42.</tspan></text>
+<text y="445"></text>
+<text y="499"><tspan x="40.0" fill="#d798d8">$&#160;</tspan><tspan x="77.2" fill="#d1d5d6">ask&#160;continue&#160;login-fail&#160;--wait&#160;-w&#160;&quot;Fix&#160;it.&quot;</tspan></text>
+<text y="553"></text>
+<text y="607"><tspan x="40.0" fill="#969b9c">ask&#160;login-fail&#160;·&#160;</tspan><tspan x="356.2" fill="#86b7a2">succeeded</tspan><tspan x="523.6" fill="#969b9c">&#160;·&#160;Sonnet&#160;5.5&#160;·&#160;1&#160;file&#160;changed</tspan></text>
 </g></g></svg>

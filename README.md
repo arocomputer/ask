@@ -3,7 +3,7 @@
 **Every model, as a subagent.** Hand tasks to your coding agents, on any model they run, from your
 terminal or from another agent. One task or many at once, recorded, with live usage.
 
-![ask running a task and a batch across three models](assets/screens/hero.svg)
+![ask investigating a login failure and following up with a fix](assets/screens/hero.svg)
 
 ask works with the coding agent CLIs you already use. Each task runs in a real agent conversation,
 gets a stable ID and a name, and is saved in `~/.ask/runs`, so you can inspect it, wait for it, or
