@@ -6,7 +6,7 @@ import { accessSync, constants, mkdirSync, statSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { find, providers, type Catalog } from "../catalog.ts"
 import { catalog, credential, readJSON, type Auth, type Config, type Home } from "../home.ts"
-import { latest, list, worker } from "../sessions.ts"
+import { alive, latest, list } from "../sessions.ts"
 import { ago, spinner, style } from "../term.ts"
 import { check } from "./settings.ts"
 
@@ -75,7 +75,7 @@ export async function run(h: Home): Promise<number> {
   const git = await output("git", ["--version"])
   add(git ? { mark: "ok", name: "Git", detail: git.replace(/^git version /, "git ") } : { mark: "warn", name: "Git", detail: "not found", fix: "install git to see what write tasks changed" })
 
-  const lost = list(h).filter((s) => ["running", "retrying"].includes(latest(s).state) && !worker(s))
+  const lost = list(h).filter((s) => ["running", "retrying"].includes(latest(s).state) && !alive(s))
   if (lost.length) add({ mark: "warn", name: "Sessions", detail: `${lost.length} ended without their worker: ${lost.slice(0, 3).map((s) => s.id).join(", ")}${lost.length > 3 ? ", …" : ""}`, fix: "ask show ID tells you why; continue them to try again" })
 
   return out.some((l) => l.mark === "fail") ? 1 : 0

@@ -5,19 +5,21 @@
 //   {"start": [TASK, ...], "wait": SECONDS?}    start tasks; with wait, collect them as below
 //   {"collect": [ID, ...], "wait": SECONDS?}     block until one has finished (default 600s)
 //   {"continue": ID, "prompt": TEXT, ...}        a finished session's next turn, with TASK's options
+//   {"continue": ID}                             resume a stopped or failed turn
 //   {"stop": [ID, ...]}
 //   {"show": ID}                                 the session with the steps of its latest turn
 // TASK is {"prompt", "model"?, "write"?, "dir"?, "effort"?, "schema"?, "timeout"?}.
 //
 // Every response is {"tasks": [RESULT, ...]}, or {"error": {"message", "hint"}} for a request ask
 // can't carry out. RESULT is {"id", "state", "answer"?, "error"?, "changes"?, "retrying"?,
-// "activity"?}; state is running, retrying, succeeded, failed or stopped.
+// "activity"?, "resumed"?}; state is running, retrying, succeeded, failed or stopped. collect
+// restarts a turn whose worker was stopped, from where its transcript ends.
 
 import { rmSync, statSync } from "node:fs"
 import { resolve as absolute } from "node:path"
 import { resolve as model, type Home, readJSON, type Config } from "./home.ts"
 import type { Failure } from "./loop.ts"
-import { create, latest, list, now, open, reload, save, status, transcript, unlock, worker, type Change, type Session, type State } from "./sessions.ts"
+import { alive, claim, create, latest, list, lock, now, open, reload, save, status, transcript, unlock, worker, type Change, type Session, type State } from "./sessions.ts"
 import { activity, steps } from "./steps.ts"
 import { launch } from "./worker.ts"
 
@@ -32,10 +34,13 @@ REQUESTS
       wait is over, like collect.
   {"collect": [ID, ...], "wait": seconds}
       Block until at least one of the sessions has finished (or wait passes, default 600),
-      then report them all. Finished ones stay finished; collect the rest again.
+      then report them all. Finished ones stay finished; collect the rest again. A task
+      whose worker was stopped is restarted where it left off.
   {"continue": ID, "prompt": "...", "wait": seconds, ...}
       Give a finished session its next prompt. It keeps the conversation. Takes TASK's
-      fields, except dir.
+      fields, except dir and name.
+  {"continue": ID, "wait": seconds}
+      Without a prompt, resume a stopped or failed turn where it left off.
   {"stop": [ID, ...]}
       Stop sessions. A stopped session can be continued.
   {"show": ID}
@@ -58,6 +63,9 @@ RESPONSE
   changes    Files a write task changed: [{"path", "change"}]
   retrying   Why the provider is being retried, while it is
   activity   Its latest step, while it runs
+  resumed    How many times ask restarted it after its worker was stopped. collect does
+             that by itself; if the count keeps rising, this environment stops background
+             work when a command ends, so wait longer in each call.
   A request ask can't carry out gets {"error": {"message", "hint"}} and exit status 2.
 
 EXAMPLE
@@ -86,6 +94,8 @@ export type Result = {
   retrying?: string
   /** The latest step of a running task, like "read src/a.ts". */
   activity?: string
+  /** How many times ask restarted the turn after its worker was stopped. */
+  resumed?: number
   /** With show: every step of the latest turn. */
   steps?: string[]
 }
@@ -144,12 +154,23 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
     case "continue": {
       only(req, ["continue", "wait", ...taskKeys.filter((k) => k !== "dir" && k !== "name")])
       if (typeof req.continue !== "string") throw new Invalid("continue takes a session id", '{"continue": "k3f9a2", "prompt": "..."}')
-      const s = find(h, req.continue)
-      const state = status(s).state
-      if (state === "running" || state === "retrying") throw new Invalid(`${s.id} is still running`, `{"collect": ["${s.id}"]} first`)
-      const { continue: _, wait: __, ...rest } = req
-      const t = task(rest, "continue")
+      const found = find(h, req.continue)
+      const s = lost(found) ?? found
       const last = latest(s)
+      const dead = running(s) && !alive(s)
+      if (!dead && running(s)) throw new Invalid(`${s.id} is still running`, `{"collect": ["${s.id}"]} first`)
+      const { continue: _, wait: __, ...rest } = req
+      if (rest.prompt === undefined) {
+        only(rest, [], "continue without a prompt")
+        if (last.state === "succeeded") throw new Invalid(`${s.id} finished; give it a prompt for its next turn`, `{"continue": "${s.id}", "prompt": "..."}`)
+        resume(s)
+        return wait === undefined ? [result(s)] : collect([s], wait)
+      }
+      const t = task(rest, "continue")
+      if (dead) {
+        Object.assign(last, { state: "failed", finished: now(), error: { message: "the worker stopped before the turn finished" } })
+        delete last.retry
+      }
       const target = await chosen(h, t.model ?? last.model)
       s.turns.push({
         prompt: t.prompt,
@@ -195,18 +216,56 @@ export function result(s: Session): Result {
   if (t.error) r.error = t.error
   if (t.changes?.length) r.changes = t.changes
   if (t.retry) r.retrying = t.retry
+  if (t.resumed) r.resumed = t.resumed
   if (t.state === "running" || t.state === "retrying") r.activity = activity(transcript(s))
   return r
 }
 
-/** Blocks until one of the sessions has finished or `wait` seconds pass, then reports them all. */
+/** Restarts this many times at most on its own; after that a turn's lost worker is a failure. */
+const resumes = 10
+
+/**
+ * Blocks until one of the sessions has finished or `wait` seconds pass, then reports them all.
+ * A turn whose worker was stopped (a host that ends background processes with each command, a
+ * crash, a reboot) is restarted from where it stopped, up to `resumes` times.
+ */
 async function collect(sessions: Session[], wait: number): Promise<Result[]> {
   const deadline = Date.now() + wait * 1000
   for (;;) {
-    sessions = sessions.map(reload)
+    sessions = sessions.map((s) => {
+      const found = lost(reload(s))
+      if (found && (latest(found).resumed ?? 0) < resumes) resume(found)
+      return found ? reload(found) : reload(s)
+    })
     if (sessions.some((s) => !["running", "retrying"].includes(status(s).state)) || Date.now() >= deadline) return sessions.map(result)
     await new Promise((ok) => setTimeout(ok, 250))
   }
+}
+
+const running = (s: Session) => ["running", "retrying"].includes(latest(s).state)
+
+/**
+ * The session freshly read, when its latest turn is marked running but no worker is running
+ * it. The record is read again after checking the worker, since a worker saves its outcome
+ * just before it lets go of the turn.
+ */
+function lost(s: Session): Session | undefined {
+  if (!running(s) || alive(s)) return undefined
+  const fresh = reload(s)
+  return running(fresh) && !alive(fresh) ? fresh : undefined
+}
+
+/** Restarts the latest turn from where its transcript stops, unless another caller already is. */
+function resume(s: Session) {
+  if (!claim(s)) return
+  lock(s)
+  const t = latest(s)
+  Object.assign(t, { state: "running", resumed: (t.resumed ?? 0) + 1 })
+  delete t.error
+  delete t.finished
+  delete t.retry
+  save(s)
+  launch(s)
 }
 
 /** A task's working directory, made absolute; it must exist. */
@@ -240,9 +299,13 @@ function begin(h: Home, t: Task, dir: string, model: string): Session {
   return s
 }
 
-/** Sends SIGTERM, waits up to ten seconds, then SIGKILL; records the turn as stopped. */
+/**
+ * Sends SIGTERM, waits up to ten seconds, then SIGKILL; records the turn as stopped. A worker
+ * still starting is waited for, so it can't begin running after the stop.
+ */
 async function stop(s: Session): Promise<Session> {
-  const pid = worker(s)
+  let pid = worker(s)
+  for (const end = Date.now() + 30_000; !pid && alive(s) && Date.now() < end; pid = worker(s)) await new Promise((ok) => setTimeout(ok, 50))
   if (!pid) return s
   const gone = async (ms: number) => {
     for (const end = Date.now() + ms; Date.now() < end; ) {

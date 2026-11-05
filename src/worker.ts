@@ -2,7 +2,7 @@
 // detached worker (`ask __worker FOLDER`) that runs it beyond the caller's lifetime, recording
 // its pid as the session's lock. Either way the transcript is saved after every step, the
 // record says `retrying` while a provider is being retried, and a write turn lists what it
-// changed.
+// changed. A turn whose prompt is already in the transcript is resumed from where it stopped.
 
 import { execFileSync, spawn } from "node:child_process"
 import { createHash } from "node:crypto"
@@ -17,12 +17,16 @@ import { latest, lock, now, save, saveTranscript, transcript, unlock, worker, ty
 
 /** Starts a detached worker for the session's latest turn and records it as the lock. */
 export function launch(s: Session) {
+  lock(s)
   const script = fileURLToPath(new URL("./cli.ts", import.meta.url))
   const args = script.startsWith("/$bunfs") ? [] : [script]
   const out = openSync(join(s.folder, "log"), "a", 0o600)
   const child = spawn(process.execPath, [...args, "__worker", s.folder], { detached: true, stdio: ["ignore", out, out] })
   closeSync(out)
-  if (!child.pid) throw new Error("cannot start the worker")
+  if (!child.pid) {
+    unlock(s)
+    throw new Error("cannot start the worker")
+  }
   lock(s, child.pid)
   child.unref()
 }
@@ -68,12 +72,14 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     save(s)
   })
   const timeout = AbortSignal.timeout(t.timeout * 1000)
+  const messages = transcript(s)
+  const resuming = messages.filter((m) => m.role === "user").length >= s.turns.length
   const r = await run({
     provider,
     model: target.model.id,
     dir: s.dir,
-    prompt: t.prompt,
-    messages: transcript(s),
+    prompt: resuming ? undefined : t.prompt,
+    messages,
     write: t.write,
     effort: t.effort,
     schema: t.schema,
@@ -103,7 +109,14 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     t.state = "failed"
     t.error = r.error
   }
-  if (before) t.changes = diff(before, snapshot(s.dir))
+  if (before) {
+    const found = diff(before, snapshot(s.dir))
+    if (found) {
+      const merged = new Map((t.changes ?? []).map((c) => [c.path, c]))
+      for (const c of found) merged.set(c.path, c)
+      t.changes = [...merged.values()].sort((a, b) => a.path.localeCompare(b.path))
+    }
+  }
   finish()
 }
 

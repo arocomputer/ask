@@ -62,14 +62,35 @@ describe("cli", () => {
     assert.equal((await ask({ stop: [tasks[0].id] })).tasks[0].state, "stopped")
   })
 
-  test("a task whose worker died reads as failed", async () => {
-    const { ask, home } = await setup([{ text: "never", delay: 20_000 }])
+  test("collect resumes a task whose worker was killed", async () => {
+    const { ask, home } = await setup([{ text: "Done.", delay: 1_000 }])
     const { tasks } = await ask({ start: [{ prompt: "Task" }] })
     const { pid } = JSON.parse(readFileSync(join(home, "sessions", tasks[0].id, "lock"), "utf8"))
     process.kill(pid, "SIGKILL")
-    const r = await ask({ collect: [tasks[0].id], wait: 5 })
-    assert.equal(r.tasks[0].state, "failed")
-    assert.match(r.tasks[0].error.message, /worker exited/)
+    assert.equal((await ask({ show: tasks[0].id })).tasks[0].state, "failed")
+    const r = await ask({ collect: [tasks[0].id], wait: 30 })
+    assert.deepEqual(r.tasks[0], { id: tasks[0].id, state: "succeeded", answer: "Done.", resumed: 1 })
+  })
+
+  test("two collects that find the same lost turn restart it once", async () => {
+    const { ask, home, fake } = await setup([{ text: "Done.", delay: 1_000 }])
+    const { tasks } = await ask({ start: [{ prompt: "Task" }] })
+    while (!fake.requests.length) await new Promise((ok) => setTimeout(ok, 20))
+    const { pid } = JSON.parse(readFileSync(join(home, "sessions", tasks[0].id, "lock"), "utf8"))
+    process.kill(pid, "SIGKILL")
+    const [a, b] = await Promise.all([ask({ collect: [tasks[0].id], wait: 30 }), ask({ collect: [tasks[0].id], wait: 30 })])
+    assert.deepEqual([a.tasks[0], b.tasks[0]].map((t: any) => t.resumed), [1, 1], JSON.stringify([a, b]))
+    assert.equal(fake.requests.length, 2)
+  })
+
+  test("continue without a prompt resumes a stopped turn", async () => {
+    const { ask, fake } = await setup([{ when: "Task", text: "Done.", delay: 3_000 }])
+    const { tasks } = await ask({ start: [{ prompt: "Task" }] })
+    await new Promise((ok) => setTimeout(ok, 300))
+    await ask({ stop: [tasks[0].id] })
+    const r = await ask({ continue: tasks[0].id, wait: 30 })
+    assert.equal(r.tasks[0].answer, "Done.")
+    assert.deepEqual(fake.requests.at(-1).messages.slice(1).map((m: any) => m.content), ["Task"])
   })
 
   test("continue carries the conversation into the next turn", async () => {

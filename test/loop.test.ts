@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
 import { connect, type Model } from "../src/catalog.ts"
-import { run } from "../src/loop.ts"
+import { interrupted, run } from "../src/loop.ts"
 import type { Protocol } from "../src/provider.ts"
 import { serve } from "./fake.ts"
 
@@ -67,6 +67,15 @@ describe("loop", () => {
     } finally {
       await fake.close()
     }
+  })
+
+  test("a call cut off by a stopped worker reaches the resumed model as interrupted", () => {
+    const out = interrupted([
+      { role: "user", text: "Deploy" },
+      { role: "assistant", text: "", calls: [{ id: "c1", name: "shell", arguments: '{"command":"git push"}' }] },
+    ])
+    assert.equal(out.length, 3)
+    assert.match((out[2] as { output: string }).output, /^error: this call was interrupted.*check whether it took effect/)
   })
 
   test("a failure says what to do next", async () => {

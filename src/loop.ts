@@ -13,8 +13,11 @@ export type RunOptions = {
   model: string
   /** The directory the subagent works in; tool paths are confined to it. */
   dir: string
-  /** The user's message for this turn, appended to `messages`. */
-  prompt: string
+  /**
+   * The user's message for this turn, appended to `messages`. Without one, the loop resumes the
+   * conversation as it stands, as for a turn whose worker was stopped partway.
+   */
+  prompt?: string
   /** The conversation so far, for a follow-up turn. */
   messages?: Message[]
   write?: boolean
@@ -41,7 +44,7 @@ export type RunResult = { answer?: string; error?: Failure; messages: Message[];
 const elided = "[output elided to fit the context window; run the tool again if you need it]"
 
 export async function run(o: RunOptions): Promise<RunResult> {
-  const messages: Message[] = [...(o.messages ?? []), { role: "user", text: o.prompt }]
+  const messages: Message[] = o.prompt === undefined ? interrupted(o.messages ?? []) : [...(o.messages ?? []), { role: "user", text: o.prompt }]
   const usage: Usage = { input: 0, output: 0, cached: 0 }
   const tools = builtIn(o.write ?? false)
   const system = o.instructions ?? instructions(o.dir, o.write ?? false, !!o.schema)
@@ -93,6 +96,22 @@ export async function run(o: RunOptions): Promise<RunResult> {
     }
   }
   return end({ error: { message: `hit the ${maxSteps}-step limit without answering`, hint: "continue the session to let it go on, or split the task" } }, maxSteps)
+}
+
+const cut = "error: this call was interrupted before it finished, so its result is unknown. If it could have changed something, check whether it took effect before running it again."
+
+/**
+ * Gives every tool call the conversation left without a result an "interrupted" result, so a
+ * resumed model knows the call may or may not have happened instead of silently repeating it.
+ */
+export function interrupted(messages: Message[]): Message[] {
+  const out = [...messages]
+  const answered = new Set(out.filter((m) => m.role === "tool").map((m) => (m as { id: string }).id))
+  const last = out.findLastIndex((m) => m.role === "assistant")
+  const m = out[last]
+  if (m?.role === "assistant")
+    for (const c of m.calls) if (!answered.has(c.id)) out.push({ role: "tool", id: c.id, name: c.name, output: cut })
+  return out
 }
 
 /** Runs one tool call and returns what the model sees, errors included. */

@@ -5,7 +5,7 @@
 
 import { execFileSync } from "node:child_process"
 import { randomInt } from "node:crypto"
-import { mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs"
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { readJSON, writeJSON, type Home } from "./home.ts"
 import type { Failure } from "./loop.ts"
@@ -34,6 +34,8 @@ export type Turn = {
   steps?: number
   /** Why the provider is being retried, while it is. */
   retry?: string
+  /** How many times the turn was restarted after its worker was stopped. */
+  resumed?: number
   changes?: Change[]
 }
 
@@ -115,13 +117,46 @@ export function saveTranscript(s: Session, messages: Message[]) {
   writeJSON(join(s.folder, "transcript.json"), messages)
 }
 
-/** Records the worker running the latest turn. */
-export function lock(s: Session, pid: number) {
-  writeJSON(join(s.folder, "lock"), { pid })
+/**
+ * Records the worker running the latest turn: its pid, or before it exists, the time a
+ * launcher began starting it, so nobody takes the turn for lost in between.
+ */
+export function lock(s: Session, pid?: number) {
+  writeJSON(join(s.folder, "lock"), pid ? { pid } : { starting: Date.now() })
 }
+
+/** How long a launcher may take between claiming a turn and recording its worker's pid. */
+const startup = 30_000
 
 export function unlock(s: Session) {
   rmSync(join(s.folder, "lock"), { force: true })
+}
+
+/** True while a worker runs the latest turn, or a launcher is starting or restarting one. */
+export function alive(s: Session): boolean {
+  if (worker(s)) return true
+  const starting = readJSON<{ starting?: number }>(join(s.folder, "lock"), {}).starting
+  if (starting && Date.now() - starting < startup) return true
+  const claimed = statSync(restart(s), { throwIfNoEntry: false })
+  return !!claimed && Date.now() - claimed.mtimeMs < startup
+}
+
+/** Where the next restart of the latest turn is claimed. */
+function restart(s: Session): string {
+  return join(s.folder, `resume-${s.turns.length}-${(latest(s).resumed ?? 0) + 1}`)
+}
+
+/**
+ * Claims the next restart of the latest turn. Creating a folder succeeds for one caller only,
+ * so two requests that find the same lost turn never restart it twice.
+ */
+export function claim(s: Session): boolean {
+  try {
+    mkdirSync(restart(s))
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** The pid of the live worker for this session, if any: alive and still running this session. */
@@ -148,10 +183,10 @@ export function worker(s: Session): number | undefined {
  */
 export function status(s: Session): Turn {
   const t = latest(s)
-  if ((t.state !== "running" && t.state !== "retrying") || worker(s)) return t
+  if ((t.state !== "running" && t.state !== "retrying") || alive(s)) return t
   const fresh = latest(reload(s))
   if (fresh.state !== "running" && fresh.state !== "retrying") return fresh
-  return { ...fresh, state: "failed", error: { message: "the worker exited unexpectedly", hint: `continue the session to try again; its log is ${join(s.folder, "log")}` } }
+  return { ...fresh, state: "failed", error: { message: "the worker stopped before the turn finished", hint: `collect resumes it where it left off, or {"continue": "${s.id}"}; its log is ${join(s.folder, "log")}` } }
 }
 
 /** The log the worker writes its own errors to. */
