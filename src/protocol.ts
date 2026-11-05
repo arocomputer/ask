@@ -17,7 +17,7 @@ import { rmSync, statSync } from "node:fs"
 import { resolve as absolute } from "node:path"
 import { resolve as model, type Home, readJSON, type Config } from "./home.ts"
 import type { Failure } from "./loop.ts"
-import { create, latest, now, open, reload, save, status, transcript, unlock, worker, type Change, type Session, type State } from "./sessions.ts"
+import { create, latest, list, now, open, reload, save, status, transcript, unlock, worker, type Change, type Session, type State } from "./sessions.ts"
 import { activity, steps } from "./steps.ts"
 import { launch } from "./worker.ts"
 
@@ -66,7 +66,7 @@ EXAMPLE
   EOF
 `
 
-export type Task = { prompt: string; model?: string; write?: boolean; dir?: string; effort?: string; schema?: object; timeout?: number }
+export type Task = { prompt: string; name?: string; model?: string; write?: boolean; dir?: string; effort?: string; schema?: object; timeout?: number }
 
 export type Request =
   | { start: Task[]; wait?: number }
@@ -77,6 +77,7 @@ export type Request =
 
 export type Result = {
   id: string
+  name?: string
   state: State
   answer?: string
   error?: Failure
@@ -100,7 +101,7 @@ export class Invalid extends Error {
   }
 }
 
-const taskKeys = ["prompt", "model", "write", "dir", "effort", "schema", "timeout"]
+const taskKeys = ["prompt", "name", "model", "write", "dir", "effort", "schema", "timeout"]
 const ops = ["start", "collect", "continue", "stop", "show"]
 
 /** Parses and carries out one request. Never throws: failures become `{"error"}`. */
@@ -124,6 +125,12 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       only(req, ["start", "wait"])
       if (!Array.isArray(req.start) || !req.start.length) throw new Invalid("start takes a list of tasks", '{"start": [{"prompt": "..."}]}')
       const tasks = req.start.map((t, i) => task(t, `start[${i}]`))
+      const names = tasks.map((t) => t.name).filter((n) => n !== undefined)
+      if (new Set(names).size !== names.length) throw new Invalid("each task in a start request needs its own name")
+      for (const n of names) {
+        const taken = list(h).find((s) => s.name === n && ["running", "retrying"].includes(status(s).state))
+        if (taken) throw new Invalid(`${n} is the name of a session that is still running`, `{"collect": ["${n}"]}, or choose another name`)
+      }
       const ready: { t: Task; dir: string; model: string }[] = []
       for (const [i, t] of tasks.entries()) ready.push({ t, dir: folder(t.dir, `start[${i}]`), model: await chosen(h, t.model) })
       const started: Session[] = []
@@ -135,7 +142,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       return collect(ids(req.collect, "collect").map((id) => find(h, id)), wait ?? 600)
     }
     case "continue": {
-      only(req, ["continue", "wait", ...taskKeys.filter((k) => k !== "dir")])
+      only(req, ["continue", "wait", ...taskKeys.filter((k) => k !== "dir" && k !== "name")])
       if (typeof req.continue !== "string") throw new Invalid("continue takes a session id", '{"continue": "k3f9a2", "prompt": "..."}')
       const s = find(h, req.continue)
       const state = status(s).state
@@ -183,7 +190,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
 /** A session's latest turn as the agent sees it: small, with detail only where it helps. */
 export function result(s: Session): Result {
   const t = status(s)
-  const r: Result = { id: s.id, state: t.state }
+  const r: Result = { id: s.id, ...(s.name ? { name: s.name } : {}), state: t.state }
   if (t.answer !== undefined) r.answer = t.answer
   if (t.error) r.error = t.error
   if (t.changes?.length) r.changes = t.changes
@@ -211,14 +218,19 @@ function folder(dir: string | undefined, where: string): string {
 
 /** Creates and launches a session for a task already checked. */
 function begin(h: Home, t: Task, dir: string, model: string): Session {
-  const s = create(h, dir, {
-    prompt: t.prompt,
-    model,
-    write: t.write ?? false,
-    effort: t.effort,
-    schema: t.schema,
-    timeout: t.timeout ?? defaultTimeout(h),
-  })
+  const s = create(
+    h,
+    dir,
+    {
+      prompt: t.prompt,
+      model,
+      write: t.write ?? false,
+      effort: t.effort,
+      schema: t.schema,
+      timeout: t.timeout ?? defaultTimeout(h),
+    },
+    t.name,
+  )
   try {
     launch(s)
   } catch (err) {
@@ -273,10 +285,13 @@ function defaultTimeout(h: Home): number {
   return readJSON<Config>(h.config, {}).timeout ?? 900
 }
 
-function find(h: Home, id: string): Session {
+/** A session by id, or by the name its caller gave it (the most recent, if reused). */
+function find(h: Home, ref: string): Session {
   try {
-    return open(h, id)
+    return open(h, ref)
   } catch (err) {
+    const named = list(h).find((s) => s.name === ref)
+    if (named) return named
     throw new Invalid((err as Error).message.replace(/; ask sessions lists them$/, ""))
   }
 }
@@ -286,6 +301,8 @@ function task(v: unknown, where: string): Task {
   const t = v as Record<string, unknown>
   only(t, taskKeys, where)
   if (typeof t.prompt !== "string" || !t.prompt.trim()) throw new Invalid(`${where} needs a prompt`)
+  if (t.name !== undefined && (typeof t.name !== "string" || !/^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/.test(t.name)))
+    throw new Invalid(`${where}.name must be letters, digits and dashes, at most 40`)
   for (const k of ["model", "dir", "effort"]) if (t[k] !== undefined && typeof t[k] !== "string") throw new Invalid(`${where}.${k} must be a string`)
   if (t.write !== undefined && typeof t.write !== "boolean") throw new Invalid(`${where}.write must be true or false`)
   if (t.schema !== undefined && (!t.schema || typeof t.schema !== "object" || Array.isArray(t.schema))) throw new Invalid(`${where}.schema must be a JSON Schema object`)

@@ -122,6 +122,6 @@ describe("cli", () => {
     const { run } = await setup([{ text: "unused" }])
     const r = await run([], JSON.stringify({ start: [{ prompt: "x", modle: "fake/m" }] }))
     assert.equal(r.code, 2)
-    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, model, write, dir, effort, schema, timeout" })
+    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, name, model, write, dir, effort, schema, timeout" })
   })
 })
