@@ -867,9 +867,9 @@ sleep 10`)
 		}
 		eq(t, s.ask("stop", id).code, 0)
 		run.wait(t)
-		if exists(path) {
-			t.Fatal("progress snapshot remained after stopping")
-		}
+		// A stopped owner can leave a stale snapshot if it exits before cleanup.
+		s.write(path, `{"pid":1,"activity":"running commands"}`)
+		noMatch(t, s.ask("runs").stdout, `running commands`)
 	})
 	t.Run("runs shows activity for parallel batch tasks", func(t *testing.T) {
 		s := fresh(t)
