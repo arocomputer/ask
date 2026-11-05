@@ -23,7 +23,11 @@ def render(lines, path):
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">',
         '<rect width="100%" height="100%" fill="#005f8f"/>',
+        '<defs><filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">'
+        '<feGaussianBlur stdDeviation="35"/></filter></defs>',
         f'<g transform="translate({x0} {y0})">',
+        f'<rect x="0" y="35" width="{WINDOW_W}" height="{WINDOW_H}" rx="11" '
+        'fill="#000" opacity="0.32" filter="url(#shadow)"/>',
         f'<rect width="{WINDOW_W}" height="{WINDOW_H}" rx="11" fill="#151718"/>',
     ]
     for x, color in zip((47, 91, 135), ("#ff5f57", "#febc2e", "#28c840")):
