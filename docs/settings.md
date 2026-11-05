@@ -19,8 +19,8 @@ What do you want to change?
   ↑↓ move · type to filter · enter select
 ```
 
-Nothing is written while you edit: what you change is marked `edited`, and **Review and save**
-shows exactly what will change, file by file, before it asks:
+Nothing is written while you edit. Changes are marked `edited`, and **Review and save** shows
+exactly what will change, file by file, before it asks:
 
 ```text
 ~/.ask/settings.json  +1 -1
@@ -34,15 +34,16 @@ Save these changes?
 ```
 
 Removed lines sit on a red band and added ones on a green band, under a bar naming each file
-with its counts. Leaving with unsaved changes asks whether to
-save them, and Ctrl-C discards them.
+with its counts. Leaving with unsaved changes asks whether to save them. Ctrl-C discards them.
 
 Prompts use an inline Bubble Tea interface with bold primary text and muted hints, using your
-terminal's background and foreground. Lists adapt to terminal size. Text fields support left/right,
-Home/End, deletion and bracketed paste; pasted newlines become spaces rather than submitting.
-`NO_COLOR` disables styling. Completed answers remain in terminal scrollback.
+terminal's background and foreground. Lists adapt to the terminal size.
 
-- **Agents**: each agent: install or remove an official one, which of its models are on, and
+Text fields support left/right, Home/End, deletion and bracketed paste. Pasted newlines become
+spaces rather than submitting. `NO_COLOR` disables styling. Completed answers remain in terminal
+scrollback.
+
+- **Agents**: install or remove an official agent, choose which of its models are on, and set
   their cost limits. `ask settings NAME` opens one directly, like `ask settings opencode`.
 - **Model roles**: optional names such as `fast`, `deep` and `review`, each pointing directly to
   an exact `agent:id[#effort]`. Add or select one to edit it; enter `-` as its target to remove it.
@@ -72,10 +73,11 @@ ask settings set skills all
 `ask settings` prints `get`, and `ask settings NAME` prints that agent's models with on or off.
 
 Saving exits 1 if any package removal, installation/readiness check, settings or models write,
-hook edit, skill write or saved-state reload fails. Independent operations are still attempted;
-successful changes stay applied, so a failed save can be partial. Errors identify the failed
-parts, and the interactive session does not report “saved” for an incomplete apply. The same
-failure handling applies to `ask setup --yes`.
+hook edit, skill write or saved-state reload fails. Independent operations are still attempted.
+Successful changes stay applied, so a failed save can be partial.
+
+Errors identify the failed parts, and the interactive session does not report “saved” for an
+incomplete apply. The same failure handling applies to `ask setup --yes`.
 
 ## settings.json
 
@@ -107,19 +109,24 @@ without the file, ask uses the built-in defaults below.
 
 `{name}` is the run's name, like `add-rate-limiting-login`, or `NAME-POSITION-TASK` for a batch
 task. With the example above, `ask --write --worktree "Add rate limiting to login"` works in
-`~/code/worktrees/ask-add-rate-limiting-login` on branch `ask/add-rate-limiting-login`. A relative
-path is inside the repository the run starts in, at its main checkout even from a linked
-worktree: `.ask/worktrees/{name}` puts that run in `.ask/worktrees/add-rate-limiting-login` there.
-Add `.ask/worktrees/` to the repository's `.gitignore`.
+`~/code/worktrees/ask-add-rate-limiting-login` on branch `ask/add-rate-limiting-login`.
+
+A relative path is inside the repository the run starts in, at its main checkout even from a
+linked worktree. `.ask/worktrees/{name}` puts that run in `.ask/worktrees/add-rate-limiting-login`
+there. Add `.ask/worktrees/` to the repository's `.gitignore`.
 
 `ask settings set` also takes `hook` (`on` or `off`) and `skills` (`claude-code`, `codex`,
 `opencode`, `cursor`, `pi` or `all`), which live in those apps' own files. An unknown key or a
 value of the wrong kind is an error that names the key, so a typo never silently does nothing.
+
 `set roles` takes a JSON object and replaces the entire map; `unset roles` removes it. The terminal
 menu edits one role at a time. Both show the usual review before saving. Unknown roles fail when
 used; the default `model` may name a role.
-Existing records keep their values. A new follow-up inherits the recorded model and access,
-and reuses a kept worktree's recorded path and branch even after `worktrees` or `branches` changes.
+
+Existing records keep their values. A new follow-up inherits the recorded model and access, and
+reuses a kept worktree's recorded path and branch even after `worktrees` or `branches` changes.
 When the earlier run kept no worktree, its follow-up creates one using the current settings.
+
 Resuming an older saved follow-up without a recorded path and branch still needs its original
-worktree directory and branch settings; a new `ask continue RUN "prompt"` uses the saved result's location.
+worktree directory and branch settings. A new `ask continue RUN "prompt"` uses the saved result's
+location.

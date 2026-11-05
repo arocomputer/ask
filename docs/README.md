@@ -6,6 +6,8 @@ Use `ask wait ID` for results, or `--wait` to run synchronously and return the a
 Replace example model ids with ones from `ask models`, and run names with
 the names or ids printed by your runs.
 
+New here? Start with [Install](install.md), then [Setup](setup.md) and [Usage](usage.md).
+
 | Page | What it covers |
 | --- | --- |
 | [Install](install.md) | Getting ask, adding an agent, and checking it works |

@@ -3,19 +3,20 @@
 [Agent environments](environment.md) describes per-agent inheritance and integration policy.
 
 An agent is a small executable that runs one coding agent's CLI for ask: Claude Code, Codex,
-Opencode, or anything else. ask itself knows nothing about any of them. Everything specific to one,
+OpenCode, or anything else. ask itself knows nothing about any of them. Everything specific to one,
 from its flags to how it reports usage, lives in its agent, which is how ask supports any of them.
 
-ask bundles 18 official agents, including Copilot, Gemini CLI, Pi, e, Cursor, Aider, Goose,
-Cline, Kilo and more (`ask install NAME`, see [Packages](packages.md#official-agents)); their
-source is in [`packages/`](../packages). Your own
-go in `~/.ask/agents/`, one executable per coding agent, named for it, and win over an official
-one of the same name. An agent named `claude` gives you models `claude:...`.
+ask bundles 18 official agents, including Copilot, Gemini CLI, Pi, e, Cursor, Aider, Goose, Cline,
+Kilo and more (`ask install NAME`, see [Packages](packages.md#official-agents)); their source is in
+[`packages/`](../packages). Your own go in `~/.ask/agents/`, one executable per coding agent, named
+for it, and win over an official one of the same name. An agent named `claude` gives you models
+`claude:...`.
 
 ## The contract
 
-An agent is any executable: a shell script, Node, Python, a binary.
-`ASK_CONTRACT=3` identifies the current public contract (see [Compatibility](compatibility.md)).
+An agent is any executable: a shell script, Node, Python, a binary. `ASK_CONTRACT=3` identifies
+the current public contract (see [Compatibility](compatibility.md)).
+
 User status and machine lifecycle state use `running`, `succeeded`, `failed` and `stopped`;
 `queued` is shown only when the live scheduler knows work is waiting. Agent exit codes and
 persisted result `ok` booleans are unchanged. Batch summaries include explicit succeeded and
@@ -85,58 +86,70 @@ In the report, `session` is the agent session the run used, `name` is the model 
 (`Sonnet 5.5`), the counts are tokens, `cost` is in USD, and `note` is a short remark ask adds to
 the status line (`hit step cap; answer may be partial`). `cached` is reported cache-read tokens;
 whether they are included in `input` depends on the agent. A missing metric is unknown, not zero.
-Every field is optional. ask reads the
-report even when the run fails or times out, so write it as early as you know something, above all
-the session, and rewrite it whole as you learn more. ask also reads it while the agent runs, so
-usage you rewrite as it grows shows live in the terminal. Write a temporary file and rename it over
-the report, so ask never reads half a file; ask skips a report it can't parse until the next one.
+Every field is optional.
+
+ask reads the report even when the run fails or times out, so write it as early as you know
+something, above all the session, and rewrite it whole as you learn more. ask also reads it while
+the agent runs, so usage you rewrite as it grows shows live in the terminal. Write a temporary file
+and rename it over the report, so ask never reads half a file; ask skips a report it can't parse
+until the next one.
 
 `activity` is an optional string describing the most recently observed work, chosen only from
 `thinking`, `running commands`, `editing files`, `searching`, `using tools`, and `answering`.
 For example, `{"session":"abc","input":1200,"activity":"editing files"}`. Derive it from
 structured event types, never commands, paths, reasoning, messages, tool arguments or output.
+
 An empty string, omission, `null`, unknown string or other JSON type clears the label without
-discarding valid usage, cost or session fields. This additive field needs no
-contract version change; agents may omit it and older ask versions ignore it.
+discarding valid usage, cost or session fields. This additive field needs no contract version
+change; agents may omit it and older ask versions ignore it.
 
 ask polls reports about twice a second. Activity is transient: it appears in the live stderr row,
 or as `ask RUN · activity · CATEGORY` in a pipe or dumb terminal. Plain output suppresses repeats
 and emits at most one activity line per task every five seconds (reset for a follow-up round).
+
 Brief changes may be missed or suppressed. Activity is neither an answer nor a heartbeat, and is
 not saved in run results. Keep cumulative usage and session when replacing the report; optional
 activity must not replace them. Timeouts and reported-cost limits apply as before.
 
 For richer observation, an adapter may append one JSON object per line to `ASK_EVENTS`, with
-`type` (`message`, `reasoning`, `tool` or `tool_result`), `text`, and optional `tool`. Records
-are UTF-8 and at most 16 KiB including the newline. Emit only content the underlying harness
-actually exposes; never invent hidden reasoning. Preserve complete lines, append across follow-ups,
-and keep the final answer on stdout. If the event path is absent or unavailable, the task must
-still run normally. Ask stores the event file privately with the run; it may contain sensitive
-commands, paths or model output, so treat it as a transcript rather than a redacted audit log.
+`type` (`message`, `reasoning`, `tool` or `tool_result`), `text`, and optional `tool`. Records are
+UTF-8 and at most 16 KiB including the newline.
+
+Emit only content the underlying harness actually exposes; never invent hidden reasoning. Preserve
+complete lines, append across follow-ups, and keep the final answer on stdout. If the event path is
+absent or unavailable, the task must still run normally.
+
+ask stores the event file privately with the run; it may contain sensitive commands, paths or
+model output, so treat it as a transcript rather than a redacted audit log.
 
 The bundled Claude, Codex, OpenCode, Pi, Copilot and Gemini writers accept only an absolute,
-pre-created regular file owned by the current user with no group/other permission bits. They
-open it for nonblocking append without following a final symlink, validate the opened file for
-each record, and never create or truncate it. Terminal escapes, control characters (except LF
-and tab) and bidi/format controls are removed from text and tool names. Common credential forms
-and inherited values of at least eight characters in credential-named environment variables
-are suppressed best effort; arbitrary secrets and secrets split across chunks can still appear.
-Tool names are limited to 128 UTF-16 code units without splitting surrogate pairs. Text is
-sanitized before truncation by serialized UTF-8 size; an ellipsis marks truncated text, and
-whitespace-only chunks are preserved. Each record uses one append write. An open, validation,
-write or close failure disables that writer for the invocation. A short write can leave a partial
-tail: the writer stops without retrying, repairing or truncating it. A later invocation appends
-as usual without repairing that tail. Activity failures leave answers, reports and exit status
-unchanged. These are bundled-writer safeguards, not a promise of complete transcript redaction.
+pre-created regular file owned by the current user with no group/other permission bits. They open
+it for nonblocking append without following a final symlink, validate the opened file for each
+record, and never create or truncate it.
+
+Terminal escapes, control characters (except LF and tab) and bidi/format controls are removed from
+text and tool names. Common credential forms and inherited values of at least eight characters in
+credential-named environment variables are suppressed best effort; arbitrary secrets and secrets
+split across chunks can still appear. Tool names are limited to 128 UTF-16 code units without
+splitting surrogate pairs. Text is sanitized before truncation by serialized UTF-8 size; an
+ellipsis marks truncated text, and whitespace-only chunks are preserved.
+
+Each record uses one append write. An open, validation, write or close failure disables that writer
+for the invocation. A short write can leave a partial tail: the writer stops without retrying,
+repairing or truncating it. A later invocation appends as usual without repairing that tail.
+Activity failures leave answers, reports and exit status unchanged.
+
+These are bundled-writer safeguards, not a promise of complete transcript redaction.
 
 ask handles everything else: timeouts, stopping, batches, recording runs, follow-ups, worktrees,
 reporting what changed and checking JSON answers. Official agents apply `ASK_TITLE` when their
 harness provides a session-naming CLI or API; agents without one leave native titles unchanged.
 Each agent's page documents its support.
+
 It runs each agent in its own process group, so stopping a run also stops the CLI your agent
-started. Once the agent exits, ask kills any descendants still in that group so their output
-pipes cannot delay completion. Don't detach the CLI from that group.
-On Linux, agent processes also receive a parent-death signal, so killing ask outright kills the agent process.
+started. Once the agent exits, ask kills any descendants still in that group so their output pipes
+cannot delay completion. Don't detach the CLI from that group. On Linux, agent processes also
+receive a parent-death signal, so killing ask outright kills the agent process.
 
 ## Sessions
 
@@ -148,22 +161,25 @@ CLI's session id. An agent that supports them:
 
 ask runs a follow-up in the same directory as the run it continues, which most CLIs need to find
 the session. An agent that reports no session cannot support conversation follow-ups; ask says so.
-Without a prompt, `ask continue RUN` uses a usable saved session to finish the original task,
-or may restart a standalone read without hooks when none is available. It refuses unsafe retries (`--wait` shows recovery diagnostics).
-ask polls live reports every
-500ms and atomically saves session metadata and the actual location in private run records,
-so reporting a session early can make interrupted runs recoverable before a final result.
-Metadata not reported or saved before interruption cannot be recovered.
+
+Without a prompt, `ask continue RUN` uses a usable saved session to finish the original task, or may
+restart a standalone read without hooks when none is available. It refuses unsafe retries (`--wait`
+shows recovery diagnostics).
+
+ask polls live reports every 500ms and atomically saves session metadata and the actual location in
+private run records, so reporting a session early can make interrupted runs recoverable before a
+final result. Metadata not reported or saved before interruption cannot be recovered.
 
 ## Cost limits
 
 When a task has a cost limit (`--max-cost`, models.json or the `max_cost` setting), ask passes it
-in `ASK_MAX_COST` and watches the cost in your report: once it passes the limit, ask stops the
-agent as it does on a timeout and records `stopped at the $2.00 cost limit`. So an agent that
-rewrites its report with the cost as it grows gets the limit for free. An agent whose CLI reports
-cost only at the end can pass the limit to the CLI, if it has a budget option, and fail with the
-same words when the CLI stops; the official Claude Code agent does that. Either way, keep the
-session in the report so `ask continue RUN "prompt"` can continue the work.
+in `ASK_MAX_COST` and watches the cost in your report. Once it passes the limit, ask stops the
+agent as it does on a timeout and records `stopped at the $2.00 cost limit`. An agent that rewrites
+its report with the cost as it grows gets the limit for free.
+
+An agent whose CLI reports cost only at the end can pass the limit to the CLI, if it has a budget
+option, and fail with the same words when the CLI stops; the official Claude Code agent does that.
+Either way, keep the session in the report so `ask continue RUN "prompt"` can continue the work.
 
 ## Read-only
 
@@ -290,7 +306,7 @@ with the running sum on each one.
 
 The same shape works for any coding agent with a non-interactive mode. The pieces to map:
 
-| | Codex | Opencode |
+| | Codex | OpenCode |
 | --- | --- | --- |
 | Run one prompt from stdin | `codex exec -m MODEL -` | `opencode run -m PROVIDER/MODEL` |
 | Read-only | `--sandbox read-only` (an OS sandbox) | an agent with only read tools allowed |

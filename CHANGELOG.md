@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Give the README a single hero image and shorter, plainer prose. Improve the user documentation
+  with shorter paragraphs, clearer headings and consistent product names, and add a start-here
+  path to the documentation index.
 - Organize source under `src/` and release tooling under `.github/release/`; `go install` now uses the module root.
 - Add the optional `worktree` setting to require a separate worktree for write tasks.
 - Rename the offline adapter runner to `./x integration [AGENT...]`; remove the `baymax`

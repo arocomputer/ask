@@ -1,6 +1,8 @@
 # ask assets
 
-Each folder contains the same three SVG marks in one color. The black set uses GitHub's light-theme default text color (`#1f2328`); the white set uses the dark README text color (`#d1d7e0`) shown in the dark-dimmed theme. The README switches between them with the reader's theme.
+Each folder contains the same three SVG marks in one color. The black set uses GitHub's light-theme
+default text color (`#1f2328`); the white set uses the dark README text color (`#d1d7e0`) shown in
+the dark-dimmed theme. They are the brand marks, available for docs and other uses.
 
 | Mark | Black | White | Use |
 | --- | --- | --- | --- |
@@ -8,8 +10,10 @@ Each folder contains the same three SVG marks in one color. The black set uses G
 | Wordmark | [SVG](black/wordmark.svg) | [SVG](white/wordmark.svg) | ask lettering |
 | Logo | [SVG](black/logo.svg) | [SVG](white/logo.svg) | Rounded square with a cursor bar |
 
-The SVGs have transparent backgrounds and no font or raster dependencies. Scale them proportionally and leave surrounding space in the layout. The black and white variants share the same geometry.
+The SVGs have transparent backgrounds and no font or raster dependencies. Scale them proportionally
+and leave surrounding space in the layout. The black and white variants share the same geometry.
 
-`screens/` holds the README's terminal pictures, each drawn twice, `light/` and `dark/`, so the
-README can match the reader's theme. Edit the transcripts in `screens/render.py` and run
-`python3 assets/screens/render.py assets/screens` to redraw them.
+`screens/hero.svg` is the README's hero: one dark terminal window on an orange field
+(`#f08a2c`). It uses fixed colors, so the same file reads in both GitHub themes. Edit the transcript
+at the bottom of `screens/render.py` and run
+`python3 assets/screens/render.py assets/screens` to redraw it.
