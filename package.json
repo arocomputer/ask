@@ -1,0 +1,22 @@
+{
+  "name": "@arocomputer/ask",
+  "version": "3.0.0-dev",
+  "description": "Hand tasks to subagents",
+  "license": "MIT",
+  "type": "module",
+  "repository": "github:arocomputer/ask",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc",
+    "test": "node --test 'test/*.test.ts' && bun test ./test/"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}
