@@ -6,7 +6,7 @@ import html
 import sys
 from pathlib import Path
 
-# A dark terminal on a blue field, with the proportions of a desktop terminal screenshot.
+# A dark terminal on a burnt-orange field, with the proportions of a desktop terminal screenshot.
 W, H = 1400, 907
 WINDOW_W, WINDOW_H = 1150, 660
 FONT, CW, LINE_HEIGHT = 31, 18.6, 54
@@ -22,7 +22,7 @@ def render(lines, path):
     x0, y0 = (W - WINDOW_W) // 2, (H - WINDOW_H) // 2
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">',
-        '<rect width="100%" height="100%" fill="#005f8f"/>',
+        '<rect width="100%" height="100%" fill="#b45016"/>',
         '<defs><filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">'
         '<feGaussianBlur stdDeviation="35"/></filter></defs>',
         f'<g transform="translate({x0} {y0})">',
