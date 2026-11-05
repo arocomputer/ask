@@ -29,6 +29,250 @@ func TestRuns(t *testing.T) {
 		shownBatch := s.ask("show", batchID)
 		eq(t, shownBatch.stderr, "ask "+batchID+" · 2/2 ok\n")
 	})
+	t.Run("activity snapshots are bounded and preserve completed answer and JSON contracts", func(t *testing.T) {
+		s := fresh(t)
+		dir := filepath.Join(s.home, "runs", "20260101T000000000-view01-view")
+		s.json(filepath.Join(dir, "tasks.json"), []object{{"id": "one", "prompt": "p", "model": "fake:small"}})
+		s.json(filepath.Join(dir, "results.json"), []object{{"ok": true, "answer": "final answer"}})
+		var events strings.Builder
+		for i := range 300 {
+			fmt.Fprintf(&events, "{\"type\":\"message\",\"text\":\"event-%03d %s\"}\n", i, strings.Repeat("x", 1000))
+		}
+		events.WriteString(`{"type":"tool","tool":"shell\u001b]52;c;bad\u0007","text":"API_KEY=secret-value Authorization: Bearer abc123 password=\"two words\"\u001b[2J","hidden_reasoning":"private-content"}` + "\n")
+		s.write(filepath.Join(dir, "events-0.jsonl"), events.String())
+		out := s.ask("show", "view")
+		eq(t, out.code, 0)
+		eq(t, out.stdout, "final answer\n")
+		match(t, out.stderr, `event-299`)
+		match(t, out.stderr, `\[redacted\]`)
+		noMatch(t, out.stderr, "event-000|secret-value|abc123|two words|private-content|\x1b|\x07")
+		if len(out.stderr) > 66*1024 {
+			t.Fatalf("unbounded snapshot: %d bytes", len(out.stderr))
+		}
+		full := s.ask("show", "view", "--json")
+		eq(t, full.code, 0)
+		eq(t, obj(t, full.stdout).s("answer"), "final answer")
+		noMatch(t, full.stdout+full.stderr, `event-299|hidden_reasoning`)
+		waited := obj(t, s.ask("wait", "view", "--json").stdout)
+		eq(t, waited.s("state"), "success")
+		eq(t, waited["result"].(map[string]any)["answer"], "final answer")
+		eq(t, s.read(filepath.Join(dir, "events-0.jsonl")), events.String())
+	})
+	t.Run("activity cursors paginate complete records and leave partial UTF-8 tails for every reader", func(t *testing.T) {
+		s := fresh(t)
+		dir := filepath.Join(s.home, "runs", "20260101T000000000-view02-cursor")
+		s.json(filepath.Join(dir, "tasks.json"), []object{{"id": "one", "prompt": "p", "model": "fake:small"}})
+		var events strings.Builder
+		for i := range 105 {
+			fmt.Fprintf(&events, "{\"type\":\"message\",\"text\":\"event-%d 🌱\"}\n", i)
+		}
+		complete := events.String()
+		partial := `{"type":"tool_result","tool":"shell","text":"` + string([]byte("🌱")[:2])
+		path := filepath.Join(dir, "events-0.jsonl")
+		s.write(path, complete+partial)
+		first := s.ask("show", "cursor", "--after", "0")
+		eq(t, first.code, 0)
+		eq(t, first, s.ask("show", "view02", "--after", "0"))
+		page := obj(t, first.stdout)
+		eq(t, page.s("run_id"), "view02")
+		eq(t, page.s("state"), "stopped")
+		eq(t, len(page["events"].([]any)), 100)
+		eq(t, page.b("has_more"), true)
+		cursor := strconv.Itoa(int(page.n("next_cursor")))
+		second := obj(t, s.ask("show", "cursor", "--after", cursor).stdout)
+		eq(t, len(second["events"].([]any)), 5)
+		eq(t, second.n("next_cursor"), float64(len(complete)))
+		eq(t, second.b("has_more"), false)
+		cursor = strconv.Itoa(len(complete))
+		tail := obj(t, s.ask("show", "cursor", "--after", cursor).stdout)
+		eq(t, len(tail["events"].([]any)), 0)
+		eq(t, tail.n("next_cursor"), float64(len(complete)))
+		eq(t, tail.b("has_more"), false)
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = f.WriteString(string([]byte("🌱")[2:]) + `"}` + "\n")
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+		resumed := s.ask("show", "cursor", "--after", cursor)
+		eq(t, resumed, s.ask("show", "cursor", "--after", cursor))
+		last := obj(t, resumed.stdout)
+		eq(t, len(last["events"].([]any)), 1)
+		eq(t, last["events"].([]any)[0].(map[string]any)["text"], "🌱")
+		eq(t, last.n("next_cursor"), float64(len(complete+partial)+len([]byte("🌱")[2:])+3))
+	})
+	t.Run("activity rejects invalid cursors including partial tail offsets", func(t *testing.T) {
+		s := fresh(t)
+		dir := filepath.Join(s.home, "runs", "20260101T000000000-view03-invalid")
+		s.json(filepath.Join(dir, "tasks.json"), []object{{"id": "one", "prompt": "p", "model": "fake:small"}})
+		data := "{\"type\":\"message\",\"text\":\"ok\"}\npartial"
+		s.write(filepath.Join(dir, "events-0.jsonl"), data)
+		for _, cursor := range []string{"", "-1", "+1", "1.0", "one", "9223372036854775808", "1", strconv.Itoa(len(data)), strconv.Itoa(len(data) + 1)} {
+			out := s.ask("show", "invalid", "--after", cursor)
+			eq(t, out.code, 2)
+			eq(t, out.stdout, "")
+		}
+	})
+	t.Run("activity skips invalid records without forwarding metadata or malformed JSON", func(t *testing.T) {
+		s := fresh(t)
+		dir := filepath.Join(s.home, "runs", "20260101T000000000-view04-parse")
+		s.json(filepath.Join(dir, "tasks.json"), []object{{"id": "one", "prompt": "p", "model": "fake:small"}})
+		data := strings.Join([]string{
+			`{"type":"message","text":"public","hidden_reasoning":"private-reasoning"}`,
+			`{"type":"reasoning","text":"public summary"}`,
+			`{"type":"tool","tool":"shell","text":"command"}`,
+			`{"type":"tool_result","text":"ok"}`,
+			`{"type":"unknown","text":"invalid-kind"}`,
+			`{"type":"message","text":42}`,
+			`{"type":"message","text":null}`,
+			`{"type":"message"}`,
+			`{"type":"message","text":"null-tool","tool":null}`,
+			`{"type":"message","text":"numeric-tool","tool":42}`,
+			`{"type":"message","text":"` + strings.Repeat("🌱", 5000) + `"}`,
+			"{\"type\":\"message\",\"text\":\"\xff\"}",
+			`[]`, `null`, `not-json`,
+			`{"type":"message","text":"last"}`,
+		}, "\n") + "\n"
+		s.write(filepath.Join(dir, "events-0.jsonl"), data)
+		out := s.ask("show", "parse", "--after", "0")
+		eq(t, out.code, 0)
+		page := obj(t, out.stdout)
+		eq(t, len(page["events"].([]any)), 5)
+		eq(t, page.n("next_cursor"), float64(len(data)))
+		eq(t, page.b("has_more"), false)
+		noMatch(t, out.stdout, `private-reasoning|invalid-kind|null-tool|numeric-tool|hidden_reasoning|🌱`)
+	})
+	t.Run("activity byte limits allow draining large streams in bounded pages", func(t *testing.T) {
+		s := fresh(t)
+		dir := filepath.Join(s.home, "runs", "20260101T000000000-view05-bytes")
+		s.json(filepath.Join(dir, "tasks.json"), []object{{"id": "one", "prompt": "p", "model": "fake:small"}})
+		line := `{"type":"message","text":"` + strings.Repeat("x", 16000) + "\"}\n"
+		data := strings.Repeat(line, 40)
+		s.write(filepath.Join(dir, "events-0.jsonl"), data)
+		cursor, count := 0, 0
+		for range 5 {
+			page := obj(t, s.ask("show", "bytes", "--after", strconv.Itoa(cursor)).stdout)
+			count += len(page["events"].([]any))
+			next := int(page.n("next_cursor"))
+			if next-cursor > 256*1024 || next <= cursor {
+				t.Fatalf("bad page: %v", page)
+			}
+			cursor = next
+			if !page.b("has_more") {
+				break
+			}
+		}
+		eq(t, count, 40)
+		eq(t, cursor, len(data))
+		// A legal partial tail straddling the read window must not advertise
+		// another page once the last complete line has been returned.
+		data = strings.Repeat(line, 16)
+		s.write(filepath.Join(dir, "events-0.jsonl"), data+`{"type":"message","text":"`+strings.Repeat("x", 6000))
+		first := obj(t, s.ask("show", "bytes", "--after", "0").stdout)
+		eq(t, first.b("has_more"), true)
+		last := obj(t, s.ask("show", "bytes", "--after", strconv.Itoa(int(first.n("next_cursor")))).stdout)
+		eq(t, last.b("has_more"), false)
+		eq(t, last.n("next_cursor"), float64(len(data)))
+	})
+	t.Run("activity handles legacy agents and batch task selectors without inventing streams", func(t *testing.T) {
+		s := fresh(t)
+		dir := filepath.Join(s.home, "runs", "20260101T000000000-view06-batch-view")
+		s.json(filepath.Join(dir, "tasks.json"), []object{{"id": "custom", "prompt": "a", "model": "fake:small"}, {"id": "1", "prompt": "b", "model": "fake:small"}})
+		s.json(filepath.Join(dir, "results.json"), []any{object{"ok": true, "answer": "done"}, nil})
+		s.write(filepath.Join(dir, "events-1.jsonl"), "{\"type\":\"message\",\"text\":\"second task\"}\n")
+		out := s.ask("show", "batch-view")
+		eq(t, out.code, 1)
+		eq(t, out.stdout, "")
+		match(t, out.stderr, `custom · success`)
+		match(t, out.stderr, `1 · stopped`)
+		eq(t, s.ask("show", "batch-view", "--after", "0").code, 2)
+		page := obj(t, s.ask("show", "batch-view/1", "--after", "0").stdout)
+		eq(t, page["events"].([]any)[0].(map[string]any)["text"], "second task")
+		eq(t, s.ask("show", "batch-view/custom").stdout, "done\n")
+		empty := obj(t, s.ask("show", "batch-view/custom", "--after", "0").stdout)
+		eq(t, len(empty["events"].([]any)), 0)
+		eq(t, empty.n("next_cursor"), float64(0))
+		eq(t, empty.s("state"), "success")
+		for _, args := range [][]string{{"--json", "--follow"}, {"--after", "0", "--follow"}} {
+			eq(t, s.ask(append([]string{"show", "batch-view/1"}, args...)...).code, 2)
+		}
+	})
+	t.Run("follow readers stream independently and interruption leaves the detached worker running", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("gate", `cat >/dev/null
+printf '{"activity":"running commands"}' > "$ASK_REPORT"
+touch "$HOME/ready"
+while [ ! -e "$HOME/release" ]; do sleep 0.05; done
+echo final-answer`)
+		launch := s.ask("run", "-m", "gate:small", "follow-view")
+		eq(t, launch.code, 0)
+		id := strings.TrimSpace(launch.stdout)
+		t.Cleanup(func() { s.ask("stop", id) })
+		until(t, func() bool { return exists(filepath.Join(s.tmp, "ready")) })
+		until(t, func() bool { return strings.Contains(s.ask("show", id).stderr, "running commands") })
+		fallback := s.ask("show", id)
+		eq(t, fallback.code, 0)
+		match(t, fallback.stderr, `running · running commands`)
+		path := filepath.Join(s.home, "runs", s.latest(), "events-0.jsonl")
+		initial := "{\"type\":\"message\",\"text\":\"existing-event\"}\n"
+		s.write(path, initial+`{"type":"tool_result","text":"new-`)
+		interrupted := s.start([]string{"show", id, "--follow"}, "", nil)
+		reader := s.start([]string{"show", id, "--follow"}, "", nil)
+		time.Sleep(350 * time.Millisecond)
+		if err := interrupted.cmd.Process.Signal(syscall.SIGINT); err != nil {
+			t.Fatal(err)
+		}
+		stopped := interrupted.wait(t)
+		eq(t, stopped.code, 130)
+		match(t, stopped.stderr, `existing-event`)
+		active := obj(t, s.ask("show", id, "--after", "0").stdout)
+		eq(t, active.s("state"), "running")
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.WriteString("event\"}\n"); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+		s.write(filepath.Join(s.tmp, "release"), "")
+		out := reader.wait(t)
+		eq(t, out.code, 0)
+		eq(t, out.stdout, "final-answer\n")
+		match(t, out.stderr, `(?s)existing-event.*new-event`)
+		eq(t, strings.Count(out.stderr, "existing-event"), 1)
+		eq(t, strings.Count(out.stderr, "new-event"), 1)
+		eq(t, obj(t, s.ask("show", id, "--after", "0").stdout).s("state"), "success")
+	})
+	t.Run("follow ends when a selected batch task finishes or its worker stops", func(t *testing.T) {
+		s := fresh(t)
+		s.localAgent("gate", `prompt=$(cat)
+touch "$HOME/$prompt-ready"
+while [ ! -e "$HOME/$prompt-release" ]; do sleep 0.05; done
+echo "answer: $prompt"`)
+		launch := s.run([]string{"batch", "-m", "gate:small", "-j", "2", "-"}, `[{"id":"a","prompt":"alpha"},{"id":"b","prompt":"beta"}]`, nil)
+		eq(t, launch.code, 0)
+		id := strings.TrimSpace(launch.stdout)
+		t.Cleanup(func() { s.ask("stop", id) })
+		until(t, func() bool {
+			return exists(filepath.Join(s.tmp, "alpha-ready")) && exists(filepath.Join(s.tmp, "beta-ready"))
+		})
+		chosen := s.start([]string{"show", id + "/a", "--follow"}, "", nil)
+		other := s.start([]string{"show", id + "/b", "--follow"}, "", nil)
+		s.write(filepath.Join(s.tmp, "alpha-release"), "")
+		out := chosen.wait(t)
+		eq(t, out.code, 0)
+		eq(t, out.stdout, "answer: alpha\n")
+		eq(t, obj(t, s.ask("show", id+"/b", "--after", "0").stdout).s("state"), "running")
+		eq(t, s.ask("stop", id).code, 0)
+		out = other.wait(t)
+		eq(t, out.code, 1)
+		eq(t, out.stdout, "")
+		match(t, out.stderr, `stopped · continue:`)
+	})
 	t.Run("runs JSON lists states and execution metadata without incidental contents", func(t *testing.T) {
 		s := fresh(t)
 		eq(t, s.ask("runs", "--json").stdout, "[]\n")

@@ -297,14 +297,24 @@ Examples
 		return `ask show · inspect a run immediately
 
 Usage
-  ask show RUN [--json]
-  ask show RUN/TASK [--json]
+  ask show RUN [--json | --follow | --after CURSOR]
+  ask show RUN/TASK [--json | --follow | --after CURSOR]
 
-Never waits or starts an agent. Use ask wait RUN to collect a completed result.
+Shows recent activity immediately. --follow streams until completion; interrupting
+the viewer leaves the worker running. Use ask wait RUN to collect a result.
+
+Options
+  --after CURSOR  JSON activity page from byte offset 0 or a returned next_cursor.
+                  Reads up to 100 lines / 256 KiB; retry incomplete tails.
+                  Requires one task in a batch. has_more indicates another page.
+  --follow        Readable activity only; cannot combine with --json or --after.
 
 Output
-  stdout   The available answer/result; --json includes recorded result data
-  stderr   Current status and errors
+  stdout   The available answer/result; --json includes recorded result data.
+           --after returns run_id, state, events, next_cursor and has_more.
+  stderr   Recent activity (up to 100 events / 64 KiB), status and errors.
+           Legacy agents fall back to coarse status. Obvious credential values
+           are suppressed in activity; this is not comprehensive redaction.
 
 Examples
   ask show login-checked

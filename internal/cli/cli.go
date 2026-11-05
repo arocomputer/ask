@@ -23,12 +23,12 @@ var options = map[string][]string{
 	"bench":    {"-m", "-r", "-w", "-C", "-t", "--max-cost", "--title", "-j", "-n", "--json", "--keep", "--yes", "--no-hooks"},
 	"title":    {"--command", "--description", "--hook"},
 	"setup":    {"--check", "--json", "--yes"}, "settings": {"--json", "--dry-run"}, "docs": {"--raw", "--search", "--url"}, "update": {"--check"},
-	"show": {"--json"}, "runs": {"-n", "--all", "--json"}, "wait": {"--id", "--json"}, "clean": {"--days", "--dry-run", "--yes"}, "stop": {}, "models": {"--roles", "--names", "--all", "--enable", "--disable", "--max-cost"}, "help": {}, "install": {}, "packages": {}, "remove": {},
+	"show": {"--json", "--after", "--follow"}, "runs": {"-n", "--all", "--json"}, "wait": {"--id", "--json"}, "clean": {"--days", "--dry-run", "--yes"}, "stop": {}, "models": {"--roles", "--names", "--all", "--enable", "--disable", "--max-cost"}, "help": {}, "install": {}, "packages": {}, "remove": {},
 }
 
 var long = map[string]string{"--model": "-m", "--read": "-r", "--write": "-w", "--continue": "-c", "--directory": "-C", "--dir": "-C", "--timeout": "-t", "--jobs": "-j"}
 
-var value = map[string]bool{"-m": true, "-c": true, "--schema": true, "-C": true, "-t": true, "-j": true, "-n": true, "--resume": true, "--command": true, "--description": true, "--agents": true, "--days": true, "--max-cost": true, "--title": true, "--search": true, "--worktrees": true, "--branches": true, "--skills": true}
+var value = map[string]bool{"--after": true, "-m": true, "-c": true, "--schema": true, "-C": true, "-t": true, "-j": true, "-n": true, "--resume": true, "--command": true, "--description": true, "--agents": true, "--days": true, "--max-cost": true, "--title": true, "--search": true, "--worktrees": true, "--branches": true, "--skills": true}
 
 // suggestion returns a valid option only when the spelling is one edit away.
 func suggestion(command, wrong string) string {

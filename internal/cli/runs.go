@@ -315,15 +315,24 @@ func clean(p home.Paths, opts home.Object) (int, error) {
 	return code, nil
 }
 
-// show prints a saved answer or complete result without running its agent again.
-// JSON reports unfinished selections immediately with structured state and exit status 1.
+// show inspects activity or a saved result without running its agent again.
+// Existing --json results retain their format and exit status; --after returns an activity page.
 func show(p home.Paths, opts home.Object, words []string) (int, error) {
 	if len(words) != 1 {
 		return 0, home.Usage("ask show takes one run, like ask show login-checked")
 	}
+	if opts.B("--follow") && (opts.B("--json") || opts.Has("--after")) {
+		return 0, home.Usage("--follow supports readable output only; choose --after for cursor JSON")
+	}
 	r, i, e := runs.Open(p, words[0])
 	if e != nil {
 		return 0, e
+	}
+	if opts.Has("--after") {
+		return showAfter(p, r, i, opts.S("--after"))
+	}
+	if !opts.B("--json") {
+		return showActivity(p, r, i, words[0], opts.B("--follow"))
 	}
 	if opts.B("--json") {
 		fresh, record, err := runSnapshot(p, r)

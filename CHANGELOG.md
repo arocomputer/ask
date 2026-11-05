@@ -4,6 +4,9 @@
 
 - Supply agents an optional private per-task `ASK_EVENTS` JSONL file, preserved across retries
   and hook follow-ups, independently of final answers and `ASK_REPORT` metadata.
+- Show bounded recent task activity with `ask show`, stream it with `--follow`, or read
+  byte-cursor JSON pages with `--after`. Viewer interruption leaves workers running;
+  legacy agents retain coarse status and completed answer output.
 
 - Fix detached launches with relative `ASK_HOME`, remove fresh unadmitted records on SIGTERM,
   preserve usage error exit status, and report name-hook notes and recovery decisions on stderr
