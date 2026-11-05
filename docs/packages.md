@@ -19,7 +19,7 @@ without the network:
 
 ```sh
 ask install claude                # Claude Code
-ask install codex opencode        # Codex and Opencode
+ask install codex opencode        # Codex and OpenCode
 ask install copilot gemini
 ask install pi e cursor aider amp qwen kimi
 ask install goose cline kilo continue openhands vibe
@@ -42,7 +42,7 @@ previous installation when available. Explicit `ask install NAME` or `ask update
 reports installation failures with exit 1. `ask remove claude` removes one.
 
 Installing these packages does not install their CLIs or Node.js. The official agents need
-Node.js 18 or newer and an authenticated CLI (Opencode needs a connected provider); see
+Node.js 18 or newer and an authenticated CLI (OpenCode needs a connected provider); see
 [Install](install.md#set-up).
 
 After installing, ask checks each agent the package brings by asking it for its models. An agent
@@ -93,40 +93,44 @@ Its follow-up usage is omitted rather than counting earlier turns again.
 
 No usage means cost limits cannot be measured by ask. Final-only cost can produce an overspend
 note but cannot stop a turn midway. Vibe's native price cap depends on the configured model
-pricing. Read access is a model-tool boundary unless the harness provides an OS sandbox; it
-does not make an installed CLI or plugin untrusted-code-safe.
+pricing.
 
-Several CLIs have no reliable machine-readable model list. Those adapters intentionally list
-no models; use the harness's own model listing and `ask models NAME:ID --enable` to add exact
-IDs. Continue needs `ASK_CONTINUE_CONFIG` (a JSON-encoded config), Vibe needs `VIBE_MODELS`,
-and Qwen reads its native `modelProviders` settings. e currently requires building upstream from
-source; it never changes directory-trust settings for you.
+Read access is a model-tool boundary unless the harness provides an OS sandbox; it does not make an
+installed CLI or plugin untrusted-code-safe.
+
+Several CLIs have no reliable machine-readable model list. Those adapters intentionally list no
+models; use the harness's own model listing and `ask models NAME:ID --enable` to add exact IDs.
+
+Continue needs `ASK_CONTINUE_CONFIG` (a JSON-encoded config), Vibe needs `VIBE_MODELS`, and Qwen
+reads its native `modelProviders` settings. e currently requires building upstream from source; it
+never changes directory-trust settings for you.
 
 ### Choosing harnesses
 
 The October 2026 expansion surveyed Copilot, Gemini CLI, Pi, Cursor CLI, Aider, Goose, Cline,
-Kilo, Amp, Continue, OpenHands, Amazon Q/Kiro, Mistral Vibe, Qwen Code and Kimi Code;
-e was included by request.
-Selection considers adoption signals and a usable noninteractive CLI, not just whether an IDE
-extension can read ask's skill.
+Kilo, Amp, Continue, OpenHands, Amazon Q/Kiro, Mistral Vibe, Qwen Code and Kimi Code; e was
+included by request. Selection considers adoption signals and a usable noninteractive CLI, not
+just whether an IDE extension can read ask's skill.
 
 For context, the [npm downloads API](https://api.npmjs.org/downloads/point/last-week/@github/copilot)
 reported about 1.72 million weekly downloads for Copilot, 870 thousand for Pi's former
 `@mariozechner/pi-coding-agent` package, 453 thousand for Gemini CLI, 33 thousand for Kilo and
 27 thousand for Amp for September 28–October 4, 2026. GitHub repositories also show substantial
-interest in Aider, Goose, Cline, Continue and OpenHands. Downloads and repository stars are
-imperfect adoption proxies, not counts of active CLI users; IDE/platform popularity alone does
-not establish that a CLI is mature. e is a requested development-stage integration, not a claim
-of widespread adoption.
+interest in Aider, Goose, Cline, Continue and OpenHands.
+
+Downloads and repository stars are imperfect adoption proxies, not counts of active CLI users;
+IDE/platform popularity alone does not establish that a CLI is mature. e is a requested
+development-stage integration, not a claim of widespread adoption.
 
 **Deferred: Amazon Q / Kiro.** Kiro has a real
-[headless CLI](https://kiro.dev/docs/cli/headless/) with model selection and JSON streaming,
-but its published docs do not define the event fields needed to separate answers from tool
-output and identify failed/interrupted runs. The retired
-[Amazon Q CLI source](https://github.com/aws/amazon-q-developer-cli) has a different argument and
-output contract and cannot establish Kiro's wire format. No placeholder adapter is installed;
-support needs a verified success/tool/failure stream fixture first. This is a contract-verification
-gap, not a claim that Kiro lacks headless mode.
+[headless CLI](https://kiro.dev/docs/cli/headless/) with model selection and JSON streaming, but its
+published docs do not define the event fields needed to separate answers from tool output and
+identify failed/interrupted runs.
+
+The retired [Amazon Q CLI source](https://github.com/aws/amazon-q-developer-cli) has a different
+argument and output contract and cannot establish Kiro's wire format. No placeholder adapter is
+installed; support needs a verified success/tool/failure stream fixture first. This is a
+contract-verification gap, not a claim that Kiro lacks headless mode.
 
 ## Install, update, remove
 
@@ -147,9 +151,10 @@ github.com/team/tools       agents: my-cli · commands: review · hooks: verify
 
 `ask install` clones into `~/.ask/packages/HOST/OWNER/REPO`, and updating pulls fast-forward only;
 official packages go to `~/.ask/packages/ask/packages/NAME`. Nothing runs at install time except
-the readiness check: no scripts, no prompts. A bare NAME always means an official package and
-`OWNER/REPO` always means GitHub, whatever folders are here; name a local repository by a path
-such as `./tools`, `../team/tools` or `~/code/tools`.
+the readiness check: no scripts, no prompts.
+
+A bare NAME always means an official package and `OWNER/REPO` always means GitHub, whatever folders
+are here; name a local repository by a path such as `./tools`, `../team/tools` or `~/code/tools`.
 Installing a source where another one is already installed, like a second local `team/tools`,
 fails: remove the first.
 

@@ -6,15 +6,18 @@ and teaches the apps you work in to use ask. Change anything later with
 
 Before setup, install and authenticate the coding agent CLIs you want to use. For example,
 authenticate Claude Code or Codex, or connect at least one provider in OpenCode. See
-[official packages](../packages/README.md) for each harness's prerequisites. The official ask agents also need
-Node.js 18 or newer. Setup installs ask's agents and integrations; it does not install those
-CLIs or Node.js, or sign you in. See [Install](install.md#set-up).
+[official packages](../packages/README.md) for each harness's prerequisites.
+
+The official ask agents also need Node.js 18 or newer. Setup installs ask's agents and
+integrations. It does not install those CLIs or Node.js, and it does not sign you in. See
+[Install](install.md#set-up).
 
 ## The first time
 
 In a terminal, `ask setup` walks you through it, then shows everything it will change before it
-saves defaults or app integrations. Selected agents install immediately; the example below
-illustrates a machine with Claude Code and Codex:
+saves defaults or app integrations. Selected agents install immediately.
+
+The example below illustrates a machine with Claude Code and Codex:
 
 ```text
 ask setup  connects your coding agents; nothing else changes until you review it
@@ -52,14 +55,14 @@ ask setup  connects your coding agents; nothing else changes until you review it
   Each agent's page states its feature limits.
 - **Defaults** go to your [settings](settings.md): the model, and where worktrees go.
 - **The ask skill** goes to each app that reads skills and is installed here: Claude Code, Codex,
-  Opencode, Cursor and pi. It teaches focused delegation when useful: provide the goal, context,
+  OpenCode, Cursor and Pi. It teaches focused delegation when useful: provide the goal, context,
   constraints and expected evidence, use independent tasks for parallel work, and review the
-  results. It leaves small, tightly coupled steps to the host agent and does not require Ask
-  instead of another delegation tool. Examples use existing commands, explicit stdin context,
-  and saved raw answers for structured failure recovery.
+  results. It leaves small, tightly coupled steps to the host agent and does not require ask
+  instead of another delegation tool. Examples use existing commands, explicit stdin context, and
+  saved raw answers for structured failure recovery.
 - **Task titles** register `ask title --hook` in Claude Code (see [Hosts](hosts.md)).
 
-Saying no saves nothing but the agents. Once ask is set up, `ask setup` opens your settings.
+Saying no saves nothing except the agents. After setup, `ask setup` opens your settings.
 
 ## Without a terminal
 
@@ -69,18 +72,27 @@ ask setup --check          # exit 1 if no agent is ready or any installed agent 
 ask setup --check --json
 ```
 
-`--yes` shows what it changes as it saves; it leaves your default model unset unless you
-already chose one. Use `-m` or `ask settings set model MODEL`, replacing `MODEL` with an id from
-`ask models`. Readiness checks ask agents to list models; they do not run a task or verify that
-your account can use each model. `--check --json` prints `agents` (each with `name`,
-`cli`, `installed`, `ready`, `models` and `reason`), `settings`, `skills` (by app: `missing`,
-`current`, `outdated` or `yours`) and `hook`. Without a terminal or options, `ask setup` prints the
-report.
+`--yes` shows what it changes as it saves. It leaves your default model unset unless you already
+chose one. Use `-m` or `ask settings set model MODEL`, replacing `MODEL` with an id from
+`ask models`.
+
+Readiness checks ask agents to list models. They do not run a task or verify that your account can
+use each model. `--check --json` prints:
+
+- `agents`: each with `name`, `cli`, `installed`, `ready`, `models` and `reason`
+- `settings`
+- `skills`: by app, as `missing`, `current`, `outdated` or `yours`
+- `hook`
+
+Without a terminal or options, `ask setup` prints the report.
 
 ## What it changes
 
-Only what you choose. ask's own files go in `~/.ask`. The skill is `skills/ask/SKILL.md` in each
-app's folder, like `~/.claude/skills/ask/SKILL.md`; ask updates the ones it wrote and never
-replaces a skill you wrote (it marks its own with a comment line; delete that line to keep your
-edits). The hook is one entry in `~/.claude/settings.json`; everything else in that file stays as
-it is, in the same order.
+Only what you choose. ask's own files go in `~/.ask`.
+
+The skill is `skills/ask/SKILL.md` in each app's folder, like
+`~/.claude/skills/ask/SKILL.md`. ask updates the ones it wrote and never replaces a skill you
+wrote. It marks its own with a comment line; delete that line to keep your edits.
+
+The hook is one entry in `~/.claude/settings.json`. Everything else in that file stays as it is,
+in the same order.

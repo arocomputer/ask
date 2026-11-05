@@ -33,32 +33,39 @@ they may change.
   (`src/test/fixtures/`) and never rewritten; newer versions must keep showing and continuing them.
 
 JSON uses Go's `encoding/json`. Records keep the documented field order; JSON answers retain
-agent key order. Parser diagnostics, insignificant whitespace, number spelling in ask's own
-records and malformed Unicode handling are not byte-level contracts.
+agent key order. Parser diagnostics, insignificant whitespace, number spelling in ask's own records
+and malformed Unicode handling are not byte-level contracts.
 
-The public names remain `run` for a recorded invocation, `task` for one unit in a batch,
-`model` for an `agent:id`, and `follow-up` for a continuation. Existing command, option,
-result and record field names remain stable except for the detached-first CLI transition
-described below. Contract 3 uses `running`, `succeeded`, `failed` and `stopped` for lifecycle
-status; the live scheduler also uses `queued` while it knows a task is waiting. Machine
-`state` values use `succeeded` instead of `success`; plain starts use `running` instead of
-`started`, and completions use `succeeded` instead of `ok`. Update status parsers accordingly.
-Persisted result `ok` booleans and historical run records retain their format. Batch summaries
-include explicit succeeded and failed counts, including zeros; stopped work is counted separately.
-Task status is followed by the model display name; hook lines use
-`note` or `follow-up`; optional coarse progress uses `activity · CATEGORY`. The `-c` and
-`--continue` options remain supported script aliases for conversation follow-ups; batch `--resume`
-remains an alias for recovering unfinished or failed tasks. Use `ask continue RUN "prompt"` for
-follow-ups and `ask continue RUN` for state-based recovery: usable sessions continue the original
-task; if unavailable, ask may restart standalone reads without hooks but refuses unsafe retries. Blockers require an explicit prompt after resolution. The JSON `continue` field remains.
-Tasks, prompted continuations and batches now detach by default and print a stable run ID
-instead of an answer. Update answer-consuming scripts to use `--wait`, or capture the ID and
-collect it with `ask wait ID`. `-w` still means write; `-m` selects a model or configured role.
-The separate `ask start` command is removed, with no hidden compatibility alias.
-`run` and `continue` are built-in command names; an existing prompt or custom command beginning
-with one is shadowed. Use `ask -- run ...` or `ask -- continue ...` for a literal prompt.
-Times are compact clocks above a minute and costs show cents at
-or above $0.01. `ask help` is the overview, also available with `ask --help` or `ask -h`.
-`ask help COMMAND` and `ask COMMAND --help` are equivalent for built-in commands; `-h` works
-on built-in commands, and `-V` aliases `--version`. User commands handle their own help
-arguments.
+The public names remain `run` for a recorded invocation, `task` for one unit in a batch, `model`
+for an `agent:id`, and `follow-up` for a continuation. Existing command, option, result and record
+field names remain stable except for the detached-first CLI transition described below.
+
+Contract 3 uses `running`, `succeeded`, `failed` and `stopped` for lifecycle status; the live
+scheduler also uses `queued` while it knows a task is waiting. Machine `state` values use
+`succeeded` instead of `success`; plain starts use `running` instead of `started`, and completions
+use `succeeded` instead of `ok`. Update status parsers accordingly. Persisted result `ok` booleans
+and historical run records retain their format.
+
+Batch summaries include explicit succeeded and failed counts, including zeros; stopped work is
+counted separately. Task status is followed by the model display name; hook lines use `note` or
+`follow-up`; optional coarse progress uses `activity · CATEGORY`.
+
+The `-c` and `--continue` options remain supported script aliases for conversation follow-ups;
+batch `--resume` remains an alias for recovering unfinished or failed tasks. Use
+`ask continue RUN "prompt"` for follow-ups and `ask continue RUN` for state-based recovery: usable
+sessions continue the original task; if unavailable, ask may restart standalone reads without
+hooks but refuses unsafe retries. Blockers require an explicit prompt after resolution. The JSON
+`continue` field remains.
+
+Tasks, prompted continuations and batches now detach by default and print a stable run ID instead
+of an answer. Update answer-consuming scripts to use `--wait`, or capture the ID and collect it
+with `ask wait ID`. `-w` still means write; `-m` selects a model or configured role.
+
+The separate `ask start` command is removed, with no hidden compatibility alias. `run` and
+`continue` are built-in command names; an existing prompt or custom command beginning with one is
+shadowed. Use `ask -- run ...` or `ask -- continue ...` for a literal prompt.
+
+Times are compact clocks above a minute and costs show cents at or above $0.01. `ask help` is the
+overview, also available with `ask --help` or `ask -h`. `ask help COMMAND` and `ask COMMAND --help`
+are equivalent for built-in commands; `-h` works on built-in commands, and `-V` aliases
+`--version`. User commands handle their own help arguments.

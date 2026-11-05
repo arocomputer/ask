@@ -33,8 +33,9 @@ A hook is any executable. ask calls it with one argument, the event:
 - **`followup`** asks the same agent, in the same conversation and place, to keep working. Its new
   result goes through the result hooks again, up to three follow-ups per task. The task's final
   result combines every round: the last answer, with the time, usage and changes of all of them.
-- A hook runs in the task's directory, with `ASK_RUN` (the run, like `summarize-public-api-src/api`), `ASK_EVENT`,
-  `ASK_BIN` (ask itself), `ASK_HOME` and `ASK_CONTRACT` (see [Compatibility](compatibility.md)).
+- A hook runs in the task's directory, with `ASK_RUN` (the run, like
+  `summarize-public-api-src/api`), `ASK_EVENT`, `ASK_BIN` (ask itself), `ASK_HOME` and
+  `ASK_CONTRACT` (see [Compatibility](compatibility.md)).
 
 Hooks run in name order; each sees the task as the previous one left it. For results, the first
 hook to ask for a follow-up or to fail the result decides, and the rest wait for the next round.
@@ -130,17 +131,20 @@ You're in the middle of modifying `calc.go` on the main branch after an initial 
 
 ask never runs hooks from the project it works in, only yours and your packages'.
 
-The `name` event runs once for each new run, before it starts, with ask's own name for it,
-every task's prompt, and `worktree`: whether any task works in a worktree, whose directory and
-branch the name also names. ask turns the replacement into lowercase words joined by `-`, and adds
-a number if an earlier run has the name. Follow-ups keep their conversation's name without asking.
-See [Naming runs](#naming-runs).
+The `name` event runs once for each new run, before it starts, with ask's own name for it, every
+task's prompt, and `worktree`: whether any task works in a worktree, whose directory and branch the
+name also names.
+
+ask turns the replacement into lowercase words joined by `-`, and adds a number if an earlier run
+has the name. Follow-ups keep their conversation's name without asking. See
+[Naming runs](#naming-runs).
 
 The `title` event runs for agent session titles and [host titles](hosts.md). For agent sessions,
 `task` is the task record and `command` and `description` are empty. For host titles, `command` is
 the literal ask argv, without shell assignments or redirects, and `description` is the host's
-original text. Hooks run in the task's directory without a run id. An empty replacement keeps the
-current title.
+original text.
+
+Hooks run in the task's directory without a run id. An empty replacement keeps the current title.
 
 ## Naming runs
 

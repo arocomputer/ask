@@ -48,8 +48,9 @@ When the run record format changed, pin a record from the release in `src/test/f
 ## Checking without publishing
 
 `./x check` needs Go, Node.js, ShellCheck, actionlint and Ruby on PATH. It checks workflow syntax
-(`./x workflows`) and the committed formula, alongside the existing offline checks. CI installs
-a pinned actionlint version and additionally runs `./x test -race ./src/...` on Linux;
+(`./x workflows`) and the committed formula, alongside the existing offline checks.
+
+CI installs a pinned actionlint version and additionally runs `./x test -race ./src/...` on Linux;
 the black-box tests build their own subprocesses without race instrumentation.
 
 CI exercises the real packaging and formula scripts before any release. To do the same locally,
@@ -63,12 +64,13 @@ ruby -c "$out/ask.rb"
 rm -rf "$out"
 ```
 
-Packaging requires an empty output directory so stale assets cannot be published. It builds
-with CGO disabled, verifies that each archive contains only the executable `ask` and `LICENSE`,
-compares extracted contents, inspects target build metadata, runs `--version` only for a
-matching host target, and checks all four SHA-256 entries. It uses `sha256sum` or macOS's
-`shasum`. Formula generation requires one valid checksum per exact archive name and rejects
-invalid input before emitting Ruby. These checks require no GitHub credentials or publication.
+Packaging requires an empty output directory so stale assets cannot be published. It builds with
+CGO disabled, verifies that each archive contains only the executable `ask` and `LICENSE`, compares
+extracted contents, inspects target build metadata, runs `--version` only for a matching host
+target, and checks all four SHA-256 entries. It uses `sha256sum` or macOS's `shasum`.
+
+Formula generation requires one valid checksum per exact archive name and rejects invalid input
+before emitting Ruby. These checks require no GitHub credentials or publication.
 
 ## Where people get it
 

@@ -44,10 +44,11 @@ chmod +x ~/.ask/commands/review
 ask review main..HEAD
 ```
 
-The script supplies the diff because Claude Code and Opencode read runs cannot execute
+The script supplies the diff because Claude Code and OpenCode read runs cannot execute
 `git diff`. It feeds the diff to `jq` on stdin to avoid command-line argument size limits.
-Each command example prints results through `jq`; its exit status is `jq`'s, so
-inspect failures in the output rather than treating exit 0 as success for every task.
+
+Each command example prints results through `jq`; its exit status is `jq`'s, so inspect failures
+in the output rather than treating exit 0 as success for every task.
 
 ## Example: a council
 

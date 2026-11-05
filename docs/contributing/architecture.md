@@ -2,10 +2,11 @@
 
 ask is one Go binary. Bubble Tea owns interactive terminal rendering and input; Lip Gloss and
 Charm's ANSI helpers measure and clip terminal text. Execution uses the standard library only.
-It turns a command line into tasks, runs each task by
-starting an agent (a separate executable) under a small contract, and records the result. ask
-itself knows no particular coding agent: the official harnesses are reached through
-agents in [`packages/`](../../packages/), which use the same contract as anyone's.
+
+It turns a command line into tasks, runs each task by starting an agent (a separate executable)
+under a small contract, and records the result. ask itself knows no particular coding agent: the
+official harnesses are reached through agents in [`packages/`](../../packages/), which use the same
+contract as anyone's.
 
 ## How a task runs
 
@@ -92,6 +93,7 @@ Two more are kept by tests and review, not grep:
 
 `./x dev` uses the normal `ASK_HOME` unless you set it. Like a released build, it refreshes
 installed official agents to match the binary, so alternating development and installed builds
-rewrites those package copies. To try changes without affecting your installed agents, use a
-separate `ASK_HOME`, run `./x dev install codex` (or another agent) there, and keep that same
-`ASK_HOME` for the test run.
+rewrites those package copies.
+
+To try changes without affecting your installed agents, use a separate `ASK_HOME`, run
+`./x dev install codex` (or another agent) there, and keep that same `ASK_HOME` for the test run.

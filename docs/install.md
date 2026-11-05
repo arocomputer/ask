@@ -10,17 +10,21 @@ curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | s
 ```
 
 It downloads the release archive for your system (macOS or Linux, Intel or ARM), checks it against
-the release's `checksums.txt`, and installs `ask` into `~/.local/bin`, saying so if that isn't on
-your `PATH`. It never edits your shell files. Options, after `sh -s --`:
+the release's `checksums.txt`, and installs `ask` into `~/.local/bin`. If that folder is not on your
+`PATH`, the installer says so. It never edits your shell files.
+
+Options go after `sh -s --`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh -s -- --version v0.1.0 --dir ~/bin
 ```
 
 `ASK_INSTALL_DIR` and `ASK_VERSION` do the same as `--dir` and `--version`. The script is
-[`install.sh`](../install.sh) in ask's repository; read it before you run it if you like.
-To see installer options without installing, pipe it to `sh -s -- --help`. For ask's own
-commands after installation, use `ask help` or `ask help COMMAND`.
+[`install.sh`](../install.sh) in ask's repository; read it before you run it if you like. To see
+installer options without installing, pipe it to `sh -s -- --help`.
+
+After installation, `ask help` is the command overview and `ask help COMMAND` shows one command's
+options.
 
 ## Homebrew
 
@@ -48,10 +52,14 @@ Put `$(go env GOPATH)/bin` on your `PATH`.
 ## By hand
 
 Download `ask_VERSION_OS_ARCH.tar.gz` for your system and `checksums.txt` from
-[Releases](https://github.com/arocomputer/ask/releases/latest), check the archive's SHA-256
-(`sha256sum` on Linux, `shasum -a 256` on macOS), extract it and put `ask` on your `PATH`. Each
-archive's build provenance can be verified with
-`gh attestation verify ask_VERSION_OS_ARCH.tar.gz -R arocomputer/ask`.
+[Releases](https://github.com/arocomputer/ask/releases/latest). Check the archive's SHA-256
+(`sha256sum` on Linux, `shasum -a 256` on macOS), extract it, and put `ask` on your `PATH`.
+
+You can also verify each archive's build provenance:
+
+```sh
+gh attestation verify ask_VERSION_OS_ARCH.tar.gz -R arocomputer/ask
+```
 
 ## From source
 
@@ -71,23 +79,26 @@ cp ask ~/.local/bin/ask
 ask setup
 ```
 
-It finds the coding agent CLIs you have, connects ask to them, sets your defaults and teaches the
-apps you work in to use ask; see [Setup](setup.md). ask runs each coding agent through an agent:
-a small executable that runs that agent's CLI. The official ones are built into ask and install by
-name, which is what setup does:
+It finds the coding agent CLIs you have, connects ask to them, sets your defaults, and teaches the
+apps you work in to use ask. See [Setup](setup.md).
+
+ask reaches each coding agent through an agent: a small executable that runs that agent's CLI. The
+official ones are built into ask and install by name:
 
 ```sh
 ask install claude        # Claude Code
 ask install codex         # Codex
-ask install opencode      # Opencode
+ask install opencode      # OpenCode
 ```
 
-Installing an ask agent does not install its coding agent CLI or sign you in. For example,
-Claude Code and Codex need their CLIs installed and authenticated; OpenCode needs its CLI
-installed with at least one provider connected. Official ask agents need Node.js 18 or newer;
-see [official packages](../packages/README.md) for each harness's prerequisites. The agent finds the CLI even
-when it isn't on your `PATH`, and setup says what is missing if anything is. To write your own,
-see [Agents](agents.md): a minimal one is a few lines of shell.
+Installing an ask agent does not install its coding agent CLI or sign you in. Claude Code and
+Codex need their CLIs installed and authenticated; OpenCode needs its CLI installed with at least
+one provider connected.
+
+Official ask agents need Node.js 18 or newer. See [official packages](../packages/README.md) for
+each harness's prerequisites. Each agent finds its CLI even when it isn't on your `PATH`, and setup
+says what is missing if anything is. To write your own, see [Agents](agents.md): a minimal one is
+a few lines of shell.
 
 Then check what ask can reach:
 

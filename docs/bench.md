@@ -34,10 +34,12 @@ model. Each task may add a `check`. Save this example as `bench.json`:
 | --- | --- |
 | `check` | A shell command run in the folder the agent worked in, with the answer on stdin. Exit 0 passes. Without one, an attempt passes when its agent finishes (and its answer matches `schema`, when there is one). |
 
-Every other field works as in a batch: `prompt`, `id`, `title`, `write`, `dir`, `json`, `schema`, `timeout`
-and `max_cost`. A check has the task's timeout and runs as you, outside the agent's sandbox, even for a
-read-only task. `--read` limits the agent's access, not your check command.
-Only use bench files whose checks you trust.
+Every other field works as in a batch: `prompt`, `id`, `title`, `write`, `dir`, `json`, `schema`,
+`timeout` and `max_cost`.
+
+A check has the task's timeout and runs as you, outside the agent's sandbox, even for a read-only
+task. `--read` limits the agent's access, not your check command. Only use bench files whose
+checks you trust.
 
 Keep checks where the agent cannot read them when that matters: a check that names the expected
 answer in the repository gives it away.
@@ -48,9 +50,9 @@ Each task runs on each model `-n` times (default 1): that is the number of attem
 before starting them in a terminal (`--yes` skips the question). Agents vary from one run to the
 next, so a few attempts per model say more than one.
 
-A write attempt works in its own [worktree](usage.md#working-in-a-worktree) from the same commit, so every
-model starts from the same code and none sees another's changes. After its check, the worktree and
-its branch are removed; `--keep` keeps them to look at, and the report says where.
+A write attempt works in its own [worktree](usage.md#working-in-a-worktree) from the same commit, so
+every model starts from the same code and none sees another's changes. After its check, the
+worktree and its branch are removed; `--keep` keeps them to look at, and the report says where.
 
 Cost limits apply to each attempt, as in a batch: `--max-cost`, else the model's limit or your
 setting (see [Usage](usage.md#cost-limits)).
@@ -89,13 +91,14 @@ prints its table again (`--json` for the report). The report is a JSON object:
 }
 ```
 
-`ok` says the agent finished; `passed` says it also passed its check. `note` says why an attempt did
-not pass. Each attempt's full result is saved in the run. Repeated attempts share task ids.
+`ok` says the agent finished; `passed` says it also passed its check. `note` says why an attempt
+did not pass. Each attempt's full result is saved in the run. Repeated attempts share task ids.
+
 Give every task an explicit nonnumeric `id`, like `parser` and `entry` above, so
-`ask show RUN/POSITION` can select an attempt by its position, from 1. Numeric task ids
-(including the defaults when `id` is omitted) take precedence over positions and can make
-a selector ambiguous or select a different attempt.
+`ask show RUN/POSITION` can select an attempt by its position, from 1. Numeric task ids (including
+the defaults when `id` is omitted) take precedence over positions and can make a selector
+ambiguous or select a different attempt.
 
 Tasks expand in file order, then `--model` order, then attempt number. For the example above,
-`ask show RUN/2 --json` shows the second Sonnet attempt on `parser`. Replace `RUN` with the
-bench's printed name or id.
+`ask show RUN/2 --json` shows the second Sonnet attempt on `parser`. Replace `RUN` with the bench's
+printed name or id.
