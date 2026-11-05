@@ -39,6 +39,8 @@ printf '%s|%s|%s|%s\n' "$KEPT" "$DROPPED" "$ASK_ENVIRONMENT" "$ASK_ENVIRONMENT_R
 	})
 	t.Run("a local executable override does not inherit a packaged adapter declaration", func(t *testing.T) {
 		s := fresh(t)
+		s.scriptAt(s.tmp, "bin", "pi", "exit 0")
+		s.env["ASK_PI_BIN"] = filepath.Join(s.tmp, "bin", "pi")
 		eq(t, s.ask("install", "pi").code, 0)
 		s.localAgent("pi", `cat >/dev/null; echo overridden`)
 		s.json(filepath.Join(s.home, "environment.json"), object{"agents": object{"pi": object{"integrations": object{"mcp": false}}}})
