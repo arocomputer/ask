@@ -7,8 +7,8 @@
   Suggest close command/flag spellings and explain misplaced flags or help topics without
   executing corrections. Reject extra arguments to settings and doctor instead of ignoring them.
 - Redesign human-facing output in monochrome: compact help, word-based status, responsive tables,
-  result-first session details and quiet progress. Interactive focus uses one text-height solid
-  cursor block and a bold label; settings stays open until Done, with Esc to return from an action.
+  result-first session details and quiet progress. Interactive focus uses a narrow text-sized
+  bar and a bold label; settings stays open until Done, with Esc to return from an action.
   Add offline wide/phone visual fixtures. Keep TSV and JSON interfaces stable. New ChatGPT
   registrations request the application display name "Ask".
 - Keep the active ChatGPT login when a pasted callback needs correcting, distinguish missing

@@ -9,7 +9,8 @@ also disables interactive prompts. Machine JSON and piped TSV are independent of
 
 - Compact sentence-case headings; general help opens with bold `Ask` and the muted tagline
   `Background tasks, handled.` on the same line. No repeated help boilerplate or decorative boxes.
-- One text-height solid `█` cursor block marks focus. Only the focused item label is bold in a picker. Multiselect
+- A narrow `❙` bar marks focus; its exact dimensions depend on the terminal font.
+  Only the focused item label is bold in a picker. Multiselect
   checkboxes represent membership, independently of focus. Hints appear below the list.
 - Esc clears a filter or goes back. Enter confirms; completed actions save independently.
 - Text fields show a tail preview and count; API keys show a fixed mask. Callback values are

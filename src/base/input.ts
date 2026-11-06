@@ -1,4 +1,4 @@
-// Monochrome terminal prompts. A solid one-cell cursor block marks focus; only the focused label
+// Monochrome terminal prompts. A narrow text-sized bar marks focus; only the focused label
 // is bold. Hints sit beneath the list, and a completed prompt leaves one short receipt.
 // Rendering is shared with the visual fixtures; raw input and screen ownership live here.
 
@@ -95,7 +95,7 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
   if (query) lines.push(`Filter  ${query}`, "")
   for (const [index, item] of items.slice(top, top + page).entries()) {
     const focused = top + index === cursor
-    const prefix = `${focused ? "█" : " "} ${selected ? selected.has(item.value) ? "[x] " : "[ ] " : ""}`
+    const prefix = `${focused ? "❙" : " "} ${selected ? selected.has(item.value) ? "[x] " : "[ ] " : ""}`
     const label = truncate(item.label, Math.max(1, cols - width(prefix)))
     lines.push(prefix + (focused ? st.bold(label) : label))
   }
@@ -162,7 +162,7 @@ export function field(title: string, value: string, hint: string, secret = false
   const room = Math.max(1, (out.columns || 80) - 3)
   const chars = [...value]
   const preview = secret ? value ? "••••••••" : "" : chars.length > room ? "…" + chars.slice(-(room - 1)).join("") : value
-  return [title, "", `█ ${preview || style(out).gray("Paste or type here")}`, "", style(out).gray(secret ? value ? "Key received · enter save" : "Input hidden · esc back" : hint)]
+  return [title, "", `❙ ${preview || style(out).gray("Paste or type here")}`, "", style(out).gray(secret ? value ? "Key received · enter save" : "Input hidden · esc back" : hint)]
 }
 
 /** One editable field. Empty input keeps a default, callback input waits, Esc goes back. */
