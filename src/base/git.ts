@@ -7,15 +7,17 @@ import { closeSync, lstatSync, mkdirSync, openSync, readSync, readlinkSync, real
 import { join } from "node:path"
 
 /** Runs git and returns its output, or undefined when it fails. */
-function git(dir: string, args: string[], input?: string): string | undefined {
+function git(dir: string, args: string[], input?: string, required = false): string | undefined {
   try {
     return execFileSync("git", ["-C", dir, "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", ...args], {
       input,
       env: args[0] === "worktree" || args[0] === "branch" ? process.env : { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      stdio: ["pipe", "pipe", "ignore"],
+      stdio: ["pipe", "pipe", "pipe"],
       maxBuffer: 64 * 1024 * 1024,
     }).toString()
-  } catch {
+  } catch (err) {
+    if (required && !/not a git repository/i.test(String((err as { stderr?: Buffer }).stderr ?? "")))
+      throw new Error(`cannot inspect Git state in ${dir}; check Git installation, repository ownership and configuration`)
     return undefined
   }
 }
@@ -67,7 +69,7 @@ export type Change = { path: string; change: "added" | "modified" | "deleted" }
 
 /** Takes a snapshot of the checkout holding dir, or undefined outside a repository. */
 export function snapshot(dir: string): Snapshot | undefined {
-  const root = top(dir)
+  const root = git(dir, ["rev-parse", "--show-toplevel"], undefined, true)?.trim()
   if (!root) return undefined
   return { root, head: head(root), files: hashes(root, files(root)) }
 }
@@ -116,6 +118,9 @@ export function worktree(dir: string, name: string, under: string): Worktree {
   const root = top(dir)
   if (!root) throw new Error(`a worktree needs a git repository, and ${dir} is not in one`)
   if (!head(root)) throw new Error(`a worktree needs a commit to start from, and ${root} has none`)
+  const prefix = git(dir, ["rev-parse", "--show-prefix"])?.trim() ?? ""
+  if (prefix && git(root, ["cat-file", "-t", `HEAD:${prefix.replace(/\/$/, "")}`])?.trim() !== "tree")
+    throw new Error(`the task subfolder ${prefix} is not in HEAD; start the worktree task from the repository root`)
   // Checkout filters run before the task sandbox exists. Refuse them rather than executing
   // repository-selected programs with the caller's credentials or silently changing checkout.
   const config = git(root, ["config", "--null", "--list"])
@@ -133,18 +138,19 @@ export function worktree(dir: string, name: string, under: string): Worktree {
     const branch = `ask/${used}`
     try {
       mkdirSync(path, { mode: 0o700 })
-    } catch {
-      continue
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") continue
+      throw err
     }
     if (git(root, ["rev-parse", "--verify", "-q", `refs/heads/${branch}`]) !== undefined) {
       rmdirSync(path)
       continue
     }
     if (git(root, ["worktree", "add", "-b", branch, path, "HEAD"]) === undefined) {
-      rmdirSync(path)
-      throw new Error(`git could not create a worktree for ${root}`)
+      // Git may have partially populated it. Keep that data and identify it for recovery.
+      try { rmdirSync(path) } catch {}
+      throw new Error(`git could not create a worktree for ${root}; inspect ${path} and ${branch} before retrying`)
     }
-    const prefix = git(dir, ["rev-parse", "--show-prefix"])?.trim() ?? ""
     return { path, branch, dir: prefix ? join(path, prefix) : path }
   }
 }

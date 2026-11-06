@@ -15,7 +15,7 @@ which `test/rules.test.ts` checks. `test/` mirrors `src/`, one file per area.
 | `agent/` | ask's own loop: `loop`, `tools`, `fetch`, `search` (ask's own web search: DuckDuckGo, its lite page, Mwmbl, Wikipedia), `system` (the prompt), `steps` (a turn's steps in a few words) |
 | `harnesses/` | Other agents: `harness` (the contract, running a CLI, history handoff, loading extensions), `claude`, `codex`, `extensions` (what is on, the calling conversation), `skill` |
 | `sessions/` | A request's life: `protocol` (the agent interface), `store` (session folders, turns, the lock), `worker` (running a turn, detached), `models` (which model and key a task uses) |
-| `commands/` | What people run: `settings`, `doctor`, `models`, `sessions`, `show`, `tools`, `install`, `remove`, and `command`, their shared shape |
+| `commands/` | What people run: `settings`, `doctor`, `models`, `sessions`, `show`, `legacy`, `tools`, `install`, `remove`, and `command`, their shared shape |
 | `cli.ts`, `index.ts` | The entry points: the command, and the library |
 
 `native/sandbox.c` is the one file that isn't TypeScript: the Linux sandbox helper, built into
@@ -46,7 +46,10 @@ The launcher records a "starting" lock before it spawns the worker and the worke
 after, so a turn always has a live owner or is visibly lost. Everything else reads the folder:
 collect polls `session.json`, show reads `transcript.json`, stop signals the lock's pid. A turn
 whose worker is gone is restarted from its transcript by the next collect, after claiming that
-restart with an atomic folder create.
+restart with an atomic folder create. Continue and stop use the same generation-scoped claims;
+records are re-read under a claim. A live transition owner prevents another caller from taking
+over, and abandoned claims use immutable retry slots. Per-turn raw-file baselines survive worker
+death, so a restarted write turn reports changes made before the crash too.
 
 ## Rules the layout keeps
 

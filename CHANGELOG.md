@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add read-only `ask legacy` access to Go-era session records and native transcripts. Retain
+  old worktrees/extensions and reject retired safety-related settings until explicitly migrated.
+  Automatic cleanup remains removed: main's #82 live/unlanded-work protection is preserved by
+  never deleting sessions or worktrees. See `docs/migration.md` for upgrade and rollback steps.
+- Close private execution state and finish the session even when turn preparation fails.
+- Serialize continuation, stop and restart transitions, validate worker argument tails, retain
+  pre-crash write baselines and flush JSON before atomic replacement. Report partial batch starts
+  and change-reporting failures without hiding running work or invalidating successful answers.
+- Reject hard-linked file aliases in file-reading tools. Remove obsolete native network modes;
+  use the exact bubblewrap executable that passed the namespace probe.
+
 - Rename the bundled Linux helper to `ask.sandbox`. Add config-only `"sandbox": false` to
   disable OS confinement for new turns, including shipped harnesses. Default remains enabled;
   interrupted turns retain their recorded choice.

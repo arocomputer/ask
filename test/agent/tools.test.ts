@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync, readFileSync } from "node:fs"
+import { existsSync, linkSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
@@ -21,6 +21,14 @@ function dir(): string {
 }
 
 describe("tools", () => {
+  test("hard-link aliases cannot expose environment secrets through read or grep", async () => {
+    const d = dir()
+    writeFileSync(join(d, ".env"), "hardlink-secret-canary")
+    linkSync(join(d, ".env"), join(d, "innocent.txt"))
+    await assert.rejects(all.read.run({ path: "innocent.txt" }, { dir: d }), /hard-link aliases/)
+    assert.doesNotMatch(await all.grep.run({ pattern: "canary" }, { dir: d }), /hardlink-secret-canary/)
+  })
+
   test("read numbers lines from the start line", async () => {
     assert.equal(await all.read.run({ path: "src/a.ts", line: 2 }, { dir: dir() }), "2\ttwo\n3\tthree\n")
   })

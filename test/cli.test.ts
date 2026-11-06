@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
-import { execFile, execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { execFile, execFileSync, spawn } from "node:child_process"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, describe, test } from "node:test"
@@ -39,6 +39,50 @@ async function setup(replies: Reply[], catalog: unknown = defaultCatalog) {
 }
 
 describe("cli", () => {
+  test("legacy records and transcripts are readable without conversion or cleanup", async () => {
+    const { home, run } = await setup([])
+    const folder = join(home, "agent", "sessions", "20260101-abc123")
+    mkdirSync(folder, { recursive: true })
+    const record = JSON.stringify({ id: "abc123", dir: "/old/worktree", turns: [{ prompt: "Old task", state: "succeeded", started: "2026-01-01", answer: "Original" }] })
+    const transcript = '[{"native":"original-format"}]\n'
+    writeFileSync(join(folder, "session.json"), record)
+    writeFileSync(join(folder, "transcript.json"), transcript)
+    assert.match((await run(["legacy"])).stdout, /abc123.*Old task/)
+    assert.equal((await run(["legacy", "abc123"])).stdout, record)
+    assert.equal((await run(["legacy", "abc123", "--transcript"])).stdout, transcript)
+    assert.notEqual((await run(["legacy", "../../auth"])).code, 0)
+    const clean = await run(["clean", "--yes", "--superseded"])
+    assert.notEqual(clean.code, 0)
+    assert.match(clean.stderr, /no files were deleted/)
+    assert.equal(readFileSync(join(folder, "session.json"), "utf8"), record)
+    assert.equal(readFileSync(join(folder, "transcript.json"), "utf8"), transcript)
+  })
+
+  test("legacy isolation or spending settings cannot be silently ignored", async () => {
+    const { home, ask } = await setup([])
+    for (const [key, value] of Object.entries({ worktree: true, max_cost: 2, worktrees: "/custom/{name}", branches: "agent/{name}" })) {
+      writeFileSync(join(home, "config.json"), JSON.stringify({ model: "fake/m", [key]: value }))
+      const result = await ask({ start: [{ prompt: "Task" }] })
+      assert.match(result.error.message, /legacy config settings need migration/)
+      assert.equal(existsSync(join(home, "sessions")), false)
+    }
+  })
+
+  test("sandbox preparation failures finish the turn and release its worker lock", async () => {
+    const { home, project, ask } = await setup([])
+    const metadata = join(project, "metadata")
+    mkdirSync(metadata)
+    symlinkSync(metadata, join(project, ".git"))
+    const result = await ask({ start: [{ prompt: "Task", write: true }], wait: 30 })
+    assert.equal(result.tasks[0].state, "failed")
+    assert.match(result.tasks[0].error.message, /symlink/i)
+    const folder = join(home, "sessions", result.tasks[0].id)
+    assert.equal(existsSync(join(folder, "lock")), false)
+    const record = JSON.parse(readFileSync(join(folder, "session.json"), "utf8"))
+    assert.equal(record.turns[0].state, "failed")
+    assert.ok(record.turns[0].finished)
+  })
+
   test("disabled built-in confinement survives restart after config changes", async () => {
     const { ask, home, run } = await setup([{ text: "Done.", delay: 1_000 }])
     writeFileSync(join(home, "config.json"), JSON.stringify({ model: "fake/m", sandbox: false }))
@@ -115,6 +159,58 @@ describe("cli", () => {
     const [a, b] = await Promise.all([ask({ collect: [tasks[0].id], wait: 30 }), ask({ collect: [tasks[0].id], wait: 30 })])
     assert.deepEqual([a.tasks[0], b.tasks[0]].map((t: any) => t.resumed), [1, 1], JSON.stringify([a, b]))
     assert.equal(fake.requests.length, 2)
+  })
+
+  test("concurrent follow-ups cannot launch two workers or overwrite a turn", async () => {
+    const { ask, home, fake } = await setup([{ text: "Done.", delay: 500 }])
+    const first = await ask({ start: [{ prompt: "First" }], wait: 10 })
+    const id = first.tasks[0].id
+    const results = await Promise.all([ask({ continue: id, prompt: "Second" }), ask({ continue: id, prompt: "Third" })])
+    assert.equal(results.filter((r) => r.error).length, 1, JSON.stringify(results))
+    assert.equal((await ask({ collect: [id], wait: 10 })).tasks[0].state, "succeeded")
+    const record = JSON.parse(readFileSync(join(home, "sessions", id, "session.json"), "utf8"))
+    assert.equal(record.turns.length, 2)
+    assert.equal(fake.requests.length, 2)
+  })
+
+  test("collect cannot resurrect a worker while stop escalates to SIGKILL", { timeout: 20_000 }, async () => {
+    const { ask, home } = await setup([{ text: "Done." }])
+    const first = await ask({ start: [{ prompt: "First" }], wait: 10 })
+    const id = first.tasks[0].id
+    const folder = join(home, "sessions", id)
+    const child = spawn(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000)', "__worker", folder], { stdio: ["ignore", "pipe", "ignore"] })
+    await new Promise<void>((done) => child.stdout!.once("data", () => done()))
+    try {
+      const record = JSON.parse(readFileSync(join(folder, "session.json"), "utf8"))
+      record.turns[0].state = "running"
+      delete record.turns[0].answer
+      writeFileSync(join(folder, "session.json"), JSON.stringify(record))
+      writeFileSync(join(folder, "lock"), JSON.stringify({ pid: child.pid }))
+      const stopping = ask({ stop: [id] })
+      while (!existsSync(join(folder, "resume-1-1"))) await new Promise((done) => setTimeout(done, 20))
+      const [stopped, collected] = await Promise.all([stopping, ask({ collect: [id], wait: 10 })])
+      assert.equal(stopped.tasks[0].state, "stopped", JSON.stringify(stopped))
+      assert.equal(collected.tasks[0].state, "stopped", JSON.stringify(collected))
+      assert.equal(collected.tasks[0].resumed, undefined)
+      assert.equal(existsSync(join(folder, "lock")), false)
+    } finally { child.kill("SIGKILL") }
+  })
+
+  test("a killed write worker retains changes made before its restart", { timeout: 15_000 }, async () => {
+    const { ask, home, project, fake } = await setup([
+      { calls: [{ name: "write", args: { path: "added.txt", content: "before crash" } }] },
+      { text: "late", delay: 3_000 },
+      { text: "done" },
+    ])
+    execFileSync("git", ["init", "-q"], { cwd: project })
+    const { tasks } = await ask({ start: [{ prompt: "Task", write: true }] })
+    while (fake.requests.length < 2) await new Promise((done) => setTimeout(done, 20))
+    const folder = join(home, "sessions", tasks[0].id)
+    const { pid } = JSON.parse(readFileSync(join(folder, "lock"), "utf8"))
+    process.kill(pid, "SIGKILL")
+    const result = await ask({ collect: [tasks[0].id], wait: 10 })
+    assert.equal(result.tasks[0].state, "succeeded")
+    assert.deepEqual(result.tasks[0].changes, [{ path: "added.txt", change: "added" }])
   })
 
   test("once a task has been restarted, collect waits for all of them", async () => {

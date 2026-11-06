@@ -2,12 +2,10 @@
 //
 //   ask.sandbox --abi
 //       Prints the kernel's Landlock ABI version (0 when Landlock is off) and exits.
-//   ask.sandbox [-r PATH]... [-w PATH]... [--net none|ports|open] -- COMMAND [ARG]...
+//   ask.sandbox [-r PATH]... [-w PATH]... -- COMMAND [ARG]...
 //       Runs COMMAND so that it, and everything it starts, can:
 //       - read and run files only under the -r and -w paths, and write only under -w paths;
-//       - reach the network as --net says: "none", no internet sockets at all; "ports", TCP
-//         to any port but 80 and 443, so web traffic must go through the proxy ask names in
-//         HTTP_PROXY (needs ABI 4); "open", anything;
+//       - never create internet sockets;
 //       - connect only to Unix sockets it created itself (ABI 9; before that, seccomp refuses
 //         Unix sockets altogether, socket pairs aside);
 //       - not signal, or reach the abstract sockets of, processes outside (ABI 6);
@@ -40,7 +38,6 @@
 #define LL_RESTRICT_SELF 446
 #define LL_VERSION (1U << 0)
 #define LL_RULE_PATH 1
-#define LL_RULE_PORT 2
 
 #define FS_EXECUTE (1ULL << 0)
 #define FS_WRITE_FILE (1ULL << 1)
@@ -59,7 +56,6 @@
 #define FS_TRUNCATE (1ULL << 14)     // ABI 3
 #define FS_IOCTL_DEV (1ULL << 15)    // ABI 5
 #define FS_RESOLVE_UNIX (1ULL << 16) // ABI 9
-#define NET_CONNECT_TCP (1ULL << 1)  // ABI 4
 #define SCOPE_ABSTRACT_UNIX (1ULL << 0) // ABI 6
 #define SCOPE_SIGNAL (1ULL << 1)        // ABI 6
 
@@ -72,10 +68,6 @@ struct path_attr {
   uint64_t allowed;
   int32_t parent;
 } __attribute__((packed));
-struct port_attr {
-  uint64_t allowed;
-  uint64_t port;
-};
 
 // Rights that apply to a file, as opposed to a folder; a rule on a file may grant only these.
 #define FILE_RIGHTS (FS_EXECUTE | FS_WRITE_FILE | FS_READ_FILE | FS_TRUNCATE | FS_IOCTL_DEV)
@@ -86,7 +78,7 @@ static void fail(const char *what) {
 }
 
 static void usage(void) {
-  fprintf(stderr, "usage: ask.sandbox --abi\n       ask.sandbox [-r PATH]... [-w PATH]... [--net none|ports|open] -- COMMAND [ARG]...\n");
+  fprintf(stderr, "usage: ask.sandbox --abi\n       ask.sandbox [-r PATH]... [-w PATH]... -- COMMAND [ARG]...\n");
   exit(125);
 }
 
@@ -122,8 +114,8 @@ static void allow_path(int ruleset, const char *path, uint64_t rights) {
 // Denies when the loaded value equals k, otherwise falls through.
 #define DENY_IF(k) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (k), 0, 1), DENY
 
-/** Refuses io_uring, VM sockets, and Unix or internet sockets when asked to. */
-static void seccomp(int block_unix, int block_inet) {
+/** Refuses io_uring and internet/VM sockets; Unix sockets need Landlock resolution support. */
+static void seccomp(int block_unix) {
   struct sock_filter f[64];
   int n = 0;
   struct sock_filter head[] = {
@@ -150,7 +142,7 @@ static void seccomp(int block_unix, int block_inet) {
     struct sock_filter u[] = {DENY_IF(AF_UNIX)};
     memcpy(f + n, u, sizeof u), n += 2;
   }
-  if (block_inet) {
+  {
     struct sock_filter i[] = {DENY_IF(AF_INET), DENY_IF(AF_INET6)};
     memcpy(f + n, i, sizeof i), n += 4;
   }
@@ -165,7 +157,6 @@ int main(int argc, char **argv) {
     printf("%d\n", abi());
     return 0;
   }
-  const char *net = "none";
   char **reads = calloc(argc, sizeof *reads), **writes = calloc(argc, sizeof *writes);
   int nr = 0, nw = 0, i = 1;
   for (; i < argc; i++) {
@@ -173,29 +164,22 @@ int main(int argc, char **argv) {
     if (i + 1 >= argc) usage();
     if (strcmp(argv[i], "-r") == 0) reads[nr++] = argv[++i];
     else if (strcmp(argv[i], "-w") == 0) writes[nw++] = argv[++i];
-    else if (strcmp(argv[i], "--net") == 0) net = argv[++i];
     else usage();
   }
   if (i + 1 >= argc) usage();
   char **command = argv + i + 1;
-  int ports = strcmp(net, "ports") == 0, open_net = strcmp(net, "open") == 0;
-  if (!ports && !open_net && strcmp(net, "none") != 0) usage();
 
   int v = abi();
   if (v < 1) {
     errno = ENOSYS;
     fail("Landlock isn't available in this kernel");
   }
-  if (ports && v < 4) {
-    errno = ENOSYS;
-    fail("limiting the network needs Landlock ABI 4 (Linux 6.7)");
-  }
   uint64_t fs = FS_EXECUTE | FS_WRITE_FILE | FS_READ_FILE | FS_READ_DIR | FS_REMOVE_DIR | FS_REMOVE_FILE | FS_MAKE_CHAR | FS_MAKE_DIR |
                 FS_MAKE_REG | FS_MAKE_SOCK | FS_MAKE_FIFO | FS_MAKE_BLOCK | FS_MAKE_SYM;
   if (v >= 2) fs |= FS_REFER;
   if (v >= 3) fs |= FS_TRUNCATE;
   if (v >= 5) fs |= FS_IOCTL_DEV;
-  struct ruleset_attr attr = {.fs = fs, .net = ports ? NET_CONNECT_TCP : 0, .scoped = v >= 6 ? SCOPE_ABSTRACT_UNIX | SCOPE_SIGNAL : 0};
+  struct ruleset_attr attr = {.fs = fs, .net = 0, .scoped = v >= 6 ? SCOPE_ABSTRACT_UNIX | SCOPE_SIGNAL : 0};
   size_t size = v >= 6 ? sizeof attr : v >= 4 ? offsetof(struct ruleset_attr, scoped) : offsetof(struct ruleset_attr, net);
   int resolve = 0;
   long ruleset = -1;
@@ -211,15 +195,9 @@ int main(int argc, char **argv) {
   uint64_t read = (FS_EXECUTE | FS_READ_FILE | FS_READ_DIR | FS_IOCTL_DEV) & attr.fs;
   for (int k = 0; k < nr; k++) allow_path((int)ruleset, reads[k], read);
   for (int k = 0; k < nw; k++) allow_path((int)ruleset, writes[k], attr.fs);
-  if (ports)
-    for (uint64_t p = 1; p < 65536; p++) {
-      if (p == 80 || p == 443) continue;
-      struct port_attr rule = {.allowed = NET_CONNECT_TCP, .port = p};
-      if (syscall(LL_ADD_RULE, ruleset, LL_RULE_PORT, &rule, 0) != 0) fail("allowing a port");
-    }
 
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) fail("no_new_privs");
-  seccomp(!resolve, strcmp(net, "none") == 0);
+  seccomp(!resolve);
   if (syscall(LL_RESTRICT_SELF, ruleset, 0) != 0) fail("entering the Landlock sandbox");
   close((int)ruleset);
   execvp(command[0], command);

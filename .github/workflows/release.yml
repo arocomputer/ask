@@ -72,6 +72,7 @@ jobs:
           result=$(gh run list --workflow ci.yml --branch main --event push --commit "$COMMIT" --json status,conclusion -q '.[0] | "\(.status) \(.conclusion)"')
           [ "$result" = 'completed success' ] || { echo "CI on main ($COMMIT) is '$result'; wait for it to pass." >&2; exit 1; }
           if [ "$DRY_RUN" = true ]; then
+            pip install --quiet ziglang==0.13.0
             .github/release/package.sh "$TAG" "$RUNNER_TEMP/dist"
             .github/release/formula.sh "$TAG" "$RUNNER_TEMP/dist/checksums.txt" > "$RUNNER_TEMP/ask.rb"
             ruby -c "$RUNNER_TEMP/ask.rb"
@@ -117,6 +118,8 @@ jobs:
           result=$(gh run list --workflow ci.yml --branch main --event push --commit "$commit" --json status,conclusion -q '.[0] | "\(.status) \(.conclusion)"')
           [ "$result" = 'completed success' ] || { echo "CI on main ($commit) is '$result'; wait for it to pass." >&2; exit 1; }
       - run: bun install --frozen-lockfile
+      - name: Install Linux sandbox prerequisite
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: npm run check
       - run: node --test 'test/**/*.test.ts'
       - run: bun test ./test/

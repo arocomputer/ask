@@ -1,5 +1,10 @@
 # Requests
 
+If a batch fails during launch after earlier tasks started, the response includes both `error`
+and `tasks` with the already-started IDs; collect those tasks. Validation failures still start
+none. A successful write task may include `changesError` when final Git inspection failed;
+its answer remains successful, but the change list may be incomplete.
+
 Agents use ask by sending one JSON request on stdin and reading one JSON response on stdout. A
 heredoc keeps any prompt intact, quotes and all:
 

@@ -19,12 +19,12 @@
 // the agent conversation that started it (extensions.ts `parent`) and the repository it came
 // from, so "sessions" lists only the caller's own unless it asks for all.
 
-import { rmSync, statSync } from "node:fs"
+import { statSync } from "node:fs"
 import { resolve as absolute } from "node:path"
-import { readJSON, type Config, type Home } from "../base/home.ts"
+import { checkConfig, readJSON, type Config, type Home } from "../base/home.ts"
 import { resolve as model } from "./models.ts"
 import type { Failure } from "../agent/loop.ts"
-import { alive, claim, create, latest, list, lock, now, open, reload, save, scoped, status, transcript, unlock, worker, type Change, type Session, type State } from "./store.ts"
+import { active, alive, claim, create, latest, list, lock, now, open, reload, save, scoped, status, transcript, unlock, worker, type Change, type Session, type State } from "./store.ts"
 import { parent } from "../harnesses/extensions.ts"
 import { support } from "../sandbox/confine.ts"
 import { activity, steps } from "../agent/steps.ts"
@@ -114,6 +114,7 @@ export type Result = {
   answer?: string
   error?: Failure
   changes?: Change[]
+  changesError?: string
   /** Commits a write task made on top of where it started. */
   commits?: number
   /** Legacy cleanup report, retained for reading older turns. */
@@ -133,13 +134,14 @@ export type Result = {
 }
 
 /** `hint` appears when the tasks need the caller to do something differently. */
-export type Response = { tasks: Result[]; hint?: string } | { error: Failure }
+export type Response = { tasks: Result[]; hint?: string } | { error: Failure; tasks?: Result[] }
 
 const fragileHint =
   "This environment stops subagents when your command ends, so they only make progress while you wait. Collect again with the longest wait your shell allows."
 
 /** A request ask can't carry out, with what to send instead. */
 export class Invalid extends Error {
+  started?: Session[]
   hint?: string
   constructor(message: string, hint?: string) {
     super(message)
@@ -158,7 +160,7 @@ export async function handle(h: Home, request: unknown): Promise<Response> {
     return fragile ? { tasks, hint: fragileHint } : { tasks }
   } catch (err) {
     const e = err as Invalid
-    return { error: { message: e.message, ...(e.hint ? { hint: e.hint } : {}) } }
+    return { error: { message: e.message, ...(e.hint ? { hint: e.hint } : {}) }, ...(e.started?.length ? { tasks: e.started.map(result) } : {}) }
   }
 }
 
@@ -180,7 +182,13 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
         ready.push({ t, dir, model: await chosen(h, t.model) })
       }
       const started: Session[] = []
-      for (const r of ready) started.push(begin(h, r.t, r.dir, r.model))
+      try {
+        for (const r of ready) started.push(begin(h, r.t, r.dir, r.model))
+      } catch (err) {
+        const failure = new Invalid((err as Error).message, "some tasks may already have started; collect the returned task ids")
+        failure.started = started
+        throw failure
+      }
       return wait === undefined ? started.map(result) : collect(started, wait)
     }
     case "collect": {
@@ -193,23 +201,30 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       const found = find(h, req.continue)
       if (found.worktree && !present(found.worktree))
         throw new Invalid(`${found.id} worked in the worktree ${found.worktree.path}, which is gone`, "start a new task instead")
-      const s = lost(found) ?? found
-      const last = latest(s)
-      const dead = running(s) && !alive(s)
+      let s = lost(found) ?? reload(found)
+      let last = latest(s)
+      let dead = running(s) && !alive(s)
       if (!dead && running(s)) throw new Invalid(`${s.id} is still running`, `{"collect": ["${s.id}"]} first`)
       const { continue: _, wait: __, ...rest } = req
       if (rest.prompt === undefined) {
         only(rest, [], "continue without a prompt")
         if (last.state === "succeeded") throw new Invalid(`${s.id} finished; give it a prompt for its next turn`, `{"continue": "${s.id}", "prompt": "..."}`)
         resume(s)
-        return wait === undefined ? [result(s)] : collect([s], wait)
+        return wait === undefined ? [result(reload(s))] : collect([s], wait)
       }
       const t = task(rest, "continue")
+      const target = await chosen(h, t.model ?? last.model)
+      if (active(s) || !claim(s)) throw new Invalid(`${s.id} is changing or still running; collect it first`)
+      const fresh = reload(s)
+      if (fresh.turns.length !== s.turns.length || (latest(fresh).generation ?? latest(fresh).resumed ?? 0) !== (last.generation ?? last.resumed ?? 0) || active(fresh))
+        throw new Invalid(`${s.id} changed while continuing; collect it first`)
+      s = fresh
+      last = latest(s)
+      dead = running(s)
       if (dead) {
         Object.assign(last, { state: "failed", finished: now(), error: { message: "the worker stopped before the turn finished" } })
         delete last.retry
       }
-      const target = await chosen(h, t.model ?? last.model)
       s.turns.push({
         prompt: t.prompt,
         model: target,
@@ -264,6 +279,7 @@ export function result(s: Session): Result {
   if (t.answer !== undefined) r.answer = t.answer
   if (t.error) r.error = t.error
   if (t.changes?.length) r.changes = t.changes
+  if (t.changesError) r.changesError = t.changesError
   if (t.commits) r.commits = t.commits
   if (t.reverted?.length) r.reverted = t.reverted
   if (s.worktree) r.worktree = s.worktree
@@ -313,10 +329,14 @@ function lost(s: Session): Session | undefined {
 
 /** Restarts the latest turn from where its transcript stops, unless another caller already is. */
 function resume(s: Session) {
-  if (!claim(s)) return
+  if (active(s) || !claim(s)) return
+  const fresh = reload(s)
+  if (fresh.turns.length !== s.turns.length || latest(fresh).state === "succeeded" || active(fresh) ||
+      (latest(fresh).generation ?? latest(fresh).resumed ?? 0) !== (latest(s).generation ?? latest(s).resumed ?? 0)) return
+  s = fresh
   lock(s)
   const t = latest(s)
-  Object.assign(t, { state: "running", resumed: (t.resumed ?? 0) + 1 })
+  Object.assign(t, { state: "running", generation: (t.generation ?? t.resumed ?? 0) + 1, resumed: (t.resumed ?? 0) + 1 })
   delete t.error
   delete t.finished
   delete t.retry
@@ -365,8 +385,11 @@ function begin(h: Home, t: Task, dir: string, model: string): Session {
   try {
     launch(s)
   } catch (err) {
-    rmSync(s.folder, { recursive: true, force: true })
-    throw err
+    latest(s).state = "failed"
+    latest(s).finished = now()
+    latest(s).error = { message: `cannot launch worker: ${(err as Error).message}` }
+    save(s)
+    unlock(s)
   }
   return s
 }
@@ -376,9 +399,12 @@ function begin(h: Home, t: Task, dir: string, model: string): Session {
  * still starting is waited for, so it can't begin running after the stop.
  */
 async function stop(s: Session): Promise<Session> {
+  s = reload(s)
+  if (!running(s)) return s
+  if (!claim(s)) throw new Invalid(`${s.id} is changing; retry stop after collecting it`)
   let pid = worker(s)
-  for (const end = Date.now() + 30_000; !pid && alive(s) && Date.now() < end; pid = worker(s)) await new Promise((ok) => setTimeout(ok, 50))
-  if (!pid) return s
+  for (const end = Date.now() + 20_000; !pid && active(s) && Date.now() < end; pid = worker(s)) await new Promise((ok) => setTimeout(ok, 50))
+  if (!pid && active(s)) throw new Invalid(`${s.id} is still starting; retry stop`)
   const gone = async (ms: number) => {
     for (const end = Date.now() + ms; Date.now() < end; ) {
       if (!worker(s)) return true
@@ -387,23 +413,25 @@ async function stop(s: Session): Promise<Session> {
     return !worker(s)
   }
   const signal = (sig: NodeJS.Signals) => {
+    if (!pid || worker(s) !== pid) return
     try {
       process.kill(pid, sig)
     } catch {}
   }
   signal("SIGTERM")
-  if (!(await gone(10_000))) {
+  if (pid && !(await gone(5_000))) {
     signal("SIGKILL")
-    await gone(2_000)
+    if (!(await gone(2_000))) throw new Invalid(`${s.id} worker has not exited; retry stop`)
   }
   const fresh = reload(s)
   const t = latest(fresh)
+  t.generation = (t.generation ?? t.resumed ?? 0) + 1
   if (t.state === "running" || t.state === "retrying") {
     Object.assign(t, { state: "stopped", finished: now() })
     delete t.retry
-    save(fresh)
     unlock(fresh)
   }
+  save(fresh)
   return fresh
 }
 
@@ -412,6 +440,7 @@ async function stop(s: Session): Promise<Session> {
  * read turns; reject unsupported hosts before spending model quota.
  */
 async function chosen(h: Home, name: string | undefined): Promise<string> {
+  checkConfig(h)
   let m
   try {
     m = (await model(h, name)).model

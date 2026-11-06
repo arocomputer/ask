@@ -8,11 +8,11 @@
 
 import { spawn } from "node:child_process"
 import { closeSync, openSync } from "node:fs"
-import { join, relative } from "node:path"
+import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { connect } from "../providers/catalog.ts"
 import { changes, snapshot } from "../base/git.ts"
-import { readJSON, writeJSON, type Config, type Home } from "../base/home.ts"
+import { checkConfig, readJSON, writeJSON, type Config, type Home } from "../base/home.ts"
 import { readModels, resolve } from "./models.ts"
 import { web } from "../agent/search.ts"
 import { harness, settings, tools } from "../harnesses/extensions.ts"
@@ -104,104 +104,102 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     save(s)
     unlock(s)
   }
-  let target
-  try {
-    target = await resolve(h, t.model)
-  } catch (err) {
-    t.state = "failed"
-    t.error = { message: (err as Error).message }
-    return finish()
-  }
-  let models
-  try {
-    models = await readModels(h, target)
-  } catch (err) {
-    t.state = "failed"
-    t.error = { message: `cannot resolve the helper model: ${(err as Error).message}` }
-    return finish()
-  }
-  // Pin the turn's confinement choice across restarts; older turns default to enabled.
   let sandbox: Sandbox | undefined
-  if (target.model.protocol !== "harness") {
-    const can = t.sandbox === false ? undefined : support()
-    if (can && !can.ok) {
-      t.state = "failed"
-      t.error = { message: `write tasks need a sandbox, and ${can.detail}`, hint: can.fix }
-      return finish()
+  try {
+    checkConfig(h)
+    const target = await resolve(h, t.model)
+    const models = target.model.protocol === "harness" ? undefined : await readModels(h, target)
+    // Pin the turn's confinement choice across restarts; older turns default to enabled.
+    if (target.model.protocol !== "harness") {
+      const can = t.sandbox === false ? undefined : support()
+      if (can && !can.ok) {
+        t.state = "failed"
+        t.error = { message: `built-in tasks need a sandbox, and ${can.detail}`, hint: can.fix }
+        return
+      }
+      sandbox = await open(s.dir, t.write, t.sandbox !== false)
     }
-    sandbox = await open(s.dir, t.write, t.sandbox !== false)
+    // A killed worker must not redefine the baseline after it already changed files.
+    const baseline = join(s.folder, `before-${s.turns.length}.json`)
+    const prior = t.write ? readJSON<{ root: string; head: string; files: [string, string][] } | undefined>(baseline, undefined) : undefined
+    const before = t.write ? prior ? { ...prior, files: new Map(prior.files) } : snapshot(s.dir) : undefined
+    if (before && !prior) writeJSON(baseline, { ...before, files: [...before.files] })
+    const timeout = AbortSignal.timeout(t.timeout * 1000)
+    const messages = transcript(s)
+    const resuming = messages.filter((m) => m.role === "user").length >= s.turns.length
+    const onUpdate = (messages: Message[], usage: Usage) => {
+      saveTranscript(s, messages)
+      t.state = "running"
+      delete t.retry
+      t.usage = usage
+      save(s)
+    }
+    const common = {
+      model: target.model.id,
+      dir: s.dir,
+      prompt: resuming ? undefined : t.prompt,
+      messages,
+      write: t.write,
+      effort: t.effort,
+      schema: t.schema,
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      onUpdate,
+    }
+    const r =
+      target.model.protocol === "harness"
+        ? await runHarness(h, s, target.model.provider, { ...common, sandbox: t.sandbox !== false }, resuming)
+        : await run({
+            ...common,
+            provider: withRetries(connect(target.model, target.key, target.baseURL), (attempt, err) => {
+              t.state = "retrying"
+              t.retry = `${err.message} (attempt ${attempt})`
+              save(s)
+            }),
+            maxOutput: target.model.output,
+            contextLimit: target.model.context,
+            initialUsage: resuming ? t.usage : undefined,
+            checkpoint: readJSON<Checkpoint | undefined>(join(s.folder, "checkpoint.json"), undefined),
+            onCheckpoint(checkpoint, messages, usage) {
+              onUpdate(messages, usage)
+              writeJSON(join(s.folder, "checkpoint.json"), checkpoint)
+            },
+            session: s.id,
+            extra: await tools(h),
+            sandbox,
+            models,
+            search: web,
+            off: Object.entries(readJSON<Config>(h.config, {}).tools ?? {}).flatMap(([name, on]) => (on === false ? [name] : [])),
+          })
+    saveTranscript(s, r.messages)
+    t.usage = r.usage
+    t.steps = r.steps
+    if (r.answer !== undefined) {
+      t.state = "succeeded"
+      t.answer = r.answer
+    } else if (signal?.aborted) {
+      t.state = "stopped"
+    } else if (timeout.aborted) {
+      t.state = "failed"
+      t.error = { message: `timed out after ${t.timeout} seconds`, hint: "continue the session to let it go on, or give the task a longer timeout" }
+    } else {
+      t.state = "failed"
+      t.error = r.error
+    }
+    if (before) {
+      try {
+        const found = changes(before)
+        t.changes = found.changes
+        t.commits = found.commits
+        delete t.changesError
+      } catch (err) {
+        t.changesError = `change reporting failed: ${(err as Error).message}`
+      }
+    }
+  } catch (err) {
+    t.state = signal?.aborted ? "stopped" : "failed"
+    t.error = { message: (err as Error).message }
+  } finally {
+    try { await sandbox?.close() }
+    finally { finish() }
   }
-  const before = t.write ? snapshot(s.dir) : undefined
-  const timeout = AbortSignal.timeout(t.timeout * 1000)
-  const messages = transcript(s)
-  const resuming = messages.filter((m) => m.role === "user").length >= s.turns.length
-  const onUpdate = (messages: Message[], usage: Usage) => {
-    saveTranscript(s, messages)
-    t.state = "running"
-    delete t.retry
-    t.usage = usage
-    save(s)
-  }
-  const common = {
-    model: target.model.id,
-    dir: s.dir,
-    prompt: resuming ? undefined : t.prompt,
-    messages,
-    write: t.write,
-    effort: t.effort,
-    schema: t.schema,
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    onUpdate,
-  }
-  const r =
-    target.model.protocol === "harness"
-      ? await runHarness(h, s, target.model.provider, { ...common, sandbox: t.sandbox !== false }, resuming)
-      : await run({
-          ...common,
-          provider: withRetries(connect(target.model, target.key, target.baseURL), (attempt, err) => {
-            t.state = "retrying"
-            t.retry = `${err.message} (attempt ${attempt})`
-            save(s)
-          }),
-          maxOutput: target.model.output,
-          contextLimit: target.model.context,
-          initialUsage: resuming ? t.usage : undefined,
-          checkpoint: readJSON<Checkpoint | undefined>(join(s.folder, "checkpoint.json"), undefined),
-          onCheckpoint(checkpoint, messages, usage) {
-            onUpdate(messages, usage)
-            writeJSON(join(s.folder, "checkpoint.json"), checkpoint)
-          },
-          session: s.id,
-          extra: await tools(h),
-          sandbox,
-          models,
-          search: web,
-          off: Object.entries(readJSON<Config>(h.config, {}).tools ?? {}).flatMap(([name, on]) => (on === false ? [name] : [])),
-        }).finally(async () => {
-          const put = await sandbox?.close()
-          if (put?.length) t.reverted = put.map((p) => relative(s.dir, p) || p)
-        })
-  saveTranscript(s, r.messages)
-  t.usage = r.usage
-  t.steps = r.steps
-  if (r.answer !== undefined) {
-    t.state = "succeeded"
-    t.answer = r.answer
-  } else if (signal?.aborted) {
-    t.state = "stopped"
-  } else if (timeout.aborted) {
-    t.state = "failed"
-    t.error = { message: `timed out after ${t.timeout} seconds`, hint: "continue the session to let it go on, or give the task a longer timeout" }
-  } else {
-    t.state = "failed"
-    t.error = r.error
-  }
-  if (before) {
-    const found = changes(before)
-    const merged = new Map((t.changes ?? []).map((c) => [c.path, c]))
-    for (const c of found.changes) merged.set(c.path, c)
-    t.changes = [...merged.values()].sort((a, b) => a.path.localeCompare(b.path))
-    t.commits = (t.commits ?? 0) + found.commits
-  }
-  finish()
 }

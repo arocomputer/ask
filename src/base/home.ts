@@ -2,7 +2,8 @@
 // sessions and worktrees live, their shapes, and reading and writing them. Files are written
 // atomically and private to the user. Which model and key a task uses is sessions/models.ts.
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { randomUUID } from "node:crypto"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
@@ -27,6 +28,16 @@ export function home(root = process.env.ASK_HOME || join(homedir(), ".ask")): Ho
  */
 export type Config = { model?: string; models?: string[]; timeout?: number; sandbox?: boolean; extensions?: string[]; harnesses?: Record<string, Settings>; tools?: Record<string, boolean> }
 
+/** Refuse legacy safety settings that the new task protocol cannot silently honor. */
+export function checkConfig(h: Home): void {
+  const config = readJSON<Record<string, unknown>>(h.config, {})
+  if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("config.json must be an object")
+  const retired = ["max_cost", "worktree", "worktrees", "branches"].filter((key) => key in config)
+  if (retired.length) throw new Error(`legacy config settings need migration: ${retired.join(", ")}; back up config.json and remove these fields before starting tasks. See docs/migration.md; existing work is retained.`)
+  if (config.sandbox !== undefined && typeof config.sandbox !== "boolean") throw new Error("config.json sandbox must be true or false")
+  if (config.timeout !== undefined && (typeof config.timeout !== "number" || !Number.isFinite(config.timeout) || config.timeout <= 0 || config.timeout > 2_000_000)) throw new Error("config.json timeout must be seconds above 0 and at most 2000000")
+}
+
 /** What config.json's "harnesses" entry may say about one harness: another command, extra arguments, extra environment. */
 export type Settings = { command?: string; args?: string[]; env?: Record<string, string> }
 
@@ -50,10 +61,16 @@ export function readJSON<T>(path: string, fallback: T): T {
   }
 }
 
-/** Writes JSON through a temporary file, so readers never see half a file. */
+/** Flushes a private, uniquely named file before atomic replacement; readers never see half JSON. */
 export function writeJSON(path: string, value: unknown, mode = 0o600) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
-  const tmp = `${path}.${process.pid}.tmp`
-  writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n", { mode })
-  renameSync(tmp, path)
+  const tmp = `${path}.${randomUUID()}.tmp`
+  try {
+    const fd = openSync(tmp, "wx", mode)
+    try {
+      writeFileSync(fd, JSON.stringify(value, null, 2) + "\n")
+      fsyncSync(fd)
+    } finally { closeSync(fd) }
+    renameSync(tmp, path)
+  } finally { rmSync(tmp, { force: true }) }
 }

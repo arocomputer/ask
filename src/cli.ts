@@ -15,6 +15,7 @@ import { main as worker } from "./sessions/worker.ts"
 import { toolMain } from "./agent/tools.ts"
 import * as doctor from "./commands/doctor.ts"
 import * as install from "./commands/install.ts"
+import * as legacy from "./commands/legacy.ts"
 import * as models from "./commands/models.ts"
 import * as remove from "./commands/remove.ts"
 import * as sessions from "./commands/sessions.ts"
@@ -24,7 +25,7 @@ import * as toolsCommand from "./commands/tools.ts"
 import { Usage, type Command } from "./commands/command.ts"
 
 
-const commands: Record<string, Command> = { settings, doctor, models, sessions, show, tools: toolsCommand, install, remove }
+const commands: Record<string, Command> = { settings, doctor, models, sessions, show, legacy, tools: toolsCommand, install, remove }
 
 const environment = `ask reads these environment variables.
 
@@ -107,6 +108,7 @@ export async function main(argv: string[]): Promise<number> {
     process.stdout.write(`ask version ${version}\n`)
     return 0
   }
+  if (first === "clean") throw new Usage("automatic cleanup was removed; no files were deleted. Review work with git worktree list and ask legacy. See docs/migration.md before removing a checkout.")
   if (first === "help" || first === "--help" || first === "-h") {
     const topic = rest[0]
     if (!topic) process.stdout.write(overview())

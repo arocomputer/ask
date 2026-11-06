@@ -1,5 +1,12 @@
 # Sessions
 
+Upgrading from the Go version? [Migration](migration.md) covers read-only access through
+`ask legacy`, retained worktrees and the deliberate removal of automatic cleanup.
+
+Write turns save their initial raw-file baseline before executing, so changes made before a
+worker crash still appear after restart. If final Git inspection fails, `changesError` reports
+that separately without turning a successful model answer into a failed task.
+
 A session is one conversation with a subagent: one folder, one six-character id like `k3f9a2`,
 and one turn per prompt. `start` creates a session and its first turn; `continue` adds a turn.
 The subagent can continue conversations across turns, even when a turn changes models. If a

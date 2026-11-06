@@ -1,14 +1,27 @@
-# Security work in progress
+# Security boundary and review record
 
-This is a decision record for the TypeScript rewrite, not a claim that the sandbox is complete.
-The current branch is not ready to merge while the unresolved boundaries below remain.
+This records the enforced boundary, review findings and limits of the TypeScript rewrite.
+The sandbox is defense in depth for task execution, not isolation from a malicious host account.
+
+## Threat model
+
+The credential-bearing parent talks to providers. Untrusted task commands and filesystem tools
+run in filtered child processes under the configured OS policy. The boundary is the policy's
+read/write grants, not just the task directory: required system/toolchain paths are also readable.
+Fetch/search are separate parent capabilities with public-address checks. Extensions, harness
+configuration and the invoking user's host processes are trusted. A hostile same-user process
+can alter binaries, configuration and policy inputs before launch; this is not a multi-tenant VM.
+
+Config-only `"sandbox": false` explicitly removes this OS boundary. It is recorded per turn.
+Environment filtering remains, but account-readable files and network access are then available.
 
 ## Decisions
 
 - **Confine filesystem tools in child processes.** Implemented the existing OS boundary around
   read/list/grep/git/write/edit, with no workspace write grant for read-only tools. This removes
   filesystem execution from the credential-bearing parent without another native file protocol.
-  A `realpath` check followed by a separate open
+  File reads now reject non-regular files and hard-link aliases using the opened descriptor,
+  and use `O_NOFOLLOW` on the final component. A `realpath` check followed by a separate open
   has a race. On Linux, investigate `openat2` with a pinned root descriptor and
   `RESOLVE_BENEATH` plus `RESOLVE_NO_MAGICLINKS`; `O_NOFOLLOW` alone covers only the final
   component. On macOS, investigate descriptor-relative `openat` with `O_RESOLVE_BENEATH` and
@@ -45,8 +58,11 @@ The current branch is not ready to merge while the unresolved boundaries below r
   The Claude Code and Codex harnesses run their own policies; that is a separate boundary.
 - Compiled binaries performed confined reads through a fake provider on Linux and macOS; an
   installed npm tarball did the same on Linux. Existing checkout build outputs were preserved.
-- Two independent ask reviews timed out after 180 seconds without findings. They are not
-  evidence of a successful independent review.
+- Earlier independent reviews timed out. Subsequent reviews with `opencode-go/gpt-6-luna` and
+  `opencode-go/glm-5.3` completed and found concrete issues: lifecycle cleanup, hard-link aliases,
+  stop/restart/continue races, lost pre-crash change baselines, worker identity and persistence.
+  Fixes have focused regressions. Reviewer suggestions to recursively delete partial worktrees
+  were deliberately rejected: retain partial data and report its path for manual recovery.
 
 ## Remaining validation
 

@@ -23,6 +23,10 @@ export type Turn = {
   write: boolean
   /** OS confinement selected when the turn starts. Missing on older turns means enabled. */
   sandbox?: boolean
+  /** Serializes stop/restart transitions independently of the reported restart count. */
+  generation?: number
+  /** Outcome remains valid even if final Git change reporting fails. */
+  changesError?: string
   effort?: string
   schema?: object
   /** Seconds before the turn is stopped. */
@@ -164,16 +168,40 @@ export function unlock(s: Session) {
 
 /** True while a worker runs the latest turn, or a launcher is starting or restarting one. */
 export function alive(s: Session): boolean {
+  if (active(s)) return true
+  return held(claimPath(s))
+}
+
+/** A worker or launcher, excluding the caller's transition claim. */
+export function active(s: Session): boolean {
   if (worker(s)) return true
   const starting = readJSON<{ starting?: number }>(join(s.folder, "lock"), {}).starting
-  if (starting && Date.now() - starting < startup) return true
-  const claimed = statSync(restart(s), { throwIfNoEntry: false })
-  return !!claimed && Date.now() - claimed.mtimeMs < startup
+  return !!starting && Date.now() - starting < startup
 }
 
 /** Where the next restart of the latest turn is claimed. */
 function restart(s: Session): string {
-  return join(s.folder, `resume-${s.turns.length}-${(latest(s).resumed ?? 0) + 1}`)
+  return join(s.folder, `resume-${s.turns.length}-${(latest(s).generation ?? latest(s).resumed ?? 0) + 1}`)
+}
+
+/** Abandoned claims use immutable child slots, avoiding races deleting another caller's lock. */
+function claimPath(s: Session): string {
+  let path = restart(s)
+  for (;;) {
+    const info = statSync(join(path, "retry"), { throwIfNoEntry: false })
+    if (!info) return path
+    path = join(path, "retry")
+  }
+}
+
+/** A live transition owner keeps its claim even when paused longer than the startup grace. */
+function held(path: string): boolean {
+  const info = statSync(path, { throwIfNoEntry: false })
+  if (!info) return false
+  const owner = readJSON<{ pid?: number }>(join(path, "owner"), {}).pid
+  if (!owner) return Date.now() - info.mtimeMs < startup
+  try { process.kill(owner, 0); return true }
+  catch (err) { return (err as NodeJS.ErrnoException).code !== "ESRCH" }
 }
 
 /**
@@ -181,9 +209,14 @@ function restart(s: Session): string {
  * so two requests that find the same lost turn never restart it twice.
  */
 export function claim(s: Session): boolean {
+  let path = claimPath(s)
+  const info = statSync(path, { throwIfNoEntry: false })
+  if (info && !held(path)) path = join(path, "retry")
   try {
-    mkdirSync(restart(s))
-    return true
+    mkdirSync(path)
+    writeJSON(join(path, "owner"), { pid: process.pid })
+    // A process paused before publishing its owner may have lost this slot to a retry.
+    return claimPath(s) === path
   } catch {
     return false
   }
@@ -200,9 +233,12 @@ export function worker(s: Session): number | undefined {
   }
   try {
     const command = execFileSync("ps", ["-p", String(pid), "-o", "command="], { stdio: ["ignore", "pipe", "ignore"] }).toString()
-    return command.includes(s.folder) ? pid : undefined
+    return command.trimEnd().endsWith(` __worker ${s.folder}`) ? pid : undefined
   } catch {
-    return undefined
+    try { process.kill(pid, 0) }
+    catch (err) { if ((err as NodeJS.ErrnoException).code === "ESRCH") return undefined }
+    // Fail closed if ps is unavailable: do not duplicate a possibly live worker.
+    throw new Error(`cannot verify worker ${pid}; ensure ps is installed before resuming or stopping ${s.id}`)
   }
 }
 

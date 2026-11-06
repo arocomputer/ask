@@ -4,7 +4,8 @@
 // bounded, and says how to get more when it was cut.
 
 import { execFile, spawn } from "node:child_process"
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
+import { constants } from "node:fs"
+import { mkdir, open, readdir, realpath, stat, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { open as confine } from "../sandbox/confine.ts"
@@ -112,7 +113,7 @@ const project: Tool = {
       for (const name of ["AGENTS.md", "CLAUDE.md"]) {
         try {
           const path = await resolve(root, join(d, name))
-          const text = (await readFile(path, "utf8")).trim()
+          const text = (await contents(path)).toString("utf8").trim()
           return text.length > 32 * 1024 ? text.slice(0, 32 * 1024) + "\n[truncated]" : text
         } catch {}
       }
@@ -135,6 +136,16 @@ export function secret(path: string): boolean {
   return /^\.env(\..+)?$/.test(name) && !/\.(example|sample|template|dist|defaults)$/.test(name)
 }
 
+/** Read one regular, singly linked file; aliases cannot bypass the environment-file guard. */
+async function contents(path: string): Promise<Buffer> {
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+  try {
+    const info = await file.stat()
+    if (!info.isFile() || info.nlink !== 1) throw new Error("only regular files without hard-link aliases can be read")
+    return await file.readFile()
+  } finally { await file.close() }
+}
+
 const patternNote = "A pattern without a slash matches file names anywhere, like *.ts; with a slash it matches paths, like src/**/*.ts."
 
 const read: Tool = {
@@ -148,7 +159,7 @@ const read: Tool = {
   async run(args, { dir }) {
     const path = await resolve(dir, str(args, "path"))
     if (secret(path)) throw new Error(`${str(args, "path")} is an environment file, which holds secrets, so read doesn't open it; its example, like .env.example, is fine`)
-    const b = await readFile(path)
+    const b = await contents(path)
     if (b.subarray(0, 8192).includes(0)) return `${str(args, "path")} is a binary file of ${b.length} bytes`
     const lines = b.toString("utf8").split("\n")
     if (lines.at(-1) === "") lines.pop()
@@ -228,7 +239,7 @@ const grep: Tool = {
       if (secret(rel)) continue
       const full = await resolve(dir, join(base, rel)).catch(() => undefined)
       if (!full || secret(full)) continue
-      const b = await readFile(full).catch(() => undefined)
+      const b = await contents(full).catch(() => undefined)
       if (!b || b.length > 2 * 1024 * 1024 || b.subarray(0, 8192).includes(0)) continue
       const shown = relative(root, join(base, rel))
       const lines = b.toString("utf8").split("\n")
@@ -266,7 +277,7 @@ const edit: Tool = {
     const path = await resolve(dir, str(args, "path"))
     const old = str(args, "old")
     if (!old) throw new Error("old must not be empty")
-    const text = await readFile(path, "utf8")
+    const text = (await contents(path)).toString("utf8")
     const count = text.split(old).length - 1
     if (count === 0) throw new Error(`old text not found in ${str(args, "path")}; read the file again and copy it exactly`)
     if (count > 1) throw new Error(`old text occurs ${count} times in ${str(args, "path")}; include more context`)

@@ -32,6 +32,7 @@ export async function run(h: Home, argv: string[]): Promise<number> {
     for (const step of done) out(step.startsWith("error:") ? `  ${step}` : `${st.gray("•")} ${step}`)
     for (const c of t.changes ?? []) out(`${c.change === "added" ? st.green("+") : c.change === "deleted" ? st.red("-") : st.yellow("~")} ${c.path}`)
     end(t, st, out)
+    if (t.changesError) out(st.yellow(clean(t.changesError)))
   })
   return 0
 }
