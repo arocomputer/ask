@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Bundle static, non-setuid bubblewrap 0.13.1 on Linux, with libcap 2.78, source archives,
+  licenses and an offline rebuild script. Prefer the bundle and probe system alternatives when
+  host policy blocks it; retain default-on confinement and fail closed when none work.
+- Expand sandbox regressions for racing path replacement, runtime Git hard links, fresh metadata
+  discovery and failed-setup cleanup; add policy/tool and extraction measurement runners.
 - Add read-only `ask legacy` access to Go-era session records and native transcripts. Retain
   old worktrees/extensions and reject retired safety-related settings until explicitly migrated.
   Automatic cleanup remains removed: main's #82 live/unlanded-work protection is preserved by

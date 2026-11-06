@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFileSync, spawnSync } from "node:child_process"
-import { existsSync, lstatSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync, mkdirSync, linkSync } from "node:fs"
+import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync, mkdirSync, linkSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
@@ -45,6 +45,29 @@ function repo(): string {
 }
 
 describe("sandbox", { skip: !can.ok && `this machine can't sandbox: ${!can.ok && can.detail}` }, () => {
+  test("a hard-link alias created during execution cannot make existing Git metadata writable", async () => {
+    const dir = repo()
+    const original = readFileSync(join(dir, ".git/config"), "utf8")
+    const r = await inside(dir, "ln .git/config alias && printf poison > alias")
+    assert.notEqual(r.code, 0, r.out)
+    assert.equal(readFileSync(join(dir, ".git/config"), "utf8"), original)
+  })
+
+  test("failed policy construction removes all newly created scratch state", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "ask-bad-policy-")))
+    const scratch = realpathSync(mkdtempSync(join(tmpdir(), "ask-scratch-parent-")))
+    symlinkSync(dir, join(dir, ".git"))
+    const before = process.env.TMPDIR
+    try {
+      process.env.TMPDIR = scratch
+      await assert.rejects(open(dir), /symlinked Git/)
+      assert.deepEqual(readdirSync(scratch), [])
+    } finally {
+      if (before === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = before
+    }
+  })
+
   test("a command writes its own folder and temp folder, and nothing else", async () => {
     const dir = repo()
     const outside = mkdtempSync(join(tmpdir(), "ask-outside-"))

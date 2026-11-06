@@ -56,7 +56,7 @@ cat <<RUBY
 class Ask < Formula
   desc "Hand tasks to subagents that work in the background"
   homepage "https://github.com/arocomputer/ask"
-  license "MIT"
+  license all_of: ["MIT", "LGPL-2.1-or-later", "BSD-3-Clause"]
 
   livecheck do
     url :stable
@@ -75,7 +75,6 @@ class Ask < Formula
   end
 
   on_linux do
-    depends_on "bubblewrap"
     on_arm do
       url "$(url linux_arm64)"
       sha256 "$linux_arm64"
@@ -90,6 +89,10 @@ class Ask < Formula
     bin.install "ask"
     # Landlock/seccomp enforcement inside bubblewrap for commands and filesystem tools.
     bin.install "ask.sandbox" if OS.linux?
+    if OS.linux?
+      bin.install "ask.bwrap"
+      pkgshare.install "ask.sandbox.sources.tar.gz"
+    end
   end
 
   def caveats
