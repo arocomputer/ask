@@ -177,7 +177,7 @@ async function signIn(h: Home): Promise<boolean> {
       }
       const stop = new AbortController()
       const back = attempt.callback.then((address) => (stop.abort(), address))
-      const pasted = line("Paste the address, or finish in the browser:", stop.signal, "finished in the browser")
+      const pasted = line("Paste callback URL:", stop.signal, "finished in the browser")
       const address = (await Promise.race([back, pasted.then((v) => v ?? back)])) as string
       const sp = spinner("Signing in")
       try {

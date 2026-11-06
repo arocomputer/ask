@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show callback URL input on its own line with a character count and Enter hint, so ChatGPT
+  login pastes remain visible on narrow SSH terminals.
 - Bundle static, non-setuid bubblewrap 0.13.1 on Linux, with libcap 2.78, source archives,
   licenses and an offline rebuild script. Prefer the bundle and probe system alternatives when
   host policy blocks it; retain default-on confinement and fail closed when none work.

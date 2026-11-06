@@ -224,13 +224,18 @@ export async function input(text: string, initial = ""): Promise<string> {
 }
 
 /**
- * Asks for a line of text, shown as it is typed or pasted. Resolves to undefined when `signal`
+ * Asks for a line of text, with a separate preview and character count so narrow terminals
+ * confirm a paste even when the question fills the screen. Resolves to undefined when `signal`
  * aborts first, leaving `done` as the answer on screen.
  */
 export async function line(text: string, signal: AbortSignal, done: string): Promise<string | undefined> {
   const screen = canvas()
   let value = ""
-  const render = () => screen.draw([`${question(text)} ${value}`])
+  const render = () => screen.draw([
+    question(text),
+    value || "Paste here, then press Enter",
+    value ? `${value.length} characters · Enter to submit` : "Waiting for pasted address",
+  ])
   render()
   await keys((k) => {
     if (k === "\r" || k === "\n") return value.trim().length > 0 || undefined

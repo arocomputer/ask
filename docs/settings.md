@@ -54,7 +54,9 @@ requests count against your plan. Manage how much ask may use at
 ! Open this link on any device to sign in with ChatGPT:
 https://auth.openai.com/api/accounts/authorize?...
   After you approve, your browser lands on a page that won't load. Copy that page's address and paste it here.
-? Paste the address, or finish in the browser: pasted
+? Paste callback URL:
+http://127.0.0.1:1455/auth/callback?...
+… characters · Enter to submit
 ✓ Signed in to ChatGPT as you@example.com
 ! You're using your ChatGPT plan. Manage how much ask may use at https://chatgpt.com/settings/usage
 ```
@@ -62,7 +64,9 @@ https://auth.openai.com/api/accounts/authorize?...
 It works wherever ask runs. When ask runs at your screen, it opens your browser, and the sign-in
 finishes by itself when the browser comes back. Over SSH, or anywhere without a screen, open
 the link on any device, your phone included; after you approve, paste the address the browser
-lands on. Both ways are always open, so nothing needs choosing.
+lands on, then press Enter. The prompt shows the pasted address separately and reports its
+character count, including on narrow phone terminals. SSH is detected automatically; there is
+no `--remote` flag. Both ways are always open, so nothing needs choosing.
 
 The models are your account's own, named `chatgpt/MODEL`. The sign-in renews itself; removing
 ChatGPT in `ask settings` signs out, ending the session with OpenAI too. One ChatGPT account at a
