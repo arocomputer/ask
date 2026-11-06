@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   test:
+    name: ${{ matrix.name }}
     # Fixtures must not inherit runner-global checkout filters (notably Git LFS).
     env:
       GIT_CONFIG_NOSYSTEM: "1"
@@ -22,7 +23,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            name: Linux
+          - os: macos-latest
+            name: macOS
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
