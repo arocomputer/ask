@@ -32,7 +32,7 @@ Options
   --dir DIR         Installation folder (default: ~/.local/bin, or ASK_INSTALL_DIR)
   -h, --help        Show this help without installing anything
 
-Run the installer again to update. Then run ask setup.
+Run the installer again to update. Then run ask settings.
 HELP
       exit 0 ;;
     *) fail "unknown option $1; options: --version vX.Y.Z, --dir DIR" ;;
@@ -90,17 +90,34 @@ if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
   fail "checksum mismatch for $archive; refusing to install"
 fi
 
-tar -xzf "$work/$archive" -C "$work" ask
-if [ ! -f "$work/ask" ] || [ -L "$work/ask" ]; then
-  fail "$archive has no ask binary"
+# The Linux helper is ask.sandbox; older archives used sandybox or had no helper.
+members=ask
+if [ "$os" = linux ]; then
+  tar -tzf "$work/$archive" > "$work/members"
+  if grep -qx 'ask.sandbox' "$work/members"; then members="ask ask.sandbox"
+  elif grep -qx 'sandybox' "$work/members"; then members="ask sandybox"
+  fi
 fi
+# shellcheck disable=SC2086 # members is a word list on purpose
+tar -xzf "$work/$archive" -C "$work" $members
+for m in $members; do
+  if [ ! -f "$work/$m" ] || [ -L "$work/$m" ]; then
+    fail "$archive has no $m binary"
+  fi
+done
 got=$("$work/ask" --version 2>/dev/null || true)
-[ "$got" = "$version" ] || fail "$archive says it is \"$got\", not $version"
+# Releases before v0.4.0 print the bare tag; later ones print "ask version X.Y.Z".
+[ "$got" = "$version" ] || [ "$got" = "ask version ${version#v}" ] || fail "$archive says it is \"$got\", not $version"
+if [ "$os" = linux ] && [ "$got" != "$version" ] && [ "$members" = ask ]; then
+  fail "$archive has no sandbox helper"
+fi
 
 mkdir -p "$dir"
-cp "$work/ask" "$dir/.ask.next"
-chmod 755 "$dir/.ask.next"
-mv -f "$dir/.ask.next" "$dir/ask"
+for m in $members; do
+  cp "$work/$m" "$dir/.$m.next"
+  chmod 755 "$dir/.$m.next"
+  mv -f "$dir/.$m.next" "$dir/$m"
+done
 echo "Installed $dir/ask"
 
 case ":$PATH:" in
@@ -108,4 +125,4 @@ case ":$PATH:" in
   *) echo "Add $dir to your PATH, for example in ~/.zshrc or ~/.bashrc:"
      echo "  export PATH=\"$dir:\$PATH\"" ;;
 esac
-echo "Next: ask setup"
+echo "Next: ask settings"

@@ -1,0 +1,35 @@
+{
+  "name": "@arocomputer/ask",
+  "version": "0.4.0-dev",
+  "description": "Hand tasks to subagents",
+  "license": "MIT",
+  "type": "module",
+  "repository": "github:arocomputer/ask",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "ask": "dist/src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "dist/native",
+    "dist/package.json"
+  ],
+  "scripts": {
+    "check": "tsc",
+    "test": "GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null node --test 'test/**/*.test.ts' && GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null bun test ./test/",
+    "build": "rm -rf dist && tsc --noEmit false --declaration --rewriteRelativeImportExtensions --outDir dist --rootDir . && mkdir -p dist/native/build && cp native/sandbox.c dist/native/ && (cp native/build/ask.sandbox-* dist/native/build/ 2>/dev/null || true)",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,7 +1,15 @@
 # Install
 
-ask is a single binary with no runtime or library dependencies. Git is needed for worktrees and
-for reporting what a write session changed.
+Worker identity checks need the system `ps` command (`procps` on minimal Linux images).
+`ask doctor` checks it; ask refuses to guess whether an unverified worker is safe to restart or stop.
+
+The installer and Homebrew give you one self-contained binary, and on Linux `ask.sandbox`, the
+small helper that confines commands and filesystem tools. Through npm, ask runs on Node 24 or newer,
+and the package carries `ask.sandbox` too. Git is needed for worktrees and for listing what a
+write task changed. Built-in tasks need Linux with Landlock, `bubblewrap` and working unprivileged
+user namespaces, or macOS with Seatbelt. On Debian/Ubuntu, install `bubblewrap` with your system
+package manager. Homebrew installs the dependency on Linux. `ask doctor` probes availability;
+ask does not change host security settings or fall back to unconfined filesystem tools.
 
 ## The installer
 
@@ -10,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | s
 ```
 
 It downloads the release archive for your system (macOS or Linux, Intel or ARM), checks it against
-the release's `checksums.txt`, and installs `ask` into `~/.local/bin`, saying so if that isn't on
+the release's `checksums.txt`, and installs `ask` (and on Linux `ask.sandbox`) into `~/.local/bin`, saying so if that isn't on
 your `PATH`. It never edits your shell files. Options, after `sh -s --`:
 
 ```sh
@@ -31,13 +39,14 @@ brew install ask
 
 Each release updates the formula, [`ask.rb`](../ask.rb), so `brew upgrade ask` brings the latest.
 
-## With Go
+## npm
 
 ```sh
-go install github.com/arocomputer/ask@latest
+npm install -g @arocomputer/ask
 ```
 
-Go 1.26 or newer; put `$(go env GOPATH)/bin` on your `PATH`.
+The same package is a library: `import { handle } from "@arocomputer/ask"` takes the requests
+described in [Requests](requests.md) and returns the same responses.
 
 ## By hand
 
@@ -50,15 +59,14 @@ archive's build provenance can be verified with
 ## Set up
 
 ```sh
-ask setup
+ask settings
 ```
 
-It asks for a provider key (offering the one OpenCode already has), downloads the model list,
-sets your default model, and writes the ask skill for the agents installed on this machine; see
-[Setup](setup.md). Then try a session in a project directory:
+It asks for a provider, its key and the models you want; see [Settings](settings.md). Then check
+everything works:
 
 ```sh
-ask --wait "What does this project do?"
+ask doctor
 ```
 
 ## Where ask keeps things
@@ -67,12 +75,9 @@ Everything is in `~/.ask` (set `ASK_HOME` to move it), and nothing is there unti
 
 ```text
 ~/.ask/
-├── config.json      your defaults (see config.md)
-├── auth.json        provider credentials, written by ask setup, mode 0600
-├── models.json      models you declare, with names and prices (see models.md)
-├── cache/           fetched data, safe to delete
-└── agent/
-    ├── sessions/    one folder per session (see sessions.md)
-    ├── worktrees/   write sessions' worktrees
-    └── extensions/  harnesses, tools and commands (see extensions.md)
+├── config.json      your default model, chosen models and timeout
+├── auth.json        pasted provider keys, mode 0600
+├── cache/           the model catalog, safe to delete
+├── sessions/        one folder per session (see sessions.md)
+└── worktrees/       the checkouts worktree tasks work in
 ```

@@ -2,7 +2,7 @@ name: Release
 
 # A tag vX.Y.Z on main releases ask: the same checks as CI, archives for macOS and Linux with
 # checksums and build provenance, notes from CHANGELOG.md, the Homebrew formula on main, and a
-# real install of the release on both systems. ./x release asks Actions to make the tag. A
+# real install of the release on both systems. .github/release/release.sh asks Actions to make the tag. A
 # vX.Y.Z-rc.N tag publishes a pre-release, which the formula and "latest" leave alone. A dry run
 # builds and verifies everything for the commit without tagging or publishing.
 on:
@@ -45,10 +45,10 @@ jobs:
           ref: main
           token: ${{ secrets.RELEASE_TOKEN }}
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          go-version-file: go.mod
-          check-latest: true
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Validate release and push its tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,6 +72,7 @@ jobs:
           result=$(gh run list --workflow ci.yml --branch main --event push --commit "$COMMIT" --json status,conclusion -q '.[0] | "\(.status) \(.conclusion)"')
           [ "$result" = 'completed success' ] || { echo "CI on main ($COMMIT) is '$result'; wait for it to pass." >&2; exit 1; }
           if [ "$DRY_RUN" = true ]; then
+            pip install --quiet ziglang==0.13.0
             .github/release/package.sh "$TAG" "$RUNNER_TEMP/dist"
             .github/release/formula.sh "$TAG" "$RUNNER_TEMP/dist/checksums.txt" > "$RUNNER_TEMP/ask.rb"
             ruby -c "$RUNNER_TEMP/ask.rb"
@@ -84,6 +85,9 @@ jobs:
           git push origin "refs/tags/$TAG"
 
   check:
+    env:
+      GIT_CONFIG_NOSYSTEM: "1"
+      GIT_CONFIG_GLOBAL: /dev/null
     permissions:
       actions: read
       contents: read
@@ -94,13 +98,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          check-latest: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: The tag is on main and has notes
         env:
           TAG: ${{ github.ref_name }}
@@ -119,10 +120,17 @@ jobs:
           commit=$(git rev-parse HEAD)
           result=$(gh run list --workflow ci.yml --branch main --event push --commit "$commit" --json status,conclusion -q '.[0] | "\(.status) \(.conclusion)"')
           [ "$result" = 'completed success' ] || { echo "CI on main ($commit) is '$result'; wait for it to pass." >&2; exit 1; }
-      - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - run: ./x check
-      - run: ./x audit
+      - run: bun install --frozen-lockfile
+      - name: Install Linux sandbox prerequisite
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - run: npm run check
+      - run: node --test 'test/**/*.test.ts'
+      - run: bun test ./test/
+      - run: shellcheck install.sh .github/release/*.sh
+      - name: Check the workflows
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP"
+          "$RUNNER_TEMP/actionlint"
 
   release:
     needs: check
@@ -135,14 +143,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          go-version-file: go.mod
-          check-latest: true
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Build and verify archives and checksums
         env:
           TAG: ${{ github.ref_name }}
-        run: .github/release/package.sh "$TAG" dist
+        run: |
+          pip install --quiet ziglang==0.13.0
+          .github/release/package.sh "$TAG" dist
       - name: Check generated Homebrew formula syntax
         env:
           TAG: ${{ github.ref_name }}
@@ -217,4 +227,4 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           sh install.sh --version "$TAG" --dir "$RUNNER_TEMP/ask"
-          test "$("$RUNNER_TEMP/ask/ask" --version)" = "$TAG"
+          test "$("$RUNNER_TEMP/ask/ask" --version)" = "ask version ${TAG#v}"

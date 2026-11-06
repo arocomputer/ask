@@ -14,52 +14,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  Linux:
-    runs-on: ubuntu-latest
+  test:
+    name: ${{ matrix.name }}
+    # Fixtures must not inherit runner-global checkout filters (notably Git LFS).
+    env:
+      GIT_CONFIG_NOSYSTEM: "1"
+      GIT_CONFIG_GLOBAL: /dev/null
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+          - os: macos-latest
+            name: macOS
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          check-latest: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
-      - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-      - run: ./x check
-      # The black-box harness builds subprocesses without race instrumentation.
-      - run: ./x test -race ./internal/...
-      - name: Verify release artifacts and generated formula offline
-        env:
-          GOPROXY: 'off'
-          GOSUMDB: 'off'
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      - name: Install Linux sandbox prerequisite
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+      - run: npm run check
+      # The same tests under both runtimes ask supports.
+      - run: node --test 'test/**/*.test.ts'
+      - run: bun test ./test/
+      - name: Install and run this checkout's npm package
         run: |
+          npm pack --pack-destination "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/ask-npm" "$RUNNER_TEMP"/arocomputer-ask-*.tgz
+          "$RUNNER_TEMP/ask-npm/node_modules/.bin/ask" --version
+      - name: Check the shell scripts
+        if: runner.os == 'Linux'
+        run: shellcheck install.sh .github/release/*.sh
+      - name: Check the workflows
+        if: runner.os == 'Linux'
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP"
+          "$RUNNER_TEMP/actionlint"
+      - name: Build and verify the release archives, and the formula they make
+        if: runner.os == 'Linux'
+        run: |
+          pip install --quiet ziglang==0.13.0
           .github/release/package.sh v0.0.0 "$RUNNER_TEMP/ask-release"
           .github/release/formula.sh v0.0.0 "$RUNNER_TEMP/ask-release/checksums.txt" > "$RUNNER_TEMP/ask.rb"
           ruby -c "$RUNNER_TEMP/ask.rb"
-      - run: ./x audit
       # The installer people run, against the latest release.
-      - run: sh install.sh --dir "$RUNNER_TEMP/ask" && "$RUNNER_TEMP/ask/ask" --version
-  macOS:
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          check-latest: true
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 22
-      # The platform-specific parts; source and workflow checks run on Linux.
-      - run: ./x lint
-      - run: ./x test
-      - run: ./x baymax
       - run: sh install.sh --dir "$RUNNER_TEMP/ask" && "$RUNNER_TEMP/ask/ask" --version

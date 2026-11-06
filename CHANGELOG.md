@@ -2,42 +2,123 @@
 
 ## Unreleased
 
-ask 2 is a rewrite around its own harness. It does not read ask 1's runs; see
-`docs/compatibility.md` for what changed.
+- Add read-only `ask legacy` access to Go-era session records and native transcripts. Retain
+  old worktrees/extensions and reject retired safety-related settings until explicitly migrated.
+  Automatic cleanup remains removed: main's #82 live/unlanded-work protection is preserved by
+  never deleting sessions or worktrees. See `docs/migration.md` for upgrade and rollback steps.
+- Close private execution state and finish the session even when turn preparation fails.
+- Serialize continuation, stop and restart transitions, validate worker argument tails, retain
+  pre-crash write baselines and flush JSON before atomic replacement. Report partial batch starts
+  and change-reporting failures without hiding running work or invalidating successful answers.
+- Reject hard-linked file aliases in file-reading tools. Remove obsolete native network modes;
+  use the exact bubblewrap executable that passed the namespace probe.
 
-- Run sessions with ask's own agent loop against OpenAI, OpenCode Console, OpenCode Go or any
-  endpoint speaking the OpenAI Responses protocol: `-m opencode-go/glm-5.3`, or a provider with a
-  `base_url` in auth.json. ask owns the tools (read, list, grep; write, edit and shell for `-w`),
-  the transcript, the activity and the exact usage. Read-only is enforced by the tools on offer,
-  tool paths stay in the session's directory, and commands never see provider credentials.
-- Make a session one conversation with one ID: `ask continue ID "..."` adds a turn, `ask wait`
-  returns the latest, and without a prompt `continue` resumes an interrupted turn.
-- Scope `ask sessions` and bare `ask wait` to the conversation that started them, read from
-  `ASK_PARENT`, `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, else to the repository it was
-  started in; `--all` shows every session.
-- Add extensions: folders in `~/.ask/agent/extensions/` whose `extension.json` adds a harness
-  (`claude:sonnet-5.5`), tools for ask's own harness, `ask NAME` commands, and notes on their
-  tools. `ask install` takes a built-in name (claude, codex), a folder or a git repository;
-  `ask remove` and `ask extensions` manage them.
-- Name a model `provider/model` for ask's own harness and `harness:model` for an external one.
-  Declare names and prices in `~/.ask/models.json`; the models.dev listing is cached in
-  `~/.ask/cache/`.
-- Lay out `~/.ask` as `config.json`, `auth.json`, `models.json`, `cache/` and `agent/` (sessions,
-  worktrees, extensions), creating nothing until it is used. `ask config` replaces `ask settings`.
-- Print one result record with `--json` from `wait`, `show`, `sessions` and `--wait` launches.
-- Render status, tables and help the way gh does: colored states with `✓ ✗ ! -` symbols, bold
-  IDs, dimmed details and uppercase sections on a terminal; plain stable lines and
-  tab-separated lists when piped.
-- Add `ask setup` as plain prompts, offering the keys OpenCode already holds.
-- Keep Claude Code and Codex as built-in extensions under contract 4, without their environment
-  policy; the Claude harness no longer refuses the `opusplan` alias.
-- Remove run names, batches, hooks, model roles, `environment.json`, `ask title`, `ask bench`,
-  the settings screen, `ask update`, `ask docs` and sixteen bundled agents. The binary has no
-  dependencies.
-- Make `ask clean` keep a worktree while its session is live, git locks it, it contains another
-  worktree, or its work is dirty or unlanded, and say why in the plan. `--contained` removes work
-  whose commits another branch holds but keeps its branch; `--superseded` also removes work a
-  main branch already matches after a rework.
+- Rename the bundled Linux helper to `ask.sandbox`. Add config-only `"sandbox": false` to
+  disable OS confinement for new turns, including shipped harnesses. Default remains enabled;
+  interrupted turns retain their recorded choice.
+
+- Confine built-in filesystem tools in credential-free child processes. Use bubblewrap plus
+  Landlock/seccomp on Linux and an explicit read allowlist on macOS. Git metadata is read-only
+  during execution; staging and commits are refused, and cleanup no longer restores Git files.
+  Linux now requires bubblewrap and working unprivileged user namespaces.
+- Protect workspace-local Git configuration includes; refuse missing or symlinked included
+  paths. Refuse worktree creation with external checkout filters or conditional Git includes.
+- Load project instructions inside the read-only sandbox and stop running Git status while
+  building prompts. The TypeScript `instructions()` helper now returns a promise.
+- Disable sandboxed command networking until a proxy-only boundary can be enforced; ask's
+  fetch and search tools still reach public addresses.
+- Keep recorded token usage when a worker resumes a turn, and report incomplete helper
+  extractions instead of presenting them as answers.
+- Compare working files without running Git clean filters during change bookkeeping.
+- Confine `grep` symlink targets, restore Git hook symlinks after write tasks, and restrict
+  sandboxed commands to basic inherited environment settings.
+- Preserve interrupted tool calls when providers reuse IDs, and continue with the original
+  request if optional proactive compaction fails.
+- On context overflow, summarize older conversation into a checkpoint while preserving the
+  original transcript and the latest tool exchange.
+- Let `fetch` answer a question about a page with the turn's model, or an explicitly configured
+  `ASK_MODEL_SMALL=provider/model`, resolving the helper's own credentials and endpoint.
+
+ask is rewritten in TypeScript around its own agent loop. Agents use it through JSON requests,
+and the command line is for setting it up and looking at sessions. It does not read the runs of
+earlier versions.
+
+- Hand work to ask as one JSON request on stdin, with one JSON response on stdout: `start` many
+  tasks at once, optionally waiting for the first to finish; `collect`, `continue`, `stop` and
+  `show`. Results are small, and a request ask can't carry out says what to send instead. `ask
+  help requests` and `docs/requests.md` describe it; the library's `handle` takes the same
+  requests.
+- Run every task with ask's own agent loop, talking to the model directly over OpenAI's
+  Responses API, chat completions or Anthropic's Messages API, as the models.dev catalog says for
+  each model. Name models `provider/model`. Read-only tasks get only `read`, `list` and `grep`;
+  write tasks also get `write`, `edit` and `shell`, confined to their folder and without
+  provider keys in their environment.
+- Number the lines `read` returns, search with one `grep` everywhere, and let `list` find files
+  by pattern, like `src/**/*.ts`. Read-only tool calls run in parallel.
+- Make a session one conversation: `continue` adds a turn with everything before it, or without
+  a prompt resumes a stopped or failed one.
+- Resume a turn whose worker was stopped partway, from where it left off, the next time it is
+  collected, and tell the model which tool calls were cut off. In environments that end
+  background processes with each command, `collect` waits for every task and says to wait
+  longer.
+- Give a task its own git worktree and branch with `"worktree": true`, and list every file a
+  write task changed, including in commits it made.
+- Retry a failing provider within a time budget, without retrying a failure that was itself
+  slow, and report `retrying` meanwhile. Shorten old tool outputs when a conversation outgrows
+  the model's context.
+- Add `ask settings`, which adds providers with a pasted, checked key, chooses your models and
+  the default, and sets the timeout; `ask doctor`, which checks everything a task needs; and
+  `ask models`, `ask sessions` and `ask show`.
+- Sign in with ChatGPT in `ask settings` to use a Plus or Pro plan instead of an API key, as
+  OpenAI documents for open-source tools. It works from another device too: open the link
+  anywhere and paste back the address the browser lands on. The models are the account's own,
+  `chatgpt/MODEL`; the sign-in renews itself and signing out ends the session with OpenAI.
+- Run tasks with your own installed Claude Code (`claude/MODEL`) or Codex (`codex/MODEL`),
+  signed in its own way, after `ask install claude` or `ask install codex`; installing and
+  signing in to them stays theirs. Each run is kept to the task: no hooks, MCP servers,
+  settings files or API keys; Claude Code's file tools stay in the task's folder and its
+  write tasks run only in its sandbox; Codex's commands can't read your home folder or reach
+  the network. Change how each runs under `"harnesses"` in config.json.
+- Run every command of a write task in ask's own sandbox: it writes only the task's folder,
+  can't read your home folder, gets no secrets from the environment, can't reach your agents,
+  Docker or other programs, and reaches the web through a proxy that refuses private
+  addresses. On Linux it's Landlock, through `ask.sandbox`, a small helper that comes with ask; on
+  macOS, the system's sandbox. Nothing needs installing, and a write task is refused where
+  there is no sandbox. Git hooks and config a task changes are put back and reported as
+  `reverted`.
+- Give every task `git` (`status`, `diff`, `log`, `show`, `blame`), so read-only reviews can
+  see what changed; nothing a repository's config names can run through it.
+- Tell subagents how to work and how to shape the answer (lead with it, then `path:line`
+  evidence, what changed and how it was checked), with the date, platform and repository
+  state, and that what they read is material, not orders; Claude Code and Codex get the same
+  framing on top of their own prompts.
+- Give every task `fetch`, which reads a web page as text, 16k characters at a time with an
+  offset to read on, public addresses only, and
+  `search`, ask's own web search, free and with no key: titles, addresses and snippets from
+  DuckDuckGo, falling back to its lite page, Mwmbl and Wikipedia when one turns searches away. Claude
+  Code and Codex keep their own.
+- Turn any of a subagent's tools off, or back on, with `ask tools off NAME` (or `"tools"` in
+  config.json), and replace any of them with an extension's tool of the same name; `ask tools`
+  lists them all and where each comes from.
+- Keep environment files (`.env`, `.env.local`, ...) out of `read` and `grep`, and out of
+  Codex's reach; their examples stay readable.
+- Move a session between ask's own loop and any harness from one turn to the next: the new one
+  gets the conversation so far.
+- Install extensions that add a harness or tools with `ask install PATH|URL`, and undo any
+  install with `ask remove`.
+- Teach Claude Code and Codex to use ask with `ask install skill`: when to hand work off,
+  what a task's prompt needs, choosing read-only, write or worktree, and checking results.
+- List the calling conversation's own sessions with `{"sessions": {}}`, or everyone's with
+  `"all": true`; `ask sessions` lists this repository's, or everyone's with `--all`.
+- Say where to make a key, and how it starts, for the common providers in `ask settings`, and
+  reach xAI, Mistral, Groq, Together AI, Cerebras, DeepInfra and Perplexity models, which had
+  no endpoint before.
+- Don't offer OpenCode's free models, which answer 403 outside OpenCode, and say where to make an
+  OpenCode key.
+- Install with the installer, Homebrew, or `npm install -g @arocomputer/ask` on Node 24 or newer.
+- Remove the flag commands (`ask PROMPT`, `wait`, `continue`, `stop`, `setup`, `config`), the
+  old extensions and their contract, prices and cost limits, `models.json`, `ask clean`, and the
+  import of other programs' keys.
 
 ## v0.3.1 · 2026-11-02
 

@@ -1,164 +1,237 @@
-# Extensions
+# Harnesses and extensions
 
-An extension is a folder in `~/.ask/agent/extensions/`, named however you like, with an
-`extension.json` saying what its executables are for. It can do any of four things:
+A **harness** is a coding agent that ask runs for a turn, in place of its own loop. A model named
+`NAME/MODEL` goes to the harness called `NAME`. ask officially supports two, and anyone can add
+more as an **extension**:
 
-| Key | What it adds |
-| --- | --- |
-| `harness` | An external harness: models named `PREFIX:MODEL` run through its executable |
-| `tools` | Tools the model can call in ask's own harness |
-| `commands` | Your own `ask NAME` commands |
-| `instructions` | A note the model gets about the extension's tools |
+| Harness | Models | Runs |
+| --- | --- | --- |
+| `claude` | `claude/sonnet`, `claude/opus`, `claude/claude-sonnet-5-5`, … | your installed [Claude Code](https://code.claude.com/docs/en/setup) |
+| `codex` | `codex/default`, `codex/gpt-5.5`, … | your installed [Codex](https://developers.openai.com/codex/cli) |
+
+```sh
+ask install            # what there is, and what is installed
+ask install claude     # turn on the claude harness
+ask install codex
+ask install skill      # teach Claude Code and Codex to hand work to ask
+ask remove codex       # turn it off again
+```
+
+ask doesn't install Claude Code or Codex for you, and doesn't sign in to them. Install each one
+as its docs say, sign in its own way (`claude`, then `/login`; `codex login`), then run `ask
+install`. ask starts the unmodified program you installed and never reads, stores or passes on
+its sign-in. `ask install` and `ask doctor` say whether each one is ready.
+
+## What a harness can reach
+
+Neither harness gets your API keys: ask removes every `*_API_KEY` variable from their
+environment, so Claude Code and Codex use their own sign-ins, and the commands they run never
+see a key. To run one on an API key anyway, set it under `"env"` (below). Model names a CLI
+could take for a flag are refused.
+
+| | Read-only task | Write task |
+| --- | --- | --- |
+| ask's own loop | Confined read-only file/Git tools; no shell tool | Commands in ask's sandbox ([Sessions](sessions.md#read-and-write)): workspace/scratch writes, Git metadata protected, home hidden, no command networking |
+| Claude Code | Reads only the task's folder; runs nothing | Edits only the folder; commands in Claude Code's sandbox, home unreadable, no network. Refused where that sandbox can't run (Linux without `bubblewrap` and `socat`) |
+| Codex | Commands read the folder and system, not your home; write nothing; no network | Commands also write the folder and temp folders; no network |
+
+These are the default confined policies. Config-only `"sandbox": false` disables OS confinement
+for all three backends; see [settings](settings.md#sandbox). Harness command/argument overrides and
+extensions are trusted executable configuration and can change those guarantees. Tool-level read
+selection is not OS-enforced read-only access when confinement is disabled.
+
+Both harnesses can search the web with their own hosted search, which runs on Anthropic's or
+OpenAI's side, not on your machine: Claude Code with its WebSearch tool, Codex from OpenAI's
+search index ("cached", which is less open to prompt injection than live pages). Codex's
+commands can't read environment files (`.env`, `.env.local`, ...); their examples stay readable.
+
+## Moving between harnesses
+
+A session can change models from one turn to the next, even between ask's own loop and a
+harness, or from one harness to another. A harness continues its own session while turns stay
+with it. When a turn moves to a harness that wasn't part of the conversation, ask sends the
+conversation so far along with the prompt, as text, so the new harness picks up where the last
+one stopped.
+
+## Claude Code
+
+`claude/MODEL` takes Claude Code's own model names: an alias like `sonnet`, `opus`, `fable` or
+`haiku` (always its current model of that kind), or a full id like `claude-sonnet-5-5`. It is a
+different route from `anthropic/MODEL`, which is ask's own loop calling Anthropic's API with
+your API key.
+
+Each run is kept to the task with Claude Code's documented controls. It runs `--restricted`:
+its file tools can't reach outside the task's folder, and no settings file, yours or a
+repository's, changes the run. There are no hooks, MCP servers, slash commands, auto memory or
+background tasks, and anything that would ask for permission is refused.
+
+- A read-only task gets Read, Grep and Glob, and nothing else.
+- A write task also gets Edit, Write and Bash. Where Claude Code's sandbox can run (macOS, or
+  Linux with `bubblewrap` and `socat` installed), its commands must run inside it: they can
+  write only the task's folder and a temp folder, can't read your home folder, and have no
+  network. Where it can't run, Claude Code takes read-only tasks only; `ask install claude` and
+  `ask doctor` say so, with what to install.
+
+Anthropic permits running the unmodified Claude Code with the user's own sign-in, and asks
+developers building on it to use API keys; ask's reading is that running your own Claude Code
+on your own machine is the first case. Anthropic decides how its terms apply, so if that matters
+to you, use `anthropic/` models with an API key.
+
+## Codex
+
+`codex/default` uses Codex's own default model; `codex/MODEL` names one. ask needs Codex 0.166
+or newer. Each run skips your Codex `config.toml` (its MCP servers, profiles and hooks) and
+execution-policy rules, never asks for approval, and runs its commands under a Codex permission
+profile ask defines:
+
+- Commands can read the task's folder, the system, and the toolchains on your `PATH`. Your home
+  folder stays hidden. There is no network.
+- A write task can also write the task's folder and temp folders. Codex keeps `.git` read-only,
+  so a Codex write task changes files but doesn't commit; the result lists what changed.
+
+## Changing how a harness runs
+
+`ask install` adds an entry for the harness to `~/.ask/config.json`, which you can edit:
 
 ```json
 {
-  "harness": { "prefix": "claude", "command": "claude" },
-  "tools": [
-    { "name": "search_docs", "description": "Search the team docs", "command": "bin/search", "access": "read",
-      "parameters": { "type": "object", "properties": { "q": { "type": "string" } } } }
-  ],
-  "commands": { "review": "bin/review" },
-  "instructions": "NOTES.md"
+  "extensions": ["claude", "codex"],
+  "harnesses": {
+    "claude": { "command": "claude", "args": [], "env": {} },
+    "codex": { "command": "/opt/codex/bin/codex", "args": ["-c", "model_verbosity=\"low\""], "env": {} }
+  }
 }
 ```
 
-Every key is optional, and every path is relative to the folder and must stay inside it. An
-unknown key is an error, so a typo never silently does nothing. Nothing runs inside ask: each
-piece is a file or an executable you can read. `ask extensions` lists what each one provides,
-and a broken manifest is listed with its error and provides nothing.
+- `command`: the program, as a path or a name on your `PATH`.
+- `args`: extra arguments, placed after ask's own, so they can override them.
+- `env`: extra environment variables, set after ask removes API keys, so a key set here is
+  passed on.
+
+`"extensions"` lists what is turned on; taking a name out turns it off without uninstalling it,
+and an extension that is turned off is never loaded.
+`ask remove` deletes the `harnesses` entry only while it is as `ask install` wrote it.
+
+## The agent skill
+
+`ask install skill` writes a short skill, `skills/ask/SKILL.md`, into `~/.claude` and `~/.codex`
+(whichever exist), so those agents hand work to ask with JSON requests. A different file already
+there is kept as `SKILL.md.bak`, and `ask remove skill` puts it back.
+
+## Turning tools off, and replacing them
+
+ask's own loop gives a subagent `read`, `list`, `grep`, `git`, `fetch` and `search`, plus
+`write`, `edit` and `shell` in a write task. `ask tools` lists them, where each comes from, and whether
+it is on:
 
 ```sh
-ask extensions             # NAME, what it provides, where it came from
-ask install claude         # a built-in one
-ask install ./my-tools     # a folder: copied in
-ask install acme/ask-docs  # a GitHub repository, or any URL git can clone
-ask remove my-tools
+ask tools               # every tool, built-in or from an extension
+ask tools off shell     # write tasks edit files but run no commands
+ask tools on shell
 ```
 
-A folder you made yourself in `~/.ask/agent/extensions/` is never replaced by `install`.
+Turning one off sets it to `false` under `"tools"` in `~/.ask/config.json`, which you can also
+edit. An extension's tool with a built-in's name replaces the built-in, so an extension can
+swap ask's `search` for another engine, or `fetch` for one that renders pages. A read-only task
+only takes read-only tools, so a replacement for `read`, `list`, `grep`, `git`, `fetch` or
+`search` must say `readonly: true`. These are tools for ask's own loop; Claude Code and Codex use their
+own.
 
-## Harnesses
-
-ask runs sessions with its own harness against a model provider. A harness extension hands
-them to another coding agent instead: Claude Code, Codex, or anything with a non-interactive
-mode. Its `prefix` is how models name it, so `"prefix": "claude"` serves `claude:sonnet-5.5`,
-whatever the folder is called.
-
-### The built-in ones
+## Installing an extension
 
 ```sh
-ask install claude      # claude:sonnet-5.5 runs Claude Code
-ask install codex       # codex:gpt-5.5 runs Codex
+ask install ./my-harness
+ask install https://github.com/someone/ask-gemini
 ```
 
-They are built into ask and written to `~/.ask/agent/extensions/NAME/`; ask rewrites that copy
-when its own version changes. Each uses the CLI's own login and needs Node.js 18 or newer. Read
-sessions use the CLI's own read-only controls: Claude Code gets only its Read, Grep and Glob
-tools and no MCP servers or slash commands; Codex runs in its read-only sandbox. Their READMEs
-in [extensions/](../extensions/README.md) give the details and limits.
+An extension is a folder, or a git repository ask clones. ask loads it to check it, then copies
+it to `~/.ask/extensions/NAME` (made only when the first extension is installed). Installing it
+again updates it; `ask remove NAME` deletes it. An extension runs as part of ask, with your
+permissions, so install only ones you trust. One that fails to load, or takes over ten seconds,
+is skipped, and `ask doctor` says why.
 
-### The contract
+## Writing an extension
 
-`ASK_CONTRACT=4`. ask runs the executable as `COMMAND models` to list models, and as `COMMAND`
-for a turn, in the directory the session works in.
+An extension is an ES module, `index.js` or `package.json`'s `"main"`, whose default export
+names it and adds a harness, tools for ask's own loop, or both. It is loaded as it is, so it
+imports only Node's built-ins and its own files: bundle anything else. For TypeScript, the
+`Extension`, `Harness` and `Tool` types come from `@arocomputer/ask` as a development
+dependency.
 
-`COMMAND models` prints one model per line, as `id` or `id<TAB>name`, or nothing. Models you
-declare under the prefix in [models.json](models.md) are listed too.
+```js
+// index.js
+import { spawnSync } from "node:child_process"
 
-| Input | |
-| --- | --- |
-| stdin | The prompt, complete. |
-| `ASK_MODEL` | The model id, lowercase, without the prefix or effort. |
-| `ASK_EFFORT` | The effort from `#effort`, or empty. |
-| `ASK_ACCESS` | `read` or `write`. |
-| `ASK_SESSION` | Set on a later turn: the harness's own session to continue. |
-| `ASK_SCHEMA` | Set with `--schema`: a file holding the JSON Schema the answer must match. |
-| `ASK_TITLE` | A one-line title for the harness's own session or thread. |
-| `ASK_MAX_COST` | Set when the turn has a cost limit, in dollars. |
-| `ASK_REPORT` | A file path for the optional report. |
-| `ASK_EVENTS` | A private JSONL file for visible activity: append complete records as work happens. |
-| `ASK_HOME`, `ASK_BIN`, `ASK_CONTRACT` | ask's home, path and contract version. |
-
-| Output | |
-| --- | --- |
-| stdout | The answer, and nothing else. |
-| exit code | 0 when the answer is good, anything else when the turn failed. |
-| stderr | On failure, the reason as the last line. |
-| `$ASK_REPORT` | Optional JSON: `{"session", "name", "input", "output", "cached", "cost", "note"}`. |
-
-In the report, `session` is the CLI's own session, `name` the model that ran (`Sonnet 5.5`), the
-counts are tokens, `cost` is USD. Every field is optional; a missing metric is unknown, not
-zero. ask reads the report every half second while the harness runs and once after, so write
-it early (above all the session) and replace it atomically as you learn more. When the reported
-cost passes `ASK_MAX_COST`, ask stops the harness and records `stopped at the $2.00 cost limit`.
-
-Events are one JSON object per line, at most 16 KiB each: `{"type", "text", "tool"}` with type
-`message`, `tool`, `tool_result` or `reasoning`. Emit only what the CLI actually exposes.
-
-A later turn continues the CLI's own conversation: report the session as soon as the CLI says
-what it is, and when `ASK_SESSION` is set, resume it with the prompt. A harness that reports no
-session cannot take a later turn; ask says so.
-
-ask trusts the harness to keep `ASK_ACCESS=read`. An OS sandbox is strongest; else allow only
-the CLI's reading and search tools and deny its shell; else refuse read turns with exit 1. ask
-handles the rest: timeouts, stopping, recording, worktrees and what changed. It runs the
-harness in its own process group and ends everything in it when the turn stops.
-
-### A small one
-
-```sh
-#!/bin/sh
-# ~/.ask/agent/extensions/haiku-cli/run: runs Claude Code for ask.
-[ "$1" = models ] && { printf 'haiku-4.5\tHaiku 4.5\n'; exit 0; }
-set -- -p --model "claude-$(printf '%s' "$ASK_MODEL" | tr . -)"
-if [ "$ASK_ACCESS" = write ]; then
-  set -- "$@" --permission-mode bypassPermissions
-else
-  set -- "$@" --allowedTools Read,Grep,Glob --disallowedTools Edit,Write,NotebookEdit,Bash
-fi
-exec claude "$@"   # the prompt arrives on stdin
+export default {
+  name: "gemini",
+  harness: {
+    name: "gemini",
+    title: "Gemini",
+    command: "gemini",
+    models: () => [{ id: "pro", name: "Gemini Pro" }],
+    status(settings) {
+      const ok = spawnSync(settings.command ?? "gemini", ["--version"]).status === 0
+      return ok ? { ready: true, detail: "Gemini is installed" } : { ready: false, detail: "Gemini isn't installed", fix: "install it" }
+    },
+    async run(r) {
+      // r: model, dir, prompt, history, write, effort, schema, session, messages, settings, signal
+      // Call r.onSession(id) once its own session id is known, and r.onUpdate(messages, usage)
+      // after each step, so ask saves progress. Resolve with {answer} or {error}, plus the
+      // messages and usage.
+    },
+  },
+  tools: [
+    {
+      name: "weather",
+      description: "Today's weather for a city",
+      parameters: { type: "object", properties: { city: { type: "string" } }, required: ["city"] },
+      readonly: true,
+      async run(args, { dir, signal }) {
+        return "sunny"
+      },
+    },
+  ],
+}
 ```
 
-```json
-{ "harness": { "prefix": "cc", "command": "run" } }
+- **name**: lowercase letters, digits and dashes; the folder's name, and the harness's.
+- **harness.run** runs one turn. `history`, when given, is the conversation so far as text, for
+  a harness that wasn't part of it: send it before the prompt. `session` is the harness's own
+  session to continue, when there is one. `prompt` is absent when a stopped turn is resumed.
+  Stop when `signal` aborts. Honor `write`: a read-only task must not change anything. Keep the
+  agent to `dir` as far as it allows, and, as ask's own harnesses do, don't pass `*_API_KEY`
+  variables on unless `settings.env` sets them.
+- **harness.status** says whether it can run here, and how to fix it if not.
+- **harness.parent**, optional, reads the calling conversation's id from the environment a
+  command run by that agent gets, so ask can scope `sessions` to it.
+- **tools** are added to ask's own loop; one with a built-in's name replaces it. Read-only
+  tasks get only tools marked `readonly`, and may run those in parallel. `run(args, context)`
+  gets `context.dir`, the task's folder; `context.signal`, which aborts when the task stops;
+  and in a write task `context.sandbox`, whose `command(script)` gives the program, arguments
+  and environment that run a shell command in ask's sandbox. A tool that runs commands should
+  use it. It returns the text the model sees; what it throws reaches the model as an error.
+
+For example, an extension that replaces `search` with [ddgs](https://github.com/deedy5/ddgs),
+for people who have it installed (`pip install ddgs`):
+
+```js
+// ~/my-search/index.js; install with: ask install ~/my-search
+import { execFileSync } from "node:child_process"
+
+export default {
+  name: "ddgs",
+  tools: [
+    {
+      name: "search",
+      description: "Search the web; returns results with their title, address and a snippet.",
+      parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+      readonly: true,
+      async run({ query }) {
+        const script = "import json, sys; from ddgs import DDGS; print(json.dumps(DDGS().text(sys.argv[1], max_results=8)))"
+        const results = JSON.parse(execFileSync("python3", ["-c", script, String(query)], { encoding: "utf8" }))
+        return results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.href}\n   ${r.body}`).join("\n")
+      },
+    },
+  ],
+}
 ```
-
-```sh
-chmod +x ~/.ask/agent/extensions/haiku-cli/run
-ask -m cc:haiku-4.5 --wait "What does this project do?"
-```
-
-It reports no session or usage, so it cannot take a later turn. The built-in one does both;
-its source in [extensions/claude](../extensions/claude/) is the full example.
-
-## Tools
-
-A tool is an executable ask's own harness offers the model. It gets the call's arguments as
-JSON on stdin, runs in the session's directory, and writes its result on stdout; a nonzero exit
-is an error the model sees, with the last line of stderr. It runs at most 120 seconds and never
-sees provider credentials (`*_API_KEY`) or ask's own variables.
-
-- `name`: letters, digits, `_` and `-`; not a built-in tool's name (`read`, `list`, `grep`,
-  `write`, `edit`, `shell`).
-- `description`: what the model reads to decide when to call it. Required.
-- `parameters`: a JSON Schema object for the arguments; none means no arguments.
-- `access`: `read` offers the tool in every session; anything else, only in write sessions.
-  A read tool must not change anything: read-only sessions trust it.
-
-An MCP server becomes tools through a small extension that proxies it; MCP itself is not
-part of ask.
-
-## Commands
-
-`commands` maps names to executables: `ask review HEAD~3` runs the `review` executable with
-your terminal, its arguments, its signals and its exit status, and with `ASK_BIN` set so it
-can call this ask back. Built-in commands win over an extension's of the same name; `ask help`
-lists extension commands. Put `--` first to send a prompt that starts with a command's name:
-`ask -- review this design`.
-
-## Instructions
-
-`instructions` names a Markdown file the model reads in ask's own harness, after ask's own
-system prompt and the project's `AGENTS.md` or `CLAUDE.md`. It is for the extension's tools:
-when to use them and how. It is included when one of the extension's tools is offered, or
-always for an extension with no tools.

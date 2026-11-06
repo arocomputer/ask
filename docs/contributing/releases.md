@@ -3,8 +3,7 @@
 A release is a `vX.Y.Z` tag (without leading zeros) on a commit with successful push CI on
 main. Everything after the tag is automatic. A `vX.Y.Z-rc.N` tag is a pre-release: it gets the
 same checks and archives, is marked as such on GitHub, and neither "latest" nor the Homebrew
-formula move to it. Release scripts live in `.github/release/`; the general architectural
-guard lives in `.github/checks/`.
+formula move to it. Release scripts live in `.github/release/`.
 
 ## Cutting one
 
@@ -13,10 +12,10 @@ installed. Choose a tag that has not been released:
 
 ```sh
 tag=v0.3.0                  # replace with the next release's version
-./x release "$tag"        # opens a PR naming CHANGELOG.md's Unreleased section
+.github/release/release.sh "$tag"   # opens a PR naming CHANGELOG.md's Unreleased section
 # Merge the PR, then update your main checkout before running it again.
 git pull --ff-only
-./x release "$tag"        # checks CI passed on main, then dispatches Actions with that SHA
+.github/release/release.sh "$tag"   # checks CI passed on main, then dispatches Actions with that SHA
 ```
 
 The first run requires exactly one nonempty Unreleased section and leaves a fresh, empty
@@ -24,7 +23,7 @@ Unreleased heading above the release notes. The second requires exactly one none
 for the tag. If main advances between the CI check and dispatch, Actions refuses to tag it;
 update main, wait for its push CI, and retry. Existing tags and release branches are rejected.
 
-`./x release --dry-run vX.Y.Z` runs the same validation and then builds and verifies the
+`.github/release/release.sh --dry-run vX.Y.Z` runs the same validation and then builds and verifies the
 archives and the formula for that commit in Actions, tagging and publishing nothing. Use it to
 rehearse a release or to check that the pipeline still works.
 
@@ -34,10 +33,14 @@ rehearse a release or to check that the pipeline still works.
 tag starts the build and publication jobs:
 
 1. **check**: the stable tag is on main, its exact commit passed main push CI, and
-   `CHANGELOG.md` has exactly one nonempty section for it; `./x check` and `./x audit`.
+   `CHANGELOG.md` has exactly one nonempty section for it; the typecheck, the tests under Node
+   and Bun, ShellCheck and actionlint.
    Maintainer-pushed tags pass the same gates.
-2. **release**: `.github/release/package.sh` builds and verifies archives for macOS and Linux
-   (arm64 and amd64), preserving `ask_vX.Y.Z_OS_ARCH.tar.gz` names and the embedded version.
+2. **release**: `.github/release/package.sh` compiles ask with Bun into one file for macOS and
+   Linux (arm64 and amd64), in archives named `ask_vX.Y.Z_OS_ARCH.tar.gz`, with the version
+   from the tag. The Linux archives also hold `ask.sandbox`, which `zig cc` compiles statically
+   from `native/sandbox.c` for each architecture into `native/build/`, where `npm run build`
+   picks it up for the npm package; the workflow installs zig with `pip install ziglang`.
    The archives and `checksums.txt` receive build provenance; the GitHub release uses the
    changelog section as its notes. The generated formula must pass Ruby syntax checking
    before publication.
@@ -52,32 +55,30 @@ tag starts the build and publication jobs:
 
 ## Checking without publishing
 
-`./x check` needs Go, Node.js, ShellCheck, actionlint and Ruby on PATH. It checks workflow syntax
-(`./x workflows`) and the committed formula, alongside the existing offline checks. CI installs
-a pinned actionlint version and additionally runs `./x test -race ./internal/...` on Linux;
-the black-box tests build their own subprocesses without race instrumentation.
-
-CI exercises the real packaging and formula scripts before any release. To do the same locally,
-from the repository root, with dependencies already cached:
+CI runs the typecheck and the tests under Node and Bun on Linux and macOS, ShellCheck on the
+scripts, actionlint on the workflows, and the real packaging and formula scripts. To package
+locally, from the repository root, with Bun and npm on PATH:
 
 ```sh
 out=$(mktemp -d)
-GOPROXY=off .github/release/package.sh v0.0.0 "$out"
+.github/release/package.sh v0.0.0 "$out"
 .github/release/formula.sh v0.0.0 "$out/checksums.txt" > "$out/ask.rb"
 ruby -c "$out/ask.rb"
 rm -rf "$out"
 ```
 
-Packaging requires an empty output directory so stale assets cannot be published. It builds
-with CGO disabled, verifies that each archive contains only the executable `ask` and `LICENSE`,
-compares extracted contents, inspects target build metadata, runs `--version` only for a
-matching host target, and checks all four SHA-256 entries. It uses `sha256sum` or macOS's
-`shasum`. Formula generation requires one valid checksum per exact archive name and rejects
-invalid input before emitting Ruby. These checks require no GitHub credentials or publication.
+Packaging requires an empty output directory so stale assets cannot be published. It sets the
+version in `package.json` for the build and restores it after, verifies that each archive
+contains only the executable `ask` and `LICENSE`, compares extracted contents, checks each
+binary's system and architecture by its file type, runs `--version` only for the host's, and
+checks all four SHA-256 entries. Formula generation requires one valid checksum per exact
+archive name and rejects invalid input before emitting Ruby. None of this needs GitHub
+credentials or publishes anything.
 
 ## Where people get it
 
 - `curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | sh`: `install.sh` from main, which downloads
   the latest release and checks its checksum.
 - `brew install`: from `ask.rb` at the top of this repository, which Homebrew reads as a tap.
-- `go install github.com/arocomputer/ask@latest`.
+- `npm install -g @arocomputer/ask`, once the package is published to npm; no workflow publishes
+  it yet.

@@ -1,153 +1,144 @@
 # Sessions
 
-A session is one conversation with a subagent: one folder, one six-character ID like `k3f9a2`,
-and one turn per prompt. A launch creates a session and prints its ID once a worker holds it;
-`ask continue ID "..."` adds a turn. The worker lives in its own session of the operating
-system, so closing the terminal or the calling agent's tool does not end it. `ask stop ID` does.
+Upgrading from the Go version? [Migration](migration.md) covers read-only access through
+`ask legacy`, retained worktrees and the deliberate removal of automatic cleanup.
+
+Write turns save their initial raw-file baseline before executing, so changes made before a
+worker crash still appear after restart. If final Git inspection fails, `changesError` reports
+that separately without turning a successful model answer into a failed task.
+
+A session is one conversation with a subagent: one folder, one six-character id like `k3f9a2`,
+and one turn per prompt. `start` creates a session and its first turn; `continue` adds a turn.
+The subagent can continue conversations across turns, even when a turn changes models. If a
+provider reports that the context is full, or when a known model limit is approaching, ask summarizes older conversation into a checkpoint
+and keeps the latest tool exchange alongside it; the complete original transcript remains on disk.
+The summary may omit details, and its model call counts toward the turn's usage. If compaction
+cannot fit or fails, the turn fails with the transcript intact. Checkpoints are saved alongside
+the transcript and reused on later turns only when the transcript prefix still matches. Moving to a
+[harness](extensions.md) that wasn't part of the conversation, it
+gets the conversation so far as text with its prompt; turns that stay with one harness continue
+its own session.
+
+A turn is `running`, then `succeeded`, `failed` or `stopped`; it is `retrying` while the provider
+keeps failing and ask tries again. A session's state is its latest turn's.
+
+## Read and write
+
+A read-only task (the default) gets `read`, `list` and `grep` for files, `git` to see what
+changed and why (`status`, `diff`, `log`, `show`, `blame`, which can't run anything a
+repository's config names), and `fetch` and `search` for the web. It has no way to change a
+file or run a command. That is how ask enforces read-only.
+
+Every task also gets `fetch`, which reads a web page, such as documentation, as text. It runs in
+ask itself and reaches only public addresses: nothing on your machine, your network, or a
+cloud's metadata service.
+
+To extract an answer rather than read the raw page, a task can give `fetch` a `question`. The
+turn's model handles it by default; `ASK_MODEL_SMALL=provider/model` chooses a helper instead.
+The helper uses that provider's own credentials and endpoint. Its usage counts towards the turn.
+Extraction can miss details, so omit `question` to inspect the page directly. An incomplete
+extraction says to fetch the page directly rather than presenting partial text as an answer.
+
+And `search`, ask's own web search: it returns each result's title, address and snippet, for
+`fetch` to read in full. It is free and needs no key or provider: it asks DuckDuckGo, then
+DuckDuckGo's lite page, Mwmbl's open API, then Wikipedia's, so one engine turning a busy machine away
+doesn't stop the task. Like `fetch`, it runs in ask itself, not in the task's sandbox. `ask tools` turns any tool off,
+and an extension can replace any of them; see
+[turning tools off](extensions.md#turning-tools-off-and-replacing-them).
+
+Environment files (`.env`, `.env.local`, ...) hold a project's real secrets, so `read` refuses
+them and `grep` skips them; their examples, like `.env.example`, stay readable.
+
+A write task (`"write": true`) also gets `write`, `edit` and `shell`. Filesystem tools run in
+OS-confined child processes, with no workspace write grant for read-only tools. Their path
+checks restrict requests to the task folder. Each `shell` command runs in the same sandbox:
+
+- It can write only the task's folder, excluding Git metadata, and a
+  private temp folder, which is also its `HOME`. It can read the system and the tools on your
+  `PATH`, but not your home folder.
+- It inherits only basic process settings such as `PATH`, locale and terminal settings, not
+  arbitrary environment variables; it can't reach your SSH or GPG agent, the desktop session,
+  or Docker. Credentials stored in files inside the task folder remain accessible.
+- Its commands have no network access. The `fetch` and `search` tools still reach public web
+  addresses through ask itself.
+- It can't signal or look into your other programs, or gain privileges with `sudo`.
+- Existing Git metadata is read-only, including linked-worktree configuration and nested
+  repositories. Staging and commits are refused. Cleanup never restores Git files over changes
+  you made concurrently. Symlinked `.git` entries and hardlinked metadata files are refused.
+
+On Linux, install `bubblewrap`; working unprivileged user namespaces and Landlock are required.
+ask's bundled `ask.sandbox` helper applies Landlock and seccomp inside bubblewrap's mounts.
+These restrictions apply by default; see [settings](settings.md#sandbox) to disable confinement.
+On macOS, ask uses the system's Seatbelt sandbox. Harnesses use their own sandboxes.
+Older Linux kernels get less: before 7.1, commands can't use
+Unix sockets at all, so Python's process pools need one worker. Where there is no sandbox at
+all, built-in filesystem tools and write tasks are refused, with why; `ask doctor` shows what this machine has. Claude Code
+and Codex keep to their own sandboxes; see
+[what a harness can reach](extensions.md#what-a-harness-can-reach). When the folder is in a git repository, the result lists every file the turn
+added, modified or deleted, including those in commits it made, and how many commits.
+
+## Worktrees
+
+Creation refuses external Git checkout filters and conditional configuration includes, which
+could execute programs before the task sandbox exists. Use an existing checkout for those repositories.
+
+`"worktree": true` gives a write task a checkout of its own, so your files stay untouched. ask
+creates a branch `ask/NAME` from your current commit, where NAME comes from the prompt's first
+words, and checks it out in `~/.ask/worktrees/NAME`. Tasks started together get `NAME-2`,
+`NAME-3` and so on. The task works in the same subfolder you were in. The result names the
+worktree's path and branch, and later turns work there too. When you are done with it, merge the
+branch as you like and remove it with `git worktree remove`.
+
+## Resuming
+
+Each turn runs in a background worker, which saves the conversation after every step. If the
+worker is stopped partway (a crash, a reboot, or an environment that ends background processes
+when the command that started them ends), the next `collect` restarts the turn from where it
+stopped, up to ten times, and its result says `"resumed": N`. A tool call that was cut off reaches
+the model as interrupted, with a note to check whether it took effect before running it again,
+so a half-run command isn't silently repeated. Previously recorded usage carries into the resumed
+turn; usage from an interrupted provider call may not be available.
+
+Some agent environments end every process a command started once the command returns. There,
+subagents only make progress while a `collect` is waiting. Once ask sees that, `collect` waits
+for every task listed instead of the first, and the response carries a hint to use the longest
+wait the shell allows.
+
+`{"continue": ID}` without a prompt resumes a stopped or failed turn by hand.
+
+## What the subagent is told
+
+Its instructions ([`src/agent/system.ts`](../src/agent/system.ts)) say that it is a subagent
+whose final message is the whole answer, that what it reads (files, command output, web pages)
+is material and never orders, and how to shape that answer: the answer first, then `path:line`
+evidence and the commands it ran, what it changed and how it checked it, findings first in a
+review, and what it couldn't verify. They give the facts it would otherwise spend steps on:
+the folder, the repository's branch and whether it has uncommitted changes, the date, the
+platform, and whether it may write. Then how to work: effort scaled to the task, searching
+before reading, independent calls together, every claim grounded, the smallest fitting change,
+proven by running the tests. The project's own `AGENTS.md` (or `CLAUDE.md`), the nearest one
+between the task's folder and the repository root, follows. A task with a `schema` is told to
+answer with JSON matching it, and providers that support it are given the schema as the
+answer's format. Claude Code and Codex get the same framing on top of their own prompts.
+
+These words are measured, not guessed: [`bench/`](../bench/README.md) runs graded tasks on
+real models, and a change to them ships when it does at least as well.
+
+## Looking at sessions
 
 ```sh
-a=$(ask "Why does the login test fail?") || exit $?
-b=$(ask -m opencode-go/glm-5.3 "Review the session code for races.")
-ask show "$a"            # state and recent activity now
-ask wait "$a"            # the latest turn's answer; exit 1 if it failed
-ask wait "$a" "$b"       # the first to finish; stderr says which
+ask sessions          # newest first, from this repository: status, task, id and age
+ask sessions --all    # from everywhere
+ask show k3f9a2       # each prompt, its steps, the files it changed and the answer
 ```
 
-A turn is `running`, then `succeeded`, `failed` or `stopped`; a session's state is its latest
-turn's. A turn whose worker died (a crash, a reboot) shows as stopped once nothing holds the
-session's lock.
+Piped, `ask sessions` prints one tab-separated line per session: state, task, id and the time
+the latest turn started.
 
-## Turns
+## On disk
 
-`ask continue ID "prompt"` adds a turn: the model sees everything the session read, said and
-did. The ID stays the same, so `ask wait ID` returns the new turn's answer. `--wait` waits right
-away. A turn keeps the session's directory and worktree, keeps the model unless `-m` chooses
-another from the same provider, and `-w` adds write access for this turn and the ones after it.
-
-```sh
-ask --wait "Why does the login test fail?"
-ask continue k3f9a2 --wait -w "Fix it, then run the test."
-ask continue k3f9a2 "Now add a test for the expired-token case."
-```
-
-`ask continue ID` without a prompt resumes an interrupted turn: the model is asked to carry on
-where it left off and finish. A session whose latest turn succeeded needs a prompt; one that is
-running needs `ask wait` first.
-
-Native sessions keep their transcript in the session's folder. A session on an external harness
-continues that harness's own session, which the harness must have reported.
-
-## Whose sessions
-
-`ask sessions` and `ask wait` with no IDs show the sessions started by the calling conversation:
-ask reads `ASK_PARENT`, or the session variable Claude Code (`CLAUDE_CODE_SESSION_ID`) and Codex
-(`CODEX_THREAD_ID`) set for the commands they run, and records it with each session. Two agents
-delegating in the same repository never see each other's sessions. Where no such variable
-exists, the default is the sessions started in, or working in, the current repository (or
-directory). `--all` lists every session.
-
-```sh
-ask sessions            # yours, most recently active first, 20 by default
-ask sessions -n 50 --all
-ask sessions --json     # result records
-```
-
-```text
-ID      UPDATED  STATE        TURNS  ACCESS  MODEL    TIME   TASK
-k3f9a2  2m ago   ✓ succeeded  2      write   GLM 5.3  1:12   Why does the login test fail?
-p81c0d  9m ago   ! running    1      read    GLM 5.3         Review src/auth for races.
-```
-
-TASK is the session's first prompt; the other columns describe its latest turn. Piped, the list
-is tab-separated with no header, the full timestamp and no color, so `cut` and `grep` work on
-it; `--json` gives the records.
-
-## Inspecting a session
-
-`ask show ID` returns at once with the status line and recent activity on stderr, and the
-latest answer on stdout once finished. Activity is what the subagent did, across every turn:
-its messages, each tool call with a one-line summary of its input, and each result, clipped.
-
-```text
-status: turn 2 running
-tool grep: expiry in auth
-tool_result grep: auth/token.go:42:    if exp < now {
-message: The expiry check compares seconds with milliseconds.
-```
-
-- `--follow` keeps printing until the turn ends. Interrupting it leaves the session going.
-- `--after CURSOR` prints one JSON page of events from a byte cursor: `{"session_id", "state",
-  "events": [{"type", "text", "tool"}], "next_cursor", "has_more"}`. Start at 0 and pass
-  `next_cursor` back for only what is new. Pages are bounded, so a caller with a tool timeout
-  can poll instead of streaming.
-- `--json` prints the result record.
-
-Event text is what the model and the tools produced: commands, paths, file contents. ask stores
-it privately with the session and does not redact it. Treat it as a transcript.
-
-## Stopping
-
-`ask stop ID` signals the worker, which ends the model call and every process the turn started,
-records the turn as stopped and exits. It waits up to ten seconds. Exit 1 when nothing was running.
-
-## Cleaning up
-
-```sh
-ask clean               # shows the plan, then asks
-ask clean --dry-run
-ask clean --yes --days 7
-ask clean --contained   # also work whose commits another branch holds
-ask clean --superseded  # also work a main branch matches after a rework
-```
-
-Sessions inactive for longer than `--days` (default 30) are removed. A worktree goes when its
-branch has no uncommitted changes and its work is on the main branch, as after a merge or a squash
-merge, or when it changed nothing; its branch goes with it. A worktree stays while its session is
-running, while git locks it, while it contains another worktree, and while its work is dirty or
-unlanded. `--contained` also removes work whose commits another branch holds but keeps its branch
-for review; `--superseded` also removes work a main branch already matches after a rework. A
-session whose worktree stays also stays.
-
-## The result record
-
-`--json` on `wait`, `show`, `sessions` and `--wait` launches prints this record for the latest turn:
-
-```json
-{
-  "session_id": "k3f9a2",
-  "turn": 2,
-  "state": "succeeded",
-  "model": "opencode-go/glm-5.3",
-  "write": true,
-  "dir": "/Users/me/code/app",
-  "parent": "claude-code:5f710ff9-...",
-  "created": "2026-11-05T02:12:11.345Z",
-  "updated": "2026-11-05T02:14:40.102Z",
-  "seconds": 72.4,
-  "usage": { "input": 44200, "output": 1300, "cached": 30100, "cost": 0.14 },
-  "answer": "Fixed: the expiry is now in milliseconds. go test ./auth passes.",
-  "changes": [{ "path": "auth/token.go", "change": "modified" }],
-  "task": "Why does the login test fail?"
-}
-```
-
-`error` replaces `answer` when the turn failed or was stopped. `commits` and `worktree` appear
-on write sessions; `activity` is the latest event while running; `harness_session` is an
-external harness's own session. The prompts are not included; `task` is the first one's first
-line.
-
-## Where sessions live
-
-Each session is a folder in `~/.ask/agent/sessions/`, named by its start time and ID:
-
-```text
-~/.ask/agent/sessions/20261105T021211345-k3f9a2/
-├── session.json      the session and every turn: prompt, model, limits and outcome
-├── transcript.json   the conversation so far (native sessions)
-├── events.jsonl      activity across turns, one JSON object per line
-├── worker.log        what workers wrote to stderr
-└── lock              held by the worker while a turn runs
-```
-
-Folders are created with mode 0700 and records 0600. Deleting a folder removes the answers and
-the ability to continue the session.
+Each session is a folder in `~/.ask/sessions/ID`, private to your user: `session.json` (the turns
+and their outcomes), `transcript.json` (the whole conversation, saved after every step), and
+`log` (the worker's own errors, if any). A harness keeps its own copy of its session where it
+always does. They hold prompts, answers, commands and file contents,
+unredacted. Delete a folder to forget a session.
