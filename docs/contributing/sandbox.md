@@ -20,7 +20,7 @@ repositories created after a turn starts, and scratch cleanup after failed prepa
 archives built for all four targets; Linux x64 binary and npm confined reads were exercised.
 Cross-compilation alone does not validate execution on Linux arm64 or macOS x64.
 
-CI also configures Ubuntu 22.04, macOS 14 and Windows Server 2025's WSL2 with Ubuntu, alongside the
+CI also configures Ubuntu 22.04, macOS 15 and Windows Server 2025's WSL2 with Ubuntu, alongside the
 existing required Linux/macOS jobs. Those extra hosted environments still need a successful run;
 configuration is not validation. WSL tests run as an ordinary Linux user on the distro filesystem
 and require working confinement before tests start. Performance methodology and measurements are

@@ -3,7 +3,10 @@
 # No setuid bit, SELinux integration or runtime shared-library dependencies. Source and license
 # material travels with every binary. Rebuild offline: sh build.sh OUTPUT EXTRACTED_SOURCES.
 set -eu
-[ "$#" -ge 1 ] && [ "$#" -le 2 ] || { echo 'usage: bubblewrap.sh OUTPUT [SOURCES]' >&2; exit 1; }
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+    echo 'usage: bubblewrap.sh OUTPUT [SOURCES]' >&2
+    exit 1
+fi
 [ "$(uname -s)" = Linux ] || { echo 'build the Linux bundle on Linux' >&2; exit 1; }
 mkdir -p "$1"
 out=$(cd "$1" && pwd)

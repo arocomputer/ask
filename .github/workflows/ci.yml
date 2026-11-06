@@ -30,8 +30,8 @@ jobs:
             name: macOS
           - os: ubuntu-22.04
             name: Linux 22.04
-          - os: macos-14
-            name: macOS 14
+          - os: macos-15
+            name: macOS 15
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -59,7 +59,7 @@ jobs:
           "$RUNNER_TEMP/ask-npm/node_modules/.bin/ask" --version
       - name: Check the shell scripts
         if: runner.os == 'Linux'
-        run: shellcheck install.sh .github/release/*.sh
+        run: shellcheck install.sh .github/release/*.sh .github/ci/*.sh
       - name: Check the workflows
         if: runner.os == 'Linux'
         run: |
@@ -80,6 +80,8 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
+      - name: Preserve Linux line endings
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
