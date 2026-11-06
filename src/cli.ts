@@ -63,7 +63,7 @@ function page(about: string, sections: [string, string][]): string {
 }
 
 function overview(): string {
-  return page(`${style().bold("Ask")}\nBackground tasks, handled.`, [
+  return page(`${style().bold("Ask")}  ${style().gray("Background tasks, handled.")}`, [
     ["Get started", "  ask settings     Connect a provider\n  ask doctor       Check your setup"],
     ["Commands", columns(Object.entries(commands).map(([n, c]) => [n, c.summary]))],
     ["For agents", "  ask < request.json\n  ask -h requests"],
