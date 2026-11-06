@@ -5,6 +5,7 @@
 
 import { execFileSync } from "node:child_process"
 import { projectInstructions } from "./tools.ts"
+import type { Sandbox } from "../sandbox/confine.ts"
 
 function git(dir: string, args: string[]): string | undefined {
   try {
@@ -47,7 +48,7 @@ Your final message:
 }
 
 /** Build the prompt, loading repository instructions through a read-only OS boundary. */
-export async function instructions(dir: string, write: boolean, schema: boolean, limits?: string, commands = write): Promise<string> {
+export async function instructions(dir: string, write: boolean, schema: boolean, limits?: string, commands = write, sandbox?: Sandbox): Promise<string> {
   const work = [
     "- Scale the effort to the task: a lookup takes a few targeted searches; tracing a flow or fixing a bug means reading every part involved. Stop once you can back the answer up.",
     "- Find before you read: grep for names and strings, list for file patterns, then read the parts that matter. Make independent calls together in one step, and don't read a file twice.",
@@ -66,7 +67,7 @@ export async function instructions(dir: string, write: boolean, schema: boolean,
   } else work.push("- This task is read-only: you can read, list and search the files, look at git, and search and fetch the web, but not change anything or run commands. If the task needs a change, describe it exactly instead.")
   let s = `${framing()}\n\n# Where you work\n\n${environment(dir, write)}\n\n# How to work\n\n${work.join("\n")}`
   if (schema) s += "\n\nYour final answer must be JSON matching the required schema, and nothing else."
-  const project = await projectInstructions(dir, git(dir, ["rev-parse", "--show-toplevel"]) || dir)
+  const project = await projectInstructions(dir, git(dir, ["rev-parse", "--show-toplevel"]) || dir, sandbox)
   if (project) s += `\n\n# Project instructions\n\n${project}`
   return s
 }

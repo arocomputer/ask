@@ -85,8 +85,11 @@ export async function run(h: Home): Promise<number> {
   }
   for (const [name, why] of broken) add({ mark: "warn", name: "Extension", detail: `${name} doesn't load: ${why}`, fix: `fix it, or ask remove ${name}` })
 
-  const box = support()
-  add(box.ok ? { mark: "ok", name: "Sandbox", detail: box.detail } : { mark: "fail", name: "Sandbox", detail: `${box.detail}; write tasks are refused`, fix: box.fix })
+  if (cfg.sandbox === false) add({ mark: "warn", name: "Sandbox", detail: "disabled in config.json; task processes have normal account access" })
+  else {
+    const box = support()
+    add(box.ok ? { mark: "ok", name: "Sandbox", detail: box.detail } : { mark: "fail", name: "Sandbox", detail: `${box.detail}; built-in tasks are refused`, fix: box.fix })
+  }
 
   const cli = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../cli.ts" : "../cli.js", import.meta.url))
   const args = cli.startsWith("/$bunfs") ? ["--version"] : [cli, "--version"]

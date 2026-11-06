@@ -60,7 +60,8 @@ checks restrict requests to the task folder. Each `shell` command runs in the sa
   you made concurrently. Symlinked `.git` entries and hardlinked metadata files are refused.
 
 On Linux, install `bubblewrap`; working unprivileged user namespaces and Landlock are required.
-ask's bundled `sandybox` helper applies Landlock and seccomp inside bubblewrap's mounts.
+ask's bundled `ask.sandbox` helper applies Landlock and seccomp inside bubblewrap's mounts.
+These restrictions apply by default; see [settings](settings.md#sandbox) to disable confinement.
 On macOS, ask uses the system's Seatbelt sandbox. Harnesses use their own sandboxes.
 Older Linux kernels get less: before 7.1, commands can't use
 Unix sockets at all, so Python's process pools need one worker. Where there is no sandbox at

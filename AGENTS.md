@@ -11,7 +11,7 @@ bun install                              # once: TypeScript and Node's types, fo
 npm run check                            # the typecheck
 npm test                                 # every test, under Node and then Bun
 node --test test/cli.test.ts             # one area; --test-name-pattern="..." for one behavior
-                                         # (the sandbox tests compile native/sandybox.c with cc)
+                                         # (the sandbox tests compile native/sandbox.c with cc)
 bun src/cli.ts doctor                    # run this checkout (node src/cli.ts works too)
 .github/release/release.sh vX.Y.Z        # prepare a changelog PR, then dispatch the checked main commit
 ```
@@ -24,7 +24,7 @@ bun src/cli.ts doctor                    # run this checkout (node src/cli.ts wo
   `harnesses/`, `sessions/`, `commands/`; a file imports only from its own layer and below.
   `src/cli.ts` is the command, `src/sessions/protocol.ts` the agent interface. The map is in
   [docs/contributing/architecture.md](docs/contributing/architecture.md).
-- `native/sandybox.c`: the Linux sandbox helper, the only C; its design is
+- `native/sandbox.c`: the Linux sandbox helper, the only C; its design is
   [docs/contributing/sandbox.md](docs/contributing/sandbox.md).
 - `test/`: mirrors `src/`, tests against a fake provider (`test/fake.ts`); `cli.test.ts` runs
   the real command and its detached workers.

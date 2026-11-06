@@ -120,16 +120,16 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     t.error = { message: `cannot resolve the helper model: ${(err as Error).message}` }
     return finish()
   }
-  // ask's own write turns run their commands in the sandbox, or not at all.
+  // Pin the turn's confinement choice across restarts; older turns default to enabled.
   let sandbox: Sandbox | undefined
-  if (t.write && target.model.protocol !== "harness") {
-    const can = support()
-    if (!can.ok) {
+  if (target.model.protocol !== "harness") {
+    const can = t.sandbox === false ? undefined : support()
+    if (can && !can.ok) {
       t.state = "failed"
       t.error = { message: `write tasks need a sandbox, and ${can.detail}`, hint: can.fix }
       return finish()
     }
-    sandbox = await open(s.dir)
+    sandbox = await open(s.dir, t.write, t.sandbox !== false)
   }
   const before = t.write ? snapshot(s.dir) : undefined
   const timeout = AbortSignal.timeout(t.timeout * 1000)
@@ -155,7 +155,7 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
   }
   const r =
     target.model.protocol === "harness"
-      ? await runHarness(h, s, target.model.provider, common, resuming)
+      ? await runHarness(h, s, target.model.provider, { ...common, sandbox: t.sandbox !== false }, resuming)
       : await run({
           ...common,
           provider: withRetries(connect(target.model, target.key, target.baseURL), (attempt, err) => {

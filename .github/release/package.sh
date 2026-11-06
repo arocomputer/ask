@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build and verify the same four archives in CI and before publication: ask compiled by Bun
-# into one file for each system, with the license; the Linux ones also hold sandybox, the
+# into one file for each system, with the license; the Linux ones also hold ask.sandbox, the
 # sandbox helper, compiled statically by zig for each architecture into native/build, where the
 # npm package picks it up too. The version comes from the tag, set in package.json for the
 # build and restored after. Only the host's binaries run, to check them; the others are checked
@@ -19,7 +19,7 @@ command -v bun >/dev/null 2>&1 || fail 'needs bun on PATH'
 zigcc() {
     if command -v zig >/dev/null 2>&1; then zig cc "$@"
     elif python3 -c 'import ziglang' 2>/dev/null; then python3 -m ziglang cc "$@"
-    else fail 'needs zig on PATH (or pip install ziglang) to build sandybox'
+    else fail 'needs zig on PATH (or pip install ziglang) to build ask.sandbox'
     fi
 }
 mkdir -p "$out"
@@ -38,7 +38,7 @@ case $(uname -m) in x86_64 | amd64) host_arch=amd64 ;; aarch64 | arm64) host_arc
 mkdir -p native/build
 for cpu in x64 arm64; do
     case $cpu in x64) triple=x86_64-linux-musl ;; arm64) triple=aarch64-linux-musl ;; esac
-    zigcc -target "$triple" -static -s -std=c11 -O2 -Wall -Werror -o "native/build/sandybox-$cpu" native/sandybox.c
+    zigcc -target "$triple" -static -s -std=c11 -O2 -Wall -Werror -o "native/build/ask.sandbox-$cpu" native/sandbox.c
 done
 
 for os in linux darwin; do
@@ -53,8 +53,8 @@ for os in linux darwin; do
         cp LICENSE "$stage/"
         members="ask LICENSE"
         if [ "$os" = linux ]; then
-            cp "native/build/sandybox-$cpu" "$stage/sandybox"
-            members="ask sandybox LICENSE"
+            cp "native/build/ask.sandbox-$cpu" "$stage/ask.sandbox"
+            members="ask ask.sandbox LICENSE"
         fi
         # shellcheck disable=SC2086 # members is a word list on purpose
         tar -C "$stage" -czf "$archive" $members
@@ -74,12 +74,12 @@ for os in linux darwin; do
         esac
         file "$unpack/ask" | grep -Eq "$kind" || fail "$target is not a $os/$arch binary: $(file -b "$unpack/ask")"
         if [ "$os" = linux ]; then
-            file "$unpack/sandybox" | grep -Eq "$kind.*statically linked" || fail "$target's sandybox is not a static $os/$arch binary: $(file -b "$unpack/sandybox")"
+            file "$unpack/ask.sandbox" | grep -Eq "$kind.*statically linked" || fail "$target's ask.sandbox is not a static $os/$arch binary: $(file -b "$unpack/ask.sandbox")"
         fi
         if [ "$os/$arch" = "$host_os/$host_arch" ]; then
             got=$("$unpack/ask" --version)
             [ "$got" = "ask version $version" ] || fail "$target says \"$got\", not ask version $version"
-            if [ "$os" = linux ]; then "$unpack/sandybox" --abi >/dev/null || fail "$target's sandybox doesn't run"; fi
+            if [ "$os" = linux ]; then "$unpack/ask.sandbox" --abi >/dev/null || fail "$target's ask.sandbox doesn't run"; fi
         fi
     done
 done

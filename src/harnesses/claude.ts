@@ -15,6 +15,8 @@
 // environment. Empty decoys its sandbox leaves in the folder are removed after each run. One Claude session backs a run of claude/ turns: --session-id on the first,
 // --resume after. Markers Claude Code puts in its children's environment are removed, so the
 // Claude ask starts doesn't take itself for part of the session that called ask.
+// Explicit sandbox:false omits --restricted and disables Bash confinement; the selected tool
+// list and credential environment filtering remain in place.
 
 import { spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
@@ -43,7 +45,8 @@ export function sandboxed(platform = process.platform): boolean {
 /** The arguments and extra environment for one run. */
 export function invocation(r: Run, session: string, resume: boolean, sandbox = sandboxed()): { args: string[]; env: NodeJS.ProcessEnv } {
   const settings: Record<string, unknown> = { disableAllHooks: true }
-  if (r.write && sandbox) {
+  if (r.sandbox === false) settings.sandbox = { enabled: false }
+  else if (r.write && sandbox) {
     settings.sandbox = { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false }
     settings.permissions = { blockReadsOutsideWorkingDirectories: true }
   }
@@ -59,7 +62,7 @@ export function invocation(r: Run, session: string, resume: boolean, sandbox = s
     "--mcp-config",
     '{"mcpServers":{}}',
     "--disable-slash-commands",
-    "--restricted",
+    ...(r.sandbox === false ? [] : ["--restricted"]),
     "--permission-prompts",
     "none",
     "--settings",
@@ -121,7 +124,7 @@ async function once(r: Run, session: string, resume: boolean): Promise<Outcome> 
   const end = (o: Partial<Outcome>, steps = 0): Outcome => ({ ...o, messages, usage, steps })
   const cli = command(r.settings)
   if (!cli) return end({ error: { message: "Claude Code isn't installed", hint: `install it (${install}), sign in, then try again` } })
-  if (r.write && !sandboxed()) return end({ error: { message: "Claude Code's sandbox can't run here, and write tasks need it", hint: unsandboxed } })
+  if (r.write && r.sandbox !== false && !sandboxed()) return end({ error: { message: "Claude Code's sandbox can't run here, and write tasks need it", hint: unsandboxed } })
   r.onSession(session)
   const { args, env } = invocation(r, session, resume)
   const earlier = before(r.dir)

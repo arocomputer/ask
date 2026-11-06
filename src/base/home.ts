@@ -25,7 +25,7 @@ export function home(root = process.env.ASK_HOME || join(homedir(), ".ask")): Ho
  * seconds, what `ask install` turned on, changes to how each harness runs, and tools set to
  * false, which ask's own loop leaves out.
  */
-export type Config = { model?: string; models?: string[]; timeout?: number; extensions?: string[]; harnesses?: Record<string, Settings>; tools?: Record<string, boolean> }
+export type Config = { model?: string; models?: string[]; timeout?: number; sandbox?: boolean; extensions?: string[]; harnesses?: Record<string, Settings>; tools?: Record<string, boolean> }
 
 /** What config.json's "harnesses" entry may say about one harness: another command, extra arguments, extra environment. */
 export type Settings = { command?: string; args?: string[]; env?: Record<string, string> }

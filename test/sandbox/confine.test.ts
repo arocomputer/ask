@@ -9,6 +9,27 @@ import { blocked } from "../../src/sandbox/address.ts"
 
 const can = support()
 
+test("explicitly disabled confinement runs directly while filtering credentials", async () => {
+  const previous = process.env.DATABASE_URL
+  process.env.DATABASE_URL = "test-credential"
+  const dir = repo()
+  const sb = await open(dir, false, false)
+  try {
+    assert.equal(sb.enabled, false)
+    const command = sb.command("printf unrestricted > .git/probe")
+    assert.equal(command.file, "/bin/sh")
+    assert.equal(command.env.DATABASE_URL, undefined)
+    assert.equal(command.env.HOME, homedir())
+    const result = spawnSync(command.file, command.args, { cwd: dir, env: command.env })
+    assert.equal(result.status, 0)
+    assert.equal(readFileSync(join(dir, ".git/probe"), "utf8"), "unrestricted")
+  } finally {
+    await sb.close()
+    if (previous === undefined) delete process.env.DATABASE_URL
+    else process.env.DATABASE_URL = previous
+  }
+})
+
 /** Runs a script in a fresh sandbox for `dir`; returns its exit status and output, and what close put back. */
 async function inside(dir: string, script: string) {
   const sb = await open(dir)

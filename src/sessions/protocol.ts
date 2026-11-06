@@ -214,6 +214,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
         prompt: t.prompt,
         model: target,
         write: t.write ?? false,
+        sandbox: readJSON<Config>(h.config, {}).sandbox !== false,
         effort: t.effort ?? (t.model ? undefined : last.effort),
         schema: t.schema,
         timeout: t.timeout ?? defaultTimeout(h),
@@ -350,6 +351,7 @@ function begin(h: Home, t: Task, dir: string, model: string): Session {
       prompt: t.prompt,
       model,
       write: (t.write ?? false) || !!w,
+      sandbox: readJSON<Config>(h.config, {}).sandbox !== false,
       effort: t.effort,
       schema: t.schema,
       timeout: t.timeout ?? defaultTimeout(h),
@@ -416,8 +418,10 @@ async function chosen(h: Home, name: string | undefined): Promise<string> {
   } catch (err) {
     throw new Invalid((err as Error).message)
   }
-  const can = support()
-  if (m.protocol !== "harness" && !can.ok) throw new Invalid(`built-in tasks need a sandbox, and ${can.detail}`, can.fix)
+  if (m.protocol !== "harness" && readJSON<Config>(h.config, {}).sandbox !== false) {
+    const can = support()
+    if (!can.ok) throw new Invalid(`built-in tasks need a sandbox, and ${can.detail}`, can.fix)
+  }
   return `${m.provider}/${m.id}`
 }
 

@@ -1,8 +1,8 @@
-// sandybox: runs a command confined by Landlock and seccomp, for ask's write tasks on Linux.
+// ask.sandbox: runs a command confined by Landlock and seccomp on Linux.
 //
-//   sandybox --abi
+//   ask.sandbox --abi
 //       Prints the kernel's Landlock ABI version (0 when Landlock is off) and exits.
-//   sandybox [-r PATH]... [-w PATH]... [--net none|ports|open] -- COMMAND [ARG]...
+//   ask.sandbox [-r PATH]... [-w PATH]... [--net none|ports|open] -- COMMAND [ARG]...
 //       Runs COMMAND so that it, and everything it starts, can:
 //       - read and run files only under the -r and -w paths, and write only under -w paths;
 //       - reach the network as --net says: "none", no internet sockets at all; "ports", TCP
@@ -14,7 +14,7 @@
 //       - not use io_uring or VM sockets, which would get around the rules above;
 //       - never gain privileges (no_new_privs: setuid programs don't elevate).
 //
-// Paths that don't exist are skipped. Setup failures print "sandybox: ..." and exit 125, the
+// Paths that don't exist are skipped. Setup failures print "ask.sandbox: ..." and exit 125, the
 // command's own exit status passes through. The design is docs/contributing/sandbox.md.
 
 #define _GNU_SOURCE
@@ -34,7 +34,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-// Landlock's interface, written out so sandybox builds against any kernel headers.
+// Landlock's interface, written out so ask.sandbox builds against any kernel headers.
 #define LL_CREATE_RULESET 444
 #define LL_ADD_RULE 445
 #define LL_RESTRICT_SELF 446
@@ -81,12 +81,12 @@ struct port_attr {
 #define FILE_RIGHTS (FS_EXECUTE | FS_WRITE_FILE | FS_READ_FILE | FS_TRUNCATE | FS_IOCTL_DEV)
 
 static void fail(const char *what) {
-  fprintf(stderr, "sandybox: %s: %s\n", what, strerror(errno));
+  fprintf(stderr, "ask.sandbox: %s: %s\n", what, strerror(errno));
   exit(125);
 }
 
 static void usage(void) {
-  fprintf(stderr, "usage: sandybox --abi\n       sandybox [-r PATH]... [-w PATH]... [--net none|ports|open] -- COMMAND [ARG]...\n");
+  fprintf(stderr, "usage: ask.sandbox --abi\n       ask.sandbox [-r PATH]... [-w PATH]... [--net none|ports|open] -- COMMAND [ARG]...\n");
   exit(125);
 }
 
@@ -113,7 +113,7 @@ static void allow_path(int ruleset, const char *path, uint64_t rights) {
 #elif defined(__aarch64__)
 #define ARCH AUDIT_ARCH_AARCH64
 #else
-#error "sandybox supports x86_64 and aarch64"
+#error "ask.sandbox supports x86_64 and aarch64"
 #endif
 
 #define DENY BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA))
@@ -223,6 +223,6 @@ int main(int argc, char **argv) {
   if (syscall(LL_RESTRICT_SELF, ruleset, 0) != 0) fail("entering the Landlock sandbox");
   close((int)ruleset);
   execvp(command[0], command);
-  fprintf(stderr, "sandybox: %s: %s\n", command[0], strerror(errno));
+  fprintf(stderr, "ask.sandbox: %s: %s\n", command[0], strerror(errno));
   return errno == ENOENT ? 127 : 126;
 }

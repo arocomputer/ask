@@ -1,5 +1,11 @@
 # The sandbox
 
+The following boundary is enabled by default. Config-only `"sandbox": false` disables OS
+confinement for new turns; the choice is persisted per turn, and older turns default to enabled.
+Disabled execution retains child processes, credential environment filtering, cancellation and
+output limits, but allows normal account access. Shipped harnesses honor the same choice;
+extensions receive `Run.sandbox`. The bundled `ask.sandbox` is a short-lived helper, not a service.
+
 ask confines commands and built-in filesystem tools, not provider requests. The parent agent
 holds credentials and talks to providers; filesystem tools run in separate credential-free
 processes with bounded output and a two-minute timeout. Read-only tools receive no workspace
@@ -9,7 +15,7 @@ write grant. Fetch and search run in the parent with public-address checks.
 
 - **Linux:** system bubblewrap creates a read-only root, writable task/scratch mounts, read-only
   mounts over existing Git metadata, private PID/network namespaces and a private `/dev`.
-  Inside that view, the bundled `sandybox` applies Landlock read/write grants and seccomp.
+  Inside that view, the bundled `ask.sandbox` applies Landlock read/write grants and seccomp.
   An actual namespace probe must succeed; installation alone is insufficient. No privileged
   setup is performed by ask. Without these prerequisites, confined tools fail closed.
 - **macOS:** Seatbelt starts with deny-default and grants system/toolchain/task reads explicitly.

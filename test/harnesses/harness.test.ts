@@ -105,6 +105,27 @@ function setup(mode = "ok", config: object = {}, extra: NodeJS.ProcessEnv = {}, 
 
 const after = (args: string[], flag: string) => args[args.indexOf(flag) + 1]
 
+test("config disables confinement for both shipped harnesses and persists the turn choice", async () => {
+  for (const model of ["claude/sonnet", "codex/gpt-5"]) {
+    const { ask, runs, home } = setup("ok", { model, sandbox: false }, {}, false)
+    const result = await ask({ start: [{ prompt: "Find it" }], wait: 30 })
+    assert.ok(result.tasks[0].answer, JSON.stringify(result))
+    const [run] = runs()
+    if (model.startsWith("claude/")) {
+      assert.equal(JSON.parse(after(run.args, "--settings")).sandbox.enabled, false)
+      assert.ok(!run.args.includes("--restricted"))
+      assert.equal(after(run.args, "--tools"), "Read,Grep,Glob,WebSearch")
+    } else {
+      assert.equal(after(run.args, "--sandbox"), "danger-full-access")
+      assert.ok(!run.args.includes('default_permissions="ask"'))
+      assert.ok(run.args.some((arg: string) => arg.includes("This is a read-only task")))
+    }
+    const session = JSON.parse(readFileSync(join(home, "sessions", result.tasks[0].id, "session.json"), "utf8"))
+    assert.equal(session.turns[0].sandbox, false)
+    assert.equal(session.turns[0].write, false)
+  }
+})
+
 describe("claude", () => {
   test("a read-only claude/ task runs Claude Code restricted to reading its folder, without API keys or the caller's markers", async () => {
     const { ask, runs, home } = setup()

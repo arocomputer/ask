@@ -11,14 +11,14 @@ which `test/rules.test.ts` checks. `test/` mirrors `src/`, one file per area.
 | --- | --- |
 | `base/` | Nothing particular to ask: `home` (the folder, its files and their shapes), `term`, `input`, `git`, `version` |
 | `providers/` | Reaching models: `catalog` (models.dev), `stream` (the transcript format, server-sent events, errors, retries), `responses`, `chat`, `anthropic` (one client per protocol), `chatgpt` (the ChatGPT sign-in) |
-| `sandbox/` | Confining commands: `policy` (what they may touch), `linux` (sandybox), `macos` (Seatbelt), `proxy` (the web, public addresses only), `confine` (support, and a sandbox for one turn) |
+| `sandbox/` | Confining tools: `policy` (what they may touch), `linux` (ask.sandbox and bubblewrap), `macos` (Seatbelt), `address` (public-address checks), `confine` (per-turn execution) |
 | `agent/` | ask's own loop: `loop`, `tools`, `fetch`, `search` (ask's own web search: DuckDuckGo, its lite page, Mwmbl, Wikipedia), `system` (the prompt), `steps` (a turn's steps in a few words) |
 | `harnesses/` | Other agents: `harness` (the contract, running a CLI, history handoff, loading extensions), `claude`, `codex`, `extensions` (what is on, the calling conversation), `skill` |
 | `sessions/` | A request's life: `protocol` (the agent interface), `store` (session folders, turns, the lock), `worker` (running a turn, detached), `models` (which model and key a task uses) |
 | `commands/` | What people run: `settings`, `doctor`, `models`, `sessions`, `show`, `tools`, `install`, `remove`, and `command`, their shared shape |
 | `cli.ts`, `index.ts` | The entry points: the command, and the library |
 
-`native/sandybox.c` is the one file that isn't TypeScript: the Linux sandbox helper, built into
+`native/sandbox.c` is the one file that isn't TypeScript: the Linux sandbox helper, built into
 `native/build/` (from source in a checkout, by `zig cc` for releases). The sandbox's design is
 [sandbox.md](sandbox.md).
 
@@ -35,7 +35,7 @@ ask __worker FOLDER                         sessions/worker.ts, in its own sessi
   │    catalog       models.dev: which protocol and endpoint each model uses
   │    responses, chat, anthropic   one client per protocol, over provider.ts
   │    tools         read, list, grep, fetch, search; write, edit, shell in a write turn
-  │    sandbox       a write turn's commands: sandybox or Seatbelt, and the proxy
+  │    sandbox       tools and commands: ask.sandbox/bubblewrap or Seatbelt
   │    system        the system prompt and the project's AGENTS.md
   └─ git         what a write turn changed; worktrees
   ▼

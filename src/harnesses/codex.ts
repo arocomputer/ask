@@ -10,6 +10,8 @@
 // backs a run of codex/ turns: `exec` on the first, `exec resume THREAD` after. codex/default
 // uses Codex's own default model. Markers Codex puts in its children's environment are
 // removed, so the Codex ask starts doesn't take itself for part of the thread that called ask.
+// Explicit sandbox:false replaces the permission profile with account-level access; read-only
+// task intent is then an instruction, not an OS boundary.
 
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
@@ -89,8 +91,11 @@ export function filesystem(r: Run, readable: string[]): string {
 
 /** The arguments for one run; the prompt comes on stdin. */
 export function invocation(r: Run, readable: string[], schemaFile?: string): string[] {
-  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "-c", 'approval_policy="never"', "-c", `developer_instructions=${JSON.stringify(framing())}`]
-  common.push("-c", 'default_permissions="ask"', "-c", `permissions.ask.filesystem=${filesystem(r, readable)}`, "-c", 'web_search="cached"')
+  const instructions = framing() + (r.sandbox === false && !r.write ? "\nThis is a read-only task. Do not modify files or run commands with side effects, even though OS confinement is disabled." : "")
+  const common = ["--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "-c", 'approval_policy="never"', "-c", `developer_instructions=${JSON.stringify(instructions)}`]
+  if (r.sandbox === false) common.push("--sandbox", "danger-full-access")
+  else common.push("-c", 'default_permissions="ask"', "-c", `permissions.ask.filesystem=${filesystem(r, readable)}`)
+  common.push("-c", 'web_search="cached"')
   if (r.model !== "default") common.push("-m", r.model)
   if (r.effort) common.push("-c", `model_reasoning_effort=${JSON.stringify(r.effort)}`)
   if (schemaFile) common.push("--output-schema", schemaFile)

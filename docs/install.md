@@ -1,8 +1,8 @@
 # Install
 
-The installer and Homebrew give you one self-contained binary, and on Linux `sandybox`, the
+The installer and Homebrew give you one self-contained binary, and on Linux `ask.sandbox`, the
 small helper that confines commands and filesystem tools. Through npm, ask runs on Node 24 or newer,
-and the package carries `sandybox` too. Git is needed for worktrees and for listing what a
+and the package carries `ask.sandbox` too. Git is needed for worktrees and for listing what a
 write task changed. Built-in tasks need Linux with Landlock, `bubblewrap` and working unprivileged
 user namespaces, or macOS with Seatbelt. On Debian/Ubuntu, install `bubblewrap` with your system
 package manager. Homebrew installs the dependency on Linux. `ask doctor` probes availability;
@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/arocomputer/ask/main/install.sh | s
 ```
 
 It downloads the release archive for your system (macOS or Linux, Intel or ARM), checks it against
-the release's `checksums.txt`, and installs `ask` (and on Linux `sandybox`) into `~/.local/bin`, saying so if that isn't on
+the release's `checksums.txt`, and installs `ask` (and on Linux `ask.sandbox`) into `~/.local/bin`, saying so if that isn't on
 your `PATH`. It never edits your shell files. Options, after `sh -s --`:
 
 ```sh

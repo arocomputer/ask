@@ -25,7 +25,7 @@
   "scripts": {
     "check": "tsc",
     "test": "node --test 'test/**/*.test.ts' && bun test ./test/",
-    "build": "rm -rf dist && tsc --noEmit false --declaration --rewriteRelativeImportExtensions --outDir dist --rootDir . && mkdir -p dist/native && cp native/sandybox.c dist/native/ && (cp -R native/build dist/native/ 2>/dev/null || true)",
+    "build": "rm -rf dist && tsc --noEmit false --declaration --rewriteRelativeImportExtensions --outDir dist --rootDir . && mkdir -p dist/native/build && cp native/sandbox.c dist/native/ && (cp native/build/ask.sandbox-* dist/native/build/ 2>/dev/null || true)",
     "prepack": "npm run build"
   },
   "devDependencies": {

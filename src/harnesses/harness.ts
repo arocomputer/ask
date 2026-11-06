@@ -31,6 +31,8 @@ export type Run = {
    */
   history?: string
   write: boolean
+  /** Explicit false disables OS confinement; omitted means enabled. */
+  sandbox?: boolean
   effort?: string
   schema?: object
   /** The harness's own session to resume; absent for a new one. */

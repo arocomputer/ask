@@ -90,9 +90,14 @@ if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
   fail "checksum mismatch for $archive; refusing to install"
 fi
 
-# On Linux, sandybox comes with ask: the helper that sandboxes write tasks' commands.
+# The Linux helper is ask.sandbox; older archives used sandybox or had no helper.
 members=ask
-[ "$os" = linux ] && members="ask sandybox"
+if [ "$os" = linux ]; then
+  tar -tzf "$work/$archive" > "$work/members"
+  if grep -qx 'ask.sandbox' "$work/members"; then members="ask ask.sandbox"
+  elif grep -qx 'sandybox' "$work/members"; then members="ask sandybox"
+  fi
+fi
 # shellcheck disable=SC2086 # members is a word list on purpose
 tar -xzf "$work/$archive" -C "$work" $members
 for m in $members; do
@@ -103,6 +108,9 @@ done
 got=$("$work/ask" --version 2>/dev/null || true)
 # Releases before v0.4.0 print the bare tag; later ones print "ask version X.Y.Z".
 [ "$got" = "$version" ] || [ "$got" = "ask version ${version#v}" ] || fail "$archive says it is \"$got\", not $version"
+if [ "$os" = linux ] && [ "$got" != "$version" ] && [ "$members" = ask ]; then
+  fail "$archive has no sandbox helper"
+fi
 
 mkdir -p "$dir"
 for m in $members; do

@@ -24,6 +24,24 @@ Run it again and it asks what to change: the default model, your models, adding 
 provider, or the timeout. In every list, typing filters it, the arrow keys move, Enter picks and,
 in a list of models, Space toggles one. It needs a terminal; in a script, use the files below.
 
+## Sandbox
+
+OS confinement is enabled by default. To disable it, add `"sandbox": false` to
+`~/.ask/config.json` (or `$ASK_HOME/config.json`). Omit the field or set it to `true` to enable it.
+This is a config-only boolean, with no mode switcher or per-task override.
+
+New turns inherit the setting; interrupted turns retain their recorded choice. Built-in tools
+and the shipped Claude Code/Codex adapters honor it. Extensions receive `Run.sandbox`.
+Existing read/write tool selection remains independent: disabling confinement does not add
+write tools to built-in read tasks. Without confinement, read-only intent is not OS-enforced.
+
+Disabled task processes have normal account-level filesystem and network access. Environment
+credential filtering, cancellation and output limits remain, but accessible credential files
+are no longer protected by OS policy. `ask doctor` reports the disabled setting.
+
+`ask.sandbox` is a bundled, short-lived Linux helper executable, not a service or daemon.
+Disabled execution does not require it or bubblewrap.
+
 ## ChatGPT
 
 Choose **ChatGPT** in `ask settings` to use your ChatGPT Plus or Pro plan instead of an API key.

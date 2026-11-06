@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Rename the bundled Linux helper to `ask.sandbox`. Add config-only `"sandbox": false` to
+  disable OS confinement for new turns, including shipped harnesses. Default remains enabled;
+  interrupted turns retain their recorded choice.
+
 - Confine built-in filesystem tools in credential-free child processes. Use bubblewrap plus
   Landlock/seccomp on Linux and an explicit read allowlist on macOS. Git metadata is read-only
   during execution; staging and commits are refused, and cleanup no longer restores Git files.
@@ -67,7 +71,7 @@ earlier versions.
 - Run every command of a write task in ask's own sandbox: it writes only the task's folder,
   can't read your home folder, gets no secrets from the environment, can't reach your agents,
   Docker or other programs, and reaches the web through a proxy that refuses private
-  addresses. On Linux it's Landlock, through `sandybox`, a small helper that comes with ask; on
+  addresses. On Linux it's Landlock, through `ask.sandbox`, a small helper that comes with ask; on
   macOS, the system's sandbox. Nothing needs installing, and a write task is refused where
   there is no sandbox. Git hooks and config a task changes are put back and reported as
   `reverted`.

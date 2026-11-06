@@ -45,9 +45,9 @@ export function tools(write: boolean): Tool[] {
   } }] : [])]
 }
 
-/** Run filesystem tools in an OS-confined child, never in the credential-bearing agent. */
+/** Run filesystem tools in a credential-filtered child, honoring the turn's confinement choice. */
 async function isolated(tool: Tool, args: Args, ctx: Context): Promise<string> {
-  const sb = await confine(ctx.dir, !tool.readonly)
+  const sb = await confine(ctx.dir, !tool.readonly, ctx.sandbox?.enabled ?? true)
   try {
     const script = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../files.ts" : "../files.js", import.meta.url))
     const bundled = script.startsWith("/$bunfs")
@@ -99,8 +99,8 @@ export async function toolMain(name: string, input: string): Promise<string> {
 }
 
 /** Load parent-directory instructions without giving the credential-bearing process file access. */
-export function projectInstructions(dir: string, root: string): Promise<string> {
-  return isolated(project, { path: dir }, { dir: root })
+export function projectInstructions(dir: string, root: string, sandbox?: Context["sandbox"]): Promise<string> {
+  return isolated(project, { path: dir }, { dir: root, sandbox })
 }
 
 /** Internal instruction loader; never offered as a model tool. */

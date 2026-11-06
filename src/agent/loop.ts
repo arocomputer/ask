@@ -30,7 +30,7 @@ export type RunOptions = {
   schema?: object
   /** Replaces the system prompt `system.ts` builds. */
   instructions?: string
-  /** The sandbox a write turn's commands run in; without one they run as they are. */
+  /** Turn execution context; omission means tools establish their own enabled sandbox. */
   sandbox?: Sandbox
   /**
    * The models behind the turn, bound by the caller; every call they make has its tokens
@@ -85,7 +85,7 @@ export async function run(o: RunOptions): Promise<RunResult> {
   let context = restore(messages, o.checkpoint)
   const usage: Usage = { input: 0, output: 0, cached: 0, ...o.initialUsage }
   const tools = toolset(o)
-  const system = o.instructions ?? await instructions(o.dir, o.write ?? false, !!o.schema, o.sandbox?.limits, tools.some((t) => t.name === "shell"))
+  const system = o.instructions ?? await instructions(o.dir, o.write ?? false, !!o.schema, o.sandbox?.limits, tools.some((t) => t.name === "shell"), o.sandbox)
   // The turn's models answer inside the turn, and their tokens belong to it.
   const models = o.models
     ? {

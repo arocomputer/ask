@@ -1,15 +1,15 @@
-// The Linux sandbox: bubblewrap makes Git metadata read-only; sandybox applies Landlock
-// and seccomp inside those mounts. sandybox ships next to the release binary, and in the npm package for each
+// The Linux sandbox: bubblewrap makes Git metadata read-only; ask.sandbox applies Landlock
+// and seccomp inside those mounts. ask.sandbox ships next to the release binary, and in the npm package for each
 // architecture; a checkout of ask compiles it from source with the system's C compiler.
 
 import { spawnSync } from "node:child_process"
-import { accessSync, constants, existsSync, mkdirSync, statSync } from "node:fs"
+import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { Policy } from "./policy.ts"
 
-const source = fileURLToPath(new URL("../../native/sandybox.c", import.meta.url))
-const built = fileURLToPath(new URL(`../../native/build/sandybox-${process.arch}`, import.meta.url))
+const source = fileURLToPath(new URL("../../native/sandbox.c", import.meta.url))
+const built = fileURLToPath(new URL(`../../native/build/ask.sandbox-${process.arch}`, import.meta.url))
 
 function runnable(path: string): boolean {
   try {
@@ -23,17 +23,27 @@ function runnable(path: string): boolean {
 let found: string | undefined | null = null
 
 /**
- * Where sandybox is: $ASK_SANDYBOX, next to the running binary, prebuilt in the package, or
+ * Where ask.sandbox is: $ASK_SANDBOX_HELPER, next to the running binary, prebuilt in the package, or
  * compiled from source in a checkout (again whenever the source is newer). Undefined when none.
  */
 export function helper(): string | undefined {
   if (found !== null) return found
-  const shipped = [process.env.ASK_SANDYBOX, join(dirname(process.execPath), "sandybox"), built].filter((p): p is string => !!p)
+  const shipped = [process.env.ASK_SANDBOX_HELPER, join(dirname(process.execPath), "ask.sandbox"), built].filter((p): p is string => !!p)
   found = shipped.find((p) => runnable(p) && (p !== built || !existsSync(source) || statSync(p).mtimeMs >= statSync(source).mtimeMs))
   if (!found && existsSync(source)) {
     mkdirSync(dirname(built), { recursive: true })
-    const cc = spawnSync("cc", ["-std=c11", "-O2", "-Wall", "-o", built, source], { encoding: "utf8" })
-    found = cc.status === 0 ? built : undefined
+    // Parallel workers must never execute a partially linked helper.
+    const tmp = mkdtempSync(join(dirname(built), "compile-"))
+    try {
+      const output = join(tmp, "ask.sandbox")
+      const cc = spawnSync("cc", ["-std=c11", "-O2", "-Wall", "-o", output, source], { encoding: "utf8" })
+      if (cc.status === 0) {
+        renameSync(output, built)
+        found = built
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
   }
   return found ?? undefined
 }
@@ -45,7 +55,7 @@ export function mounts(): boolean {
   return spawnSync("bwrap", ["--unshare-user", "--unshare-net", "--ro-bind", "/", "/", "--", "/bin/true"], { timeout: 5000, stdio: "ignore" }).status === 0
 }
 
-/** The kernel's Landlock ABI version, as sandybox reports it; 0 without Landlock or sandybox. */
+/** The kernel's Landlock ABI version, as ask.sandbox reports it; 0 without Landlock or the helper. */
 export function abi(): number {
   if (version !== undefined) return version
   const h = helper()

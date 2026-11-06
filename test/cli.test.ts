@@ -39,6 +39,21 @@ async function setup(replies: Reply[], catalog: unknown = defaultCatalog) {
 }
 
 describe("cli", () => {
+  test("disabled built-in confinement survives restart after config changes", async () => {
+    const { ask, home, run } = await setup([{ text: "Done.", delay: 1_000 }])
+    writeFileSync(join(home, "config.json"), JSON.stringify({ model: "fake/m", sandbox: false }))
+    assert.match((await run(["doctor"])).stdout, /disabled in config.json/)
+    const { tasks } = await ask({ start: [{ prompt: "Task" }] })
+    const path = join(home, "sessions", tasks[0].id, "session.json")
+    assert.equal(JSON.parse(readFileSync(path, "utf8")).turns[0].sandbox, false)
+    const { pid } = JSON.parse(readFileSync(join(home, "sessions", tasks[0].id, "lock"), "utf8"))
+    process.kill(pid, "SIGKILL")
+    writeFileSync(join(home, "config.json"), JSON.stringify({ model: "fake/m", sandbox: true }))
+    const done = await ask({ collect: [tasks[0].id], wait: 30 })
+    assert.equal(done.tasks[0].state, "succeeded")
+    assert.equal(JSON.parse(readFileSync(path, "utf8")).turns[0].sandbox, false)
+  })
+
   test("a started task is collected with its answer", async () => {
     const { ask } = await setup([{ calls: [{ name: "read", args: { path: "port.txt" } }] }, { text: "Port 7341." }])
     const started = await ask({ start: [{ prompt: "Which port?" }] })

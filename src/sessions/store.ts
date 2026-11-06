@@ -21,6 +21,8 @@ export type Turn = {
   prompt: string
   model: string
   write: boolean
+  /** OS confinement selected when the turn starts. Missing on older turns means enabled. */
+  sandbox?: boolean
   effort?: string
   schema?: object
   /** Seconds before the turn is stopped. */
