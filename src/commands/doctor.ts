@@ -99,7 +99,9 @@ export async function run(h: Home): Promise<number> {
   const git = await output("git", ["--version"])
   add(git ? { mark: "ok", name: "Git", detail: git.replace(/^git version /, "git ") } : { mark: "warn", name: "Git", detail: "not found", fix: "install git to see what write tasks changed" })
 
-  const lost = list(h).filter((s) => ["running", "retrying"].includes(latest(s).state) && !alive(s))
+  const ps = await output("ps", ["-p", String(process.pid), "-o", "command="])
+  add(ps ? { mark: "ok", name: "Processes", detail: "worker identities can be checked" } : { mark: "fail", name: "Processes", detail: "ps is unavailable", fix: "install procps on Linux, or restore the system ps command on macOS" })
+  const lost = ps ? list(h).filter((s) => ["running", "retrying"].includes(latest(s).state) && !alive(s)) : []
   if (lost.length) add({ mark: "warn", name: "Sessions", detail: `${lost.length} ended without their worker: ${lost.slice(0, 3).map((s) => s.id).join(", ")}${lost.length > 3 ? ", …" : ""}`, fix: "ask show ID tells you why; continue them to try again" })
 
   return out.some((l) => l.mark === "fail") ? 1 : 0

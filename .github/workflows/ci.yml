@@ -15,6 +15,10 @@ concurrency:
 
 jobs:
   test:
+    # Fixtures must not inherit runner-global checkout filters (notably Git LFS).
+    env:
+      GIT_CONFIG_NOSYSTEM: "1"
+      GIT_CONFIG_GLOBAL: /dev/null
     strategy:
       fail-fast: false
       matrix:

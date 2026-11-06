@@ -14,7 +14,8 @@ in Git history. The current interfaces are `ask help`, `ask help requests` and t
 - **Atomic transitions.** Continue, stop and restart claim a turn generation before changing it,
   re-read the record, and reject a competing transition. Live owners retain claims; abandoned
   claims use immutable retry slots. Worker identity requires the `__worker FOLDER` argument tail.
-  JSON files are flushed before atomic replacement. This is not a replicated/durable database.
+  JSON files are flushed before atomic replacement, and directory entries are flushed where
+  supported. This is not a replicated database.
 - **Provider/model is the public identifier.** Each model resolves its own key, endpoint and
   protocol. `ASK_MODEL_SMALL=provider/model` explicitly selects a helper; omission reuses the turn
   model. No silent cheapest-model routing or borrowing another model's credentials.

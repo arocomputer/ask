@@ -1,5 +1,8 @@
 # Install
 
+Worker identity checks need the system `ps` command (`procps` on minimal Linux images).
+`ask doctor` checks it; ask refuses to guess whether an unverified worker is safe to restart or stop.
+
 The installer and Homebrew give you one self-contained binary, and on Linux `ask.sandbox`, the
 small helper that confines commands and filesystem tools. Through npm, ask runs on Node 24 or newer,
 and the package carries `ask.sandbox` too. Git is needed for worktrees and for listing what a

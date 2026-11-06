@@ -61,7 +61,7 @@ export function readJSON<T>(path: string, fallback: T): T {
   }
 }
 
-/** Flushes a private, uniquely named file before atomic replacement; readers never see half JSON. */
+/** Flushes a private file and its replacement directory entry; readers never see half JSON. */
 export function writeJSON(path: string, value: unknown, mode = 0o600) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   const tmp = `${path}.${randomUUID()}.tmp`
@@ -72,5 +72,12 @@ export function writeJSON(path: string, value: unknown, mode = 0o600) {
       fsyncSync(fd)
     } finally { closeSync(fd) }
     renameSync(tmp, path)
+    const parent = openSync(dirname(path), "r")
+    try {
+      try { fsyncSync(parent) }
+      catch (err) {
+        if (!["EINVAL", "ENOTSUP"].includes((err as NodeJS.ErrnoException).code ?? "")) throw err
+      }
+    } finally { closeSync(parent) }
   } finally { rmSync(tmp, { force: true }) }
 }

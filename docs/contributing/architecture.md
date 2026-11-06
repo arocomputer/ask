@@ -80,3 +80,6 @@ npm run check && npm test  # the typecheck, then the tests under Node and Bun
 ```
 
 Set `ASK_HOME` to a scratch folder to keep a development build away from your sessions.
+`npm test` ignores global/system Git configuration so fixture worktrees do not inherit user or
+runner checkout filters. Individual test commands can use `GIT_CONFIG_GLOBAL=/dev/null
+GIT_CONFIG_NOSYSTEM=1` for the same isolation; repository-local security tests still apply.

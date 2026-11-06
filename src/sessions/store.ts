@@ -226,6 +226,7 @@ export function claim(s: Session): boolean {
 export function worker(s: Session): number | undefined {
   const pid = readJSON<{ pid?: number }>(join(s.folder, "lock"), {}).pid
   if (!pid) return undefined
+  if (pid === process.pid) return pid
   try {
     process.kill(pid, 0)
   } catch (err) {
