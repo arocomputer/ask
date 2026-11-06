@@ -8,13 +8,13 @@ import { find, providers, type Catalog } from "../providers/catalog.ts"
 import { readJSON, type Auth, type Config, type Home } from "../base/home.ts"
 import { catalog, credential } from "../sessions/models.ts"
 import { alive, latest, list } from "../sessions/store.ts"
-import { ago, spinner, style } from "../base/term.ts"
+import { ago, heading, spinner, style, text } from "../base/term.ts"
 import { harnesses, settings } from "../harnesses/extensions.ts"
 import { broken } from "../harnesses/harness.ts"
 import { support } from "../sandbox/confine.ts"
 import { check } from "./settings.ts"
 
-export const summary = "Check that ask can run tasks"
+export const summary = "Check your setup"
 export const about = `Check that ask can run tasks: its runtime, its home folder, the model catalog, the default
 model and its key, each harness and extension, the background worker and git. Anything broken comes with how to fix it.`
 export const usage = "ask doctor"
@@ -22,6 +22,7 @@ export const usage = "ask doctor"
 type Line = { mark: "ok" | "warn" | "fail"; name: string; detail: string; fix?: string }
 
 export async function run(h: Home): Promise<number> {
+  heading("doctor")
   const out: Line[] = []
   const add = (l: Line) => {
     out.push(l)
@@ -107,11 +108,15 @@ export async function run(h: Home): Promise<number> {
   return out.some((l) => l.mark === "fail") ? 1 : 0
 }
 
-function print(l: Line) {
+/** One check, with a stacked detail and recovery action on phone-sized terminals. */
+export function print(l: Line) {
   const st = style()
-  const mark = l.mark === "ok" ? st.green("✓") : l.mark === "warn" ? st.yellow("!") : st.red("X")
-  process.stdout.write(`${mark} ${l.name.padEnd(9)} ${l.detail}\n`)
-  if (l.fix) process.stdout.write(st.gray(`  ${" ".repeat(9)} ${l.fix}`) + "\n")
+  if (process.stdout.isTTY && (process.stdout.columns || 80) < 60) {
+    text(`${st.bold(l.name)}  ${l.mark}\n${l.detail}${l.fix ? `\nNext  ${l.fix}` : ""}\n`)
+  } else {
+    text(`${l.mark.padEnd(4)}  ${l.name.padEnd(9)}  ${l.detail}`)
+    if (l.fix) text(st.gray(`      ${" ".repeat(9)}  ${l.fix}`))
+  }
 }
 
 /** Runs a command and resolves to its trimmed output, or undefined when it fails. */

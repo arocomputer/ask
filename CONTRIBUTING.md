@@ -19,6 +19,8 @@ call a network or a real model.
 - [docs/contributing/architecture.md](docs/contributing/architecture.md): how a turn goes, the
   modules, and the rules the layout keeps.
 - [docs/contributing/releases.md](docs/contributing/releases.md): cutting a release.
+- [docs/contributing/terminal.md](docs/contributing/terminal.md): terminal design and offline
+  desktop/phone fixtures.
 
 A behavior change comes with one test for it, and a user-visible change with a line in
 `CHANGELOG.md` and an update to `docs/`.

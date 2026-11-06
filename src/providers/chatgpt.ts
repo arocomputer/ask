@@ -106,7 +106,7 @@ export async function begin(h: Home): Promise<Attempt> {
   const redirect = `http://127.0.0.1:${(server.address() as AddressInfo).port}/auth/callback`
   const params = new URLSearchParams({
     client_id: previous?.client_id ?? "dynamic_agent_client",
-    ...(previous ? {} : { agent_name_hint: "ask" }),
+    ...(previous ? {} : { agent_name_hint: "Ask" }),
     ext_agent_host_id: hostId(h),
     ...(previous?.id_token ? { id_token_hint: previous.id_token } : {}),
     ...(previous?.email ? { login_hint: previous.email } : {}),

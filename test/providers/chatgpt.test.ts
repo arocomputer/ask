@@ -123,7 +123,7 @@ describe("chatgpt", () => {
     const attempt = await begin(h)
     try {
       const q = o.authorize(attempt.url)
-      assert.deepEqual([q.get("client_id"), q.get("agent_name_hint"), q.get("code_challenge_method"), q.get("resource")], ["dynamic_agent_client", "ask", "S256", "https://api.openai.com/v1"])
+      assert.deepEqual([q.get("client_id"), q.get("agent_name_hint"), q.get("code_challenge_method"), q.get("resource")], ["dynamic_agent_client", "Ask", "S256", "https://api.openai.com/v1"])
       assert.equal(q.get("scope"), "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct")
       assert.match(q.get("redirect_uri")!, /^http:\/\/127\.0\.0\.1:\d+\/auth\/callback$/)
       const host = JSON.parse(readFileSync(join(h.root, "host.json"), "utf8")).id

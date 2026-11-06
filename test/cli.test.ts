@@ -312,7 +312,7 @@ describe("cli", () => {
     const { run, home } = await setup([{ text: "unused" }])
     const r = await run(["settings-typo"])
     assert.equal(r.code, 2)
-    assert.match(r.stderr, /^unknown command "settings-typo" for "ask"/)
+    assert.match(r.stderr, /^error  unknown command "settings-typo"/)
     assert.throws(() => readdirSync(join(home, "sessions")))
   })
 
@@ -336,7 +336,7 @@ describe("cli", () => {
     writeFileSync(join(home, "config.json"), "{}")
     const r = await run(["doctor"])
     assert.equal(r.code, 1)
-    assert.match(r.stdout, /^X Model     no default model\n\s+ask settings$/m)
+    assert.match(r.stdout, /^fail\s+Model\s+no default model\n\s+ask settings$/m)
   })
 
   test("a worktree task works on its own branch and leaves the caller's files alone", async () => {

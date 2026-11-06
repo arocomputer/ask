@@ -13,10 +13,10 @@ import { active, builtin, enabled } from "../harnesses/extensions.ts"
 import { broken, folder, installed, load, type Extension, type Harness } from "../harnesses/harness.ts"
 import { readJSON, writeJSON, type Config, type Home } from "../base/home.ts"
 import * as skill from "../harnesses/skill.ts"
-import { style, table } from "../base/term.ts"
+import { heading, style, table, text } from "../base/term.ts"
 import { Usage } from "./command.ts"
 
-export const summary = "Turn on a harness, the agent skill or an extension"
+export const summary = "Add harnesses, skills or extensions"
 export const about = `Turn on what ask can run besides its own loop.
 
   claude    Run claude/ models with your installed Claude Code
@@ -31,7 +31,7 @@ ones you trust. With nothing named, lists what there is.`
 export const usage = "ask install [claude | codex | skill | PATH | URL]"
 export const examples = ["ask install claude", "ask install skill", "ask install https://github.com/someone/ask-gemini"]
 
-const say = (line: string) => process.stderr.write(line + "\n")
+const say = (line: string) => text(line, process.stderr)
 
 export async function run(h: Home, argv: string[]): Promise<number> {
   if (argv.length > 1) throw new Usage(`unexpected argument: ${argv[1]}`)
@@ -47,6 +47,7 @@ export async function run(h: Home, argv: string[]): Promise<number> {
 /** What can be installed and what is, one line each. */
 async function list(h: Home): Promise<number> {
   const st = style()
+  heading("install")
   const loaded = await active(h)
   const rows: [string, string, string][] = [
     ...Object.values(builtin).map((x): [string, string, string] => [x.name, `${x.title} harness`, enabled(h, x.name) ? "installed" : "not installed"]),
@@ -57,7 +58,7 @@ async function list(h: Home): Promise<number> {
       return [name, "Extension", broken.has(name) ? "broken" : "turned off"]
     }),
   ]
-  table(rows.map(([name, what, on]) => [[name, name], [what, what], [on, on === "installed" ? st.green(on) : on === "broken" ? st.red(on) : st.gray(on)]]), { header: ["NAME", "WHAT", "STATUS"], flex: 1 })
+  table(rows.map(([name, what, on]) => [[name, st.bold(name)], [what, what], [on, on === "broken" ? st.bold(on) : on]]), { header: ["Name", "Description", "Status"], flex: 1 })
   return 0
 }
 
@@ -80,9 +81,8 @@ export function template(x: Harness): NonNullable<Config["harnesses"]>[string] {
 }
 
 function turnOn(h: Home, x: Harness): number {
-  const st = style(process.stderr)
   enable(h, x.name, x)
-  say(`${st.green("✓")} Installed the ${x.name} harness`)
+  say(`Installed the ${x.name} harness`)
   ready(h, x)
   return 0
 }
@@ -92,10 +92,10 @@ function ready(h: Home, x: Harness) {
   const st = style(process.stderr)
   const s = x.status(readJSON<Config>(h.config, {}).harnesses?.[x.name] ?? {})
   if (s.ready) {
-    say(`${st.green("✓")} ${s.detail}`)
+    say(`ready  ${s.detail}`)
     if (s.fix) say(st.gray(`  ${s.fix}`))
   } else {
-    say(`${st.yellow("!")} ${s.detail}`)
+    say(`${st.bold("not ready")}  ${s.detail}`)
     if (s.fix) say(st.gray(`  ${s.fix}`))
   }
   const first = x.models({})[0]
@@ -107,10 +107,10 @@ function installSkill(): number {
   const st = style(process.stderr)
   const paths = skill.install()
   if (!paths.length) {
-    say(`${st.red("X")} Neither Claude Code nor Codex is set up here (no ~/.claude or ~/.codex)`)
+    say(`${st.bold("error")}  Neither Claude Code nor Codex is set up here (no ~/.claude or ~/.codex)`)
     return 1
   }
-  for (const p of paths) say(`${st.green("✓")} Wrote ${p}`)
+  for (const p of paths) say(`Installed skill  ${p}`)
   return 0
 }
 
@@ -129,7 +129,7 @@ async function installExtension(h: Home, source: string): Promise<number> {
       dir = join(scratch, "repo")
       const git = spawnSync("git", ["clone", "--depth", "1", "--quiet", "--", source, dir], { encoding: "utf8", stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } })
       if (git.status !== 0) {
-        say(`${st.red("X")} git couldn't fetch ${source}: ${(git.stderr || git.error?.message || "").trim().split("\n").pop()}`)
+        say(`${st.bold("error")}  git couldn't fetch ${source}: ${(git.stderr || git.error?.message || "").trim().split("\n").pop()}`)
         return 1
       }
     } else if (!statSync(dir).isDirectory()) throw new Usage(`${source} isn't a folder`)
@@ -137,15 +137,15 @@ async function installExtension(h: Home, source: string): Promise<number> {
     try {
       ext = await load(dir)
     } catch (err) {
-      say(`${st.red("X")} ${source} isn't an ask extension: ${(err as Error).message}`)
+      say(`${st.bold("error")}  ${source} isn't an Ask extension: ${(err as Error).message}`)
       return 1
     }
     if (builtin[ext.name] || ext.name === "skill" || ext.name === "chatgpt") {
-      say(`${st.red("X")} The extension calls itself ${ext.name}, which is ask's own; it needs another name`)
+      say(`${st.bold("error")}  The extension calls itself ${ext.name}, which is Ask's own; it needs another name`)
       return 1
     }
     if (ext.harness && readJSON<Record<string, unknown>>(h.catalog, {})[ext.name]) {
-      say(`${st.red("X")} The extension's harness is called ${ext.name}, like a provider ask already has; it needs another name`)
+      say(`${st.bold("error")}  The extension's harness is called ${ext.name}, like a provider Ask already has; it needs another name`)
       return 1
     }
     const dest = join(folder(h.root), ext.name)
@@ -153,7 +153,7 @@ async function installExtension(h: Home, source: string): Promise<number> {
     rmSync(dest, { recursive: true, force: true })
     cpSync(dir, dest, { recursive: true, filter: (p) => !relative(dir, p).split(sep).includes(".git") })
     enable(h, ext.name, ext.harness)
-    say(`${st.green("✓")} ${update ? "Updated" : "Installed"} ${ext.name}: ${describe(ext).replace(/^Extension: /, "")}`)
+    say(`${update ? "Updated" : "Installed"} ${ext.name}: ${describe(ext).replace(/^Extension: /, "")}`)
     if (ext.harness) ready(h, ext.harness)
     return 0
   } finally {

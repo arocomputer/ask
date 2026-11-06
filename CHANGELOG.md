@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Redesign human-facing output in monochrome: compact help, word-based status, responsive tables,
+  result-first session details and quiet progress. Interactive focus uses one text-height vertical
+  bar and a bold label; settings stays open until Done, with Esc to return from an action.
+  Add offline wide/phone visual fixtures. Keep TSV and JSON interfaces stable. New ChatGPT
+  registrations request the application display name "Ask".
 - Keep the active ChatGPT login when a pasted callback needs correcting, distinguish missing
   state from mismatched state, and exclude URL fragments when checking it. Reject unrelated
   browser callbacks. Redraw pasted input once per chunk to reduce SSH terminal flicker.

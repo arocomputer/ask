@@ -1,28 +1,24 @@
-// Terminal output: color and symbols only on a terminal (honoring NO_COLOR, CLICOLOR_FORCE and
-// TERM=dumb), tables that fit the width there and turn into tab-separated lines when piped,
-// relative times, and a spinner on stderr.
-//
-// The palette: text in the terminal's own color; bold for headers and the one thing a line is
-// about; gray for details; green, red and yellow only on state symbols and warnings; cyan only
-// for what is selected or chosen in a prompt.
+// Monochrome terminal output: the user's foreground/background, bold emphasis and dim details.
+// Tables become stacked records on narrow terminals and stay TSV in pipes. No colored states,
+// forced backgrounds or animated decoration; NO_COLOR and TERM=dumb also disable emphasis.
 
 /** A task's state, as sessions/store.ts keeps it. */
 type State = "running" | "retrying" | "succeeded" | "failed" | "stopped"
 
 type Stream = NodeJS.WriteStream
 
-/** Whether a stream gets color. */
+/** Whether a stream gets monochrome emphasis (also honors the conventional force-color flag). */
 export function colored(s: Stream): boolean {
-  if (process.env.NO_COLOR) return false
+  if (process.env.NO_COLOR !== undefined || process.env.TERM === "dumb") return false
   if (process.env.CLICOLOR_FORCE && process.env.CLICOLOR_FORCE !== "0") return true
   return !!s.isTTY && process.env.TERM !== "dumb"
 }
 
-const codes = { bold: [1, 22], red: [31, 39], green: [32, 39], yellow: [33, 39], cyan: [36, 39], gray: [90, 39] } as const
+const codes = { bold: [1, 22], gray: [2, 22] } as const
 
 export type Style = Record<keyof typeof codes, (s: string) => string> & { on: boolean }
 
-/** Styling functions for a stream; plain identity functions when it gets no color. */
+/** Bold and dim styles, or plain identity functions when emphasis is disabled. */
 export function style(s: Stream = process.stdout): Style {
   const on = colored(s)
   const out = { on } as Style
@@ -31,23 +27,9 @@ export function style(s: Stream = process.stdout): Style {
   return out
 }
 
-/**
- * A state's symbol: ✓ green, X red, * yellow while running, ! yellow while retrying, - gray
- * when stopped.
- */
+/** Human-readable states; the protocol continues to use its original state names. */
 export function symbol(state: State, st: Style): string {
-  switch (state) {
-    case "succeeded":
-      return st.green("✓")
-    case "failed":
-      return st.red("X")
-    case "stopped":
-      return st.gray("-")
-    case "retrying":
-      return st.yellow("!")
-    case "running":
-      return st.yellow("*")
-  }
+  return state === "succeeded" ? "done" : state === "failed" ? st.bold("failed") : state
 }
 
 /** "less than a minute ago", "about 5 minutes ago", "about 1 day ago", and so on. */
@@ -79,6 +61,9 @@ export function count(n: number): string {
 
 const escapes = /\x1b\[[0-9;]*m/g
 
+/** Plain text without styling, used to measure and reflow our own terminal output. */
+export const plain = (s: string): string => s.replace(escapes, "")
+
 /** Display width, ignoring color codes. */
 export function width(s: string): number {
   return [...s.replace(escapes, "")].length
@@ -86,8 +71,40 @@ export function width(s: string): number {
 
 /** Cuts plain text to a width, ending with … when cut. */
 export function truncate(s: string, w: number): string {
+  if (w <= 0) return ""
   const chars = [...s]
   return chars.length <= w ? s : chars.slice(0, Math.max(0, w - 1)).join("") + "…"
+}
+
+/** Wrap plain prose, retaining explicit newlines and every character of long paths/URLs. */
+export function wrap(text: string, columns: number): string[] {
+  const size = Math.max(1, columns)
+  return text.split("\n").flatMap((paragraph) => {
+    const lines: string[] = []
+    let rest = [...paragraph]
+    while (rest.length > size) {
+      const space = rest.slice(0, size + 1).lastIndexOf(" ")
+      const cut = space > 0 ? space : size
+      lines.push(rest.slice(0, cut).join(""))
+      rest = rest.slice(cut + (space > 0 ? 1 : 0))
+    }
+    lines.push(rest.join(""))
+    return lines
+  })
+}
+
+/** Reflow prose on phones; standalone URLs soft-wrap in the terminal so they remain clickable. */
+export function text(value: string, out: Stream = process.stdout) {
+  const room = Math.max(1, (out.columns || 80) - 1)
+  for (const line of value.split("\n")) {
+    const lines = out.isTTY && width(line) > room && !/^https?:\/\/\S+$/.test(plain(line)) ? wrap(plain(line), room) : [line]
+    out.write(lines.join("\n") + "\n")
+  }
+}
+
+/** A quiet title, only for a human terminal; never adds headers to piped data. */
+export function heading(label: string, out: Stream = process.stdout) {
+  if (out.isTTY) text(style(out).bold(`ask / ${label}`) + "\n", out)
 }
 
 const controls = new RegExp("[\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u2028-\\u202e\\u2066-\\u2069]", "g")
@@ -98,14 +115,13 @@ export function clean(s: string): string {
 }
 
 /**
- * Prints rows as a table. On a terminal, columns are aligned, a header is shown in bold if
- * given, and the column marked `flex` is truncated to fit (losing its color); piped, rows are
- * tab-separated with plain values and no header, for scripts. A cell is
+ * Prints aligned columns on wide terminals, labeled records when columns won't fit without
+ * squeezing identifiers. Piped rows remain tab-separated plain values without headers. A cell is
  * [plain, styled]; the styled form is what a terminal shows.
  */
 export function table(rows: [string, string][][], opts: { header?: string[]; flex?: number; out?: Stream } = {}) {
   const out = opts.out ?? process.stdout
-  if (!out.isTTY && !process.env.CLICOLOR_FORCE) {
+  if (!out.isTTY) {
     for (const row of rows) out.write(row.map(([plain]) => plain).join("\t") + "\n")
     return
   }
@@ -115,8 +131,21 @@ export function table(rows: [string, string][][], opts: { header?: string[]; fle
   const widths = Array.from({ length: cols }, (_, i) => Math.max(0, ...all.map((r) => (r[i] ? width(r[i][1]) : 0))))
   const flex = opts.flex ?? cols - 1
   const total = widths.reduce((a, b) => a + b, 0) + 2 * (cols - 1)
-  const room = out.columns || 80
-  if (total > room && flex >= 0) widths[flex] = Math.max(10, widths[flex] - (total - room))
+  const room = Math.max(1, (out.columns || 80) - 1)
+  if (room < 60 || (total > room && (flex < 0 || widths[flex] - (total - room) < 20))) {
+    for (const [index, row] of rows.entries()) {
+      if (index) out.write("\n")
+      for (const [i, [, styled]] of row.entries()) {
+        const value = plain(styled)
+        if (!value) continue
+        const label = opts.header?.[i]?.toLowerCase()
+        const content = i === 0 ? value : `${label ? label + "  " : ""}${value}`
+        for (const line of wrap(content, room - (i ? 2 : 0))) out.write((i ? "  " : "") + (i ? line : st.bold(line)) + "\n")
+      }
+    }
+    return
+  }
+  if (total > room && flex >= 0) widths[flex] -= total - room
   for (const row of all) {
     const line = row.map(([plain, styled], i) => {
       const shown = width(styled) > widths[i] ? truncate(plain, widths[i]) : styled
@@ -126,25 +155,21 @@ export function table(rows: [string, string][][], opts: { header?: string[]; fle
   }
 }
 
-const frames = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
-
 /**
- * A spinner on stderr with a changing label, only on a terminal. `stop` clears its line.
+ * A stable progress line on stderr. No timer or animation; update changes its label, stop clears it.
  */
 export function spinner(label: string) {
   const err = process.stderr
-  if (!err.isTTY) return { update(_: string) {}, stop() {} }
+  if (!err.isTTY || process.env.TERM === "dumb") return { update(_: string) {}, stop() {} }
   let text = label
-  let i = 0
-  const draw = () => err.write(`\r${frames[i++ % frames.length]} ${truncate(text, (err.columns || 80) - 3)}\x1b[K`)
+  const draw = () => err.write(`\r${truncate(text + "…", (err.columns || 80) - 1)}\x1b[K`)
   draw()
-  const timer = setInterval(draw, 100)
   return {
     update(t: string) {
       text = t
+      draw()
     },
     stop() {
-      clearInterval(timer)
       err.write("\r\x1b[K")
     },
   }

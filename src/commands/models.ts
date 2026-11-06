@@ -4,9 +4,9 @@ import { parseArgs } from "node:util"
 import { providers, usable } from "../providers/catalog.ts"
 import { readJSON, type Config, type Home } from "../base/home.ts"
 import { catalog, credential } from "../sessions/models.ts"
-import { count, style, table } from "../base/term.ts"
+import { count, heading, style, table, text } from "../base/term.ts"
 
-export const summary = "List your models"
+export const summary = "Available models"
 export const about = `List your models: those chosen in ask settings, or else every model of the providers ask
 has a key for. Name a provider to list all of its models; any of them works in a request.`
 export const usage = "ask models [<provider>] [flags]"
@@ -26,23 +26,24 @@ export async function run(h: Home, argv: string[]): Promise<number> {
     if (cfg.models?.length) list = list.filter((m) => cfg.models!.includes(`${m.provider}/${m.id}`))
   }
   if (!list.length) {
-    process.stderr.write("no models yet; run ask settings to add a provider\n")
+    text("No models yet.\nConnect a provider with ask settings.", process.stderr)
     return 1
   }
   const st = style()
+  heading("models")
   table(
     list.map((m) => {
       const name = `${m.provider}/${m.id}`
       const context = m.context ? count(m.context) : ""
       const mark = name === cfg.model ? "default" : ""
       return [
-        [name, name],
+        [name, name === cfg.model ? st.bold(name) : name],
         [m.name, m.name],
         [context, st.gray(context)],
         [mark, st.gray(mark)],
       ]
     }),
-    { header: ["MODEL", "NAME", "CONTEXT", ""], flex: 1 },
+    { header: ["Model", "Name", "Context", ""], flex: 1 },
   )
   return 0
 }

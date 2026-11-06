@@ -9,18 +9,18 @@ import { active, builtin } from "../harnesses/extensions.ts"
 import { folder } from "../harnesses/harness.ts"
 import { readJSON, writeJSON, type Config, type Home } from "../base/home.ts"
 import * as skill from "../harnesses/skill.ts"
-import { style } from "../base/term.ts"
+import { style, text } from "../base/term.ts"
 import { template } from "./install.ts"
 import { Usage } from "./command.ts"
 
-export const summary = "Turn off a harness, the agent skill or an extension"
+export const summary = "Remove an integration"
 export const about = `Turn off a harness, the agent skill or an extension that ask install turned on. Its models
 leave your chosen models, and an extension's files are deleted. Your own changes to a
 harness's "harnesses" entry in ~/.ask/config.json are kept.`
 export const usage = "ask remove <name>"
 export const examples = ["ask remove codex", "ask remove skill"]
 
-const say = (line: string) => process.stderr.write(line + "\n")
+const say = (line: string) => text(line, process.stderr)
 
 export async function run(h: Home, argv: string[]): Promise<number> {
   const st = style(process.stderr)
@@ -28,12 +28,12 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   const name = argv[0]
   if (name === "skill") {
     const paths = skill.remove()
-    if (!paths.length) say(`${st.yellow("!")} ask's skill isn't installed`)
-    for (const p of paths) say(`${st.green("✓")} ${p.restored ? "Put your earlier skill back at" : "Deleted"} ${p.path}`)
+    if (!paths.length) say("Ask's skill isn't installed")
+    for (const p of paths) say(`${p.restored ? "Restored your earlier skill at" : "Removed"} ${p.path}`)
     return 0
   }
   if (!/^[a-z][a-z0-9-]{0,30}$/.test(name)) {
-    say(`${st.red("X")} ${name} isn't installed; ask install lists what is`)
+    say(`${st.bold("error")}  ${name} isn't installed; ask install lists what is`)
     return 1
   }
   const c = readJSON<Config>(h.config, {})
@@ -41,7 +41,7 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   const dir = join(folder(h.root), name)
   const known = builtin[name] ?? ext?.harness
   if (!c.extensions?.includes(name) && (builtin[name] || !existsSync(dir))) {
-    say(`${st.red("X")} ${name} isn't installed; ask install lists what is`)
+    say(`${st.bold("error")}  ${name} isn't installed; ask install lists what is`)
     return 1
   }
   c.extensions = c.extensions?.filter((n) => n !== name)
@@ -58,7 +58,7 @@ export async function run(h: Home, argv: string[]): Promise<number> {
       if (!readdirSync(folder(h.root)).length) rmdirSync(folder(h.root))
     } catch {}
   }
-  say(`${st.green("✓")} Removed ${name}`)
+  say(`Removed ${name}`)
   if (!c.model) say(st.gray("  There's no default model now; ask settings sets one"))
   return 0
 }
