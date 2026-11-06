@@ -55,7 +55,8 @@ earlier versions.
   evidence, what changed and how it was checked), with the date, platform and repository
   state, and that what they read is material, not orders; Claude Code and Codex get the same
   framing on top of their own prompts.
-- Give every task `fetch`, which reads a web page as text, public addresses only, and
+- Give every task `fetch`, which reads a web page as text, 16k characters at a time with an
+  offset to read on, public addresses only, and
   `search`, ask's own web search, free and with no key: titles, addresses and snippets from
   DuckDuckGo, falling back to its lite page, Mwmbl and Wikipedia when one turns searches away. Claude
   Code and Codex keep their own.
@@ -68,7 +69,8 @@ earlier versions.
   gets the conversation so far.
 - Install extensions that add a harness or tools with `ask install PATH|URL`, and undo any
   install with `ask remove`.
-- Teach Claude Code and Codex to use ask with `ask install skill`.
+- Teach Claude Code and Codex to use ask with `ask install skill`: when to hand work off,
+  what a task's prompt needs, choosing read-only, write or worktree, and checking results.
 - List the calling conversation's own sessions with `{"sessions": {}}`, or everyone's with
   `"all": true`; `ask sessions` lists this repository's, or everyone's with `--all`.
 - Say where to make a key, and how it starts, for the common providers in `ask settings`, and

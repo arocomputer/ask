@@ -28,6 +28,9 @@ bun src/cli.ts doctor                    # run this checkout (node src/cli.ts wo
   [docs/contributing/sandbox.md](docs/contributing/sandbox.md).
 - `test/`: mirrors `src/`, tests against a fake provider (`test/fake.ts`); `cli.test.ts` runs
   the real command and its detached workers.
+- `bench/`: measures subagents on real models (`bench/run.ts`) and how agents delegate
+  through ask (`bench/callers.ts`); a change to prompts, tools or the skill ships when it
+  does at least as well. It spends quota, so `npm test` never runs it.
 - `docs/`: user docs. `docs/contributing/` is for people working on ask.
 - `.github/release/`: packaging with Bun, the Homebrew formula, cutting a release
   ([docs/contributing/releases.md](docs/contributing/releases.md)). `.github/brand/`: the logo.

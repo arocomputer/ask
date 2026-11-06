@@ -30,7 +30,7 @@ const jobs: Job[] = [
     files: { ...files(subagentTasks.find((t) => t.id === "fix-pagination")!).files, ...files(fix).files, ...files(subagentTasks.find((t) => t.id === "fix-feature")!).files },
     grade: (answer) => {
       // With the planted bug, page 0 is the first page: items[0:size].
-      const ok = [/\bfirst\b|items\[0\s*:|\[0,\s*1,\s*2|0\s*\*\s*size/i.test(answer), /parse/.test(answer) && /(swap|day|month|31|13)/i.test(answer), /\b(no|doesn't|does not|not)\b[\s\S]{0,40}(--json|json)|(--json|json)[\s\S]{0,40}\b(no|not|isn't|doesn't)\b/i.test(answer)]
+      const ok = [/\bfirst\b|items\[0\s*:|\[0,\s*1,\s*2|0\s*\*\s*size/i.test(answer), /parse/.test(answer) && /(swap|day|month|31|13)/i.test(answer), /\b(no|doesn't|does not|not)\b[\s\S]{0,200}json|json[\s\S]{0,60}\b(no|not|isn't|doesn't)\b/i.test(answer)]
       return { pass: ok.every(Boolean), notes: `${ok.filter(Boolean).length} of 3` }
     },
   },
@@ -128,6 +128,8 @@ mkdirSync(runs, { recursive: true })
 if (v.compare) {
   for (const label of positionals) {
     const rows = readFileSync(join(runs, `callers-${label}.jsonl`), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+    // Graded again with today's graders, except the fix, whose grade came from its folder.
+    for (const r of rows) if (r.job !== "delegated-fix") Object.assign(r, jobs.find((j) => j.id === r.job)!.grade(r.answer, ""))
     for (const d of [...new Set(rows.map((r) => r.driver))]) {
       const rs = rows.filter((r) => r.driver === d)
       const m = (k: string) => (rs.reduce((a, r) => a + r[k], 0) / rs.length).toFixed(1)
