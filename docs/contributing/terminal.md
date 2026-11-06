@@ -28,7 +28,8 @@ also disables interactive prompts. Machine JSON and piped TSV are independent of
   This uses the original list size so narrowing search results does not disable search.
 - Prompts omit keyboard-instruction footers except for model multiselect, where the controls
   help explain checkbox selection. Supporting text otherwise describes focused items and input state.
-- Text fields show a tail preview and count; API keys show a fixed mask. Callback values are
+- Text fields show a tail preview and count; API keys reveal at most their first four characters,
+  then a fixed mask that does not disclose key length. Callback values are
   not retained in completed-prompt receipts. Login URLs remain intact for copying.
 - Tables use columns when there is room and labeled records on phones. Prose wraps instead of
   truncating. Session outcomes precede activity. Progress is a stable label, not an animation.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
-import { menu } from "../../src/base/input.ts"
+import { field, menu } from "../../src/base/input.ts"
 import { plain, style, table, text, width } from "../../src/base/term.ts"
 
 /** Run terminal capture outside the test reporter's own stdout/stderr. */
@@ -27,6 +27,7 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
     assert.match(filtered.replace(/\n/g, " "), /0 of 30 · ↑↓ move/)
     assert.doesNotMatch(filtered, /Filter/)
     assert.doesNotMatch(result, /fixture-only-do-not-display/)
+    assert.match(result, /❙ fixt•{8}/)
     const nonModelPickers = result.split("--- model selection ---")[0] + result.split("--- empty filter ---")[1]
     assert.doesNotMatch(nonModelPickers, /↑↓|enter (?:select|save|submit|keeps)|esc (?:clear|back)|space toggle|← none|type to filter/)
     const settings = plain(result).split("--- settings picker ---")[1].split("--- model selection ---")[0]
@@ -62,4 +63,12 @@ test("phone output keeps standalone login URLs intact for copying", () => {
   const url = "https://auth.example/authorize?state=example&code_challenge=long-example"
   text(url, out)
   assert.equal(result, url + "\n")
+})
+
+test("secret input reveals only a four-character prefix and a fixed mask", () => {
+  const short = field("API key", "sk-", "", true).map(plain).join("\n")
+  const long = field("API key", "sk-proj-secret-part", "", true).map(plain).join("\n")
+  assert.match(short, /❙ •••/)
+  assert.match(long, /❙ sk-p••••••••/)
+  assert.doesNotMatch(long, /secret-part/)
 })

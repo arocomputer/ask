@@ -167,7 +167,9 @@ export function multi<T>(title: string, items: Item<T>[], chosen: T[] = []): Pro
 export function field(title: string, value: string, hint: string, secret = false, out = process.stderr): string[] {
   const room = Math.max(1, (out.columns || 80) - 3)
   const chars = [...value]
-  const preview = secret ? value ? "••••••••" : "" : chars.length > room ? "…" + chars.slice(-(room - 1)).join("") : value
+  const preview = secret
+    ? chars.length >= 4 ? chars.slice(0, 4).join("") + "••••••••" : "•".repeat(chars.length)
+    : chars.length > room ? "…" + chars.slice(-(room - 1)).join("") : value
   const detail = secret ? value ? "Key received" : "Input hidden" : hint
   return [title, "", `❙ ${preview}`, ...(detail ? ["", style(out).gray(detail)] : [])]
 }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show the first four API-key characters while pasting, followed by a fixed mask that hides the
+  remainder and does not reveal the full key length.
 - Restore compact model-multiselect keybinds, preceded by the selected/available count; use `>`
   as the search prompt and keep the count based on the full list while filtering.
 - Simplify model pickers: omit the multiselect title and receipt, show muted provider names

@@ -7,7 +7,8 @@ small files, or use the provider's own key variable.
 
 Choose **Connect a provider**, then a provider. API keys stay hidden as you paste, with a short
 acknowledgement when input arrives. Ask checks the key with one tiny request before saving it,
-then asks for models and a default. Each completed action saves immediately; settings stays open
+then asks for models and a default. While pasting a key, its first four characters are visible
+followed by a fixed mask; the rest and the key length stay hidden. Each completed action saves immediately; settings stays open
 until you choose **Done** or press Esc at the main menu.
 
 ```text
