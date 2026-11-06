@@ -40,7 +40,7 @@ export async function preview(columns: number, monochrome = true): Promise<strin
       }],
     }))
     const section = (name: string) => { output += `\n--- ${name} ---\n\n` }
-    for (const args of [["help"], ["settings", "--help"], ["models"], ["tools"], ["sessions", "--all"], ["show", "abc123"], ["legacy"], ["unknown"]]) {
+    for (const args of [["-h"], ["settings", "-h"], ["models"], ["tools"], ["sessions", "--all"], ["show", "abc123"], ["legacy"], ["sessiosn"], ["--all"]]) {
       section(args.join(" "))
       await main(args)
     }

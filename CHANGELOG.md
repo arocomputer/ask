@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Make `ask -h` and `ask COMMAND -h` the documented help forms, retaining old help aliases.
+  Suggest close command/flag spellings and explain misplaced flags or help topics without
+  executing corrections. Reject extra arguments to settings and doctor instead of ignoring them.
 - Redesign human-facing output in monochrome: compact help, word-based status, responsive tables,
   result-first session details and quiet progress. Interactive focus uses one text-height vertical
   bar and a bold label; settings stays open until Done, with Esc to return from an action.
