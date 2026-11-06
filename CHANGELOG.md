@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Clarify setup copy and credential sources, show readable default models and task timeouts,
+  and remove duplicate model-selection confirmations. Distinguish enabling integrations from
+  installing apps, and removing saved credentials from environment-provided access. Improve
+  empty model-list guidance, sign-in wording and doctor recovery instructions.
 - Disable filtering in menus with seven or fewer options; keep search for longer lists.
 - Remove keyboard-instruction footers from pickers and input fields, keeping contextual details
   and input status.

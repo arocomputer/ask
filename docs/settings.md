@@ -17,11 +17,8 @@ ask / settings
   Models
 ❙ Connect a provider
   Disconnect a provider
-  Timeout
+  Task timeout
   Done
-
-ChatGPT, API keys or installed harnesses
-
 ```
 
 The focused item is bold with a narrow `❙` bar beside it. Typing filters lists with more than
@@ -29,6 +26,14 @@ seven options; short menus such as Settings do not filter. Arrows move,
 Enter selects, and Space toggles models in multiselect lists. Esc clears a filter, then goes
 back without saving the unfinished prompt. Completed changes remain saved. Model actions appear
 once a provider is connected. A terminal is required; in scripts, use the files below.
+
+The default model is shown by name and provider. **Models** shows the selection count, or
+**All models from connected providers** when no shortlist is saved. **Task timeout** shows
+whole minutes when possible; its editor accepts seconds.
+
+Provider details distinguish a saved API key from one supplied by an environment variable.
+Disconnecting removes the saved credential and model selections; an environment-provided key
+can still make that provider available, and Ask reports that remaining access.
 
 ## Sandbox
 
@@ -61,9 +66,9 @@ Connect a provider  ChatGPT
 ask / connect ChatGPT
 Open this link in your browser:
 https://auth.openai.com/api/accounts/authorize?...
-After signing in, copy the address of the page that cannot load.
-Paste it below. This link stays active until you cancel.
-Callback URL
+After signing in, your browser may show a page that cannot load.
+Copy its full address and paste it below.
+Sign-in return URL
 
 ❙ http://127.0.0.1:1455/auth/callback?...
 
@@ -90,7 +95,7 @@ name it was originally given. The command, provider identifiers and filesystem p
 
 ## Claude Code and Codex
 
-Once `ask install claude` or `ask install codex` has turned a harness on, it is listed in
+Once `ask install claude` or `ask install codex` has enabled the integration, it is listed in
 `ask settings` as a provider. Choosing it checks that it is installed and signed in, then asks
 which models you want. ask never signs in for them: if one isn't signed in, sign in its own way
 (`claude`, then `/login`; `codex login`). See [Harnesses and extensions](extensions.md).

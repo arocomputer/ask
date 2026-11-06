@@ -7,6 +7,10 @@ also disables interactive prompts. Machine JSON and piped TSV are independent of
 
 ## Layout
 
+- Labels name actions; hints describe useful state, such as credential source or the current
+  default. Avoid internal jargon in setup screens and duplicate completion messages. Enabling
+  an integration is distinct from installing its application; removing a saved key does not
+  remove credentials supplied through the environment.
 - Compact sentence-case headings; general help opens with bold `Ask` and the muted tagline
   `Background tasks, handled.` on the same line. No repeated help boilerplate or decorative boxes.
 - A screen heading supplies its context once: the settings hub omits a second title and

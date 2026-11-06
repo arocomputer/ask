@@ -47,17 +47,19 @@ export async function preview(columns: number, monochrome = true): Promise<strin
     section("settings picker")
     output += "ask / settings\n\n"
     output += menu("", [
-      { label: "Default model", hint: "example/reader", value: "default" },
-      { label: "Connect a provider", hint: "ChatGPT, API keys or installed harnesses", value: "connect" },
-      { label: "Timeout", hint: "900 seconds", value: "timeout" },
+      { label: "Default model", hint: "Reader · Example", value: "default" },
+      { label: "Connect a provider", value: "connect" },
+      { label: "Task timeout", hint: "15 minutes", value: "timeout" },
       { label: "Done", value: "done" },
     ], 1).join("\n") + "\n"
     section("model selection")
     output += menu("Models", [{ label: "Reader", value: "reader" }, { label: "Writer", value: "writer" }], 1, "", new Set(["reader"])).join("\n") + "\n"
     section("empty filter")
     output += menu("Models", [], 0, "not-found").join("\n") + "\n"
+    section("disconnect confirmation")
+    output += menu("Remove Example's saved API key and model selections?", [{ label: "Yes", value: true }, { label: "No", value: false }], 1).join("\n") + "\n"
     section("callback paste")
-    output += field("Callback URL", "http://127.0.0.1:1455/auth/callback?code=example&state=example", "58 characters").join("\n") + "\n"
+    output += field("Sign-in return URL", "http://127.0.0.1:1455/auth/callback?code=example&state=example", "58 characters").join("\n") + "\n"
     section("secret paste")
     output += field("API key", "fixture-only-do-not-display", "", true).join("\n") + "\n"
     section("doctor")

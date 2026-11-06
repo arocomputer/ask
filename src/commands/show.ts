@@ -8,7 +8,7 @@ import { ago, clean, count, duration, style, text, type Style } from "../base/te
 import { Usage } from "./command.ts"
 
 export const summary = "Task results and activity"
-export const about = "View a session: each prompt, the steps the subagent took, and its answer."
+export const about = "View a session's results: each prompt and answer, followed by activity and changed files."
 export const usage = "ask show <id>"
 export const examples = ["ask show k3f9a2"]
 

@@ -21,6 +21,8 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
     const settings = plain(result).split("--- settings picker ---")[1].split("--- model selection ---")[0]
     assert.match(settings, /ask \/ settings\n\n  Default model\n/)
     assert.doesNotMatch(settings, /^Settings$/m)
+    const confirmation = plain(result).split("--- disconnect confirmation ---")[1].split("--- callback paste ---")[0]
+    assert.match(confirmation.replace(/\s+/g, " "), /Remove Example's saved API key and model selections\?/)
     const session = result.slice(result.indexOf("--- show abc123"), result.indexOf("--- legacy"))
     assert.match(plain(session), /Answer\nThe callback/)
   }

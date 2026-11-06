@@ -91,7 +91,7 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
   const cols = Math.max(1, (out.columns || 80) - 1)
   const page = Math.min(7, Math.max(1, (out.rows || 24) - 10))
   const top = Math.max(0, Math.min(cursor - page + 1, items.length - page))
-  const lines: string[] = title ? [title, ""] : []
+  const lines: string[] = title ? [...wrap(title, cols), ""] : []
   if (query) lines.push(`Filter  ${query}`, "")
   for (const [index, item] of items.slice(top, top + page).entries()) {
     const focused = top + index === cursor

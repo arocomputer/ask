@@ -66,7 +66,7 @@ export async function run(h: Home): Promise<number> {
           const sp = spinner(`Checking the ${c[m.provider].name} key`)
           const problem = await check(m, cred.key, readJSON<Auth>(h.auth, {})[m.provider]?.base_url)
           sp.stop()
-          add(problem ? { mark: "fail", name: "Key", detail: problem, fix: "ask settings, then Providers" } : { mark: "ok", name: "Key", detail: `${c[m.provider].name} accepts the ${cred.source}` })
+          add(problem ? { mark: "fail", name: "Key", detail: problem, fix: "ask settings, then Connect a provider" } : { mark: "ok", name: "Key", detail: `${c[m.provider].name} accepts the ${cred.source}` })
         }
       } catch (err) {
         add({ mark: "fail", name: "Model", detail: (err as Error).message, fix: "ask settings, then Default model" })

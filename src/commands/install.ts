@@ -16,18 +16,18 @@ import * as skill from "../harnesses/skill.ts"
 import { heading, style, table, text } from "../base/term.ts"
 import { Usage } from "./command.ts"
 
-export const summary = "Add harnesses, skills or extensions"
-export const about = `Turn on what ask can run besides its own loop.
+export const summary = "Connect coding agents and add extensions"
+export const about = `Connect coding agents and add extensions.
 
-  claude    Run claude/ models with your installed Claude Code
-  codex     Run codex/ models with your installed Codex
+  claude    Enable the Claude Code integration
+  codex     Enable the Codex integration
   skill     Teach Claude Code and Codex to hand work to ask
   PATH|URL  An extension: a folder or git repository that adds a harness or tools
 
-ask doesn't install Claude Code or Codex themselves, or sign in to them; see each one's
-docs. A harness gets an entry under "harnesses" in ~/.ask/config.json, to change the command,
+Ask uses your existing Claude Code or Codex installation and sign-in.
+Each integration gets an entry under "harnesses" in ~/.ask/config.json, to change the command,
 add arguments or set environment variables. An extension runs as part of ask, so install only
-ones you trust. With nothing named, lists what there is.`
+ones you trust. Run ask install without arguments to list integrations and extensions.`
 export const usage = "ask install [claude | codex | skill | PATH | URL]"
 export const examples = ["ask install claude", "ask install skill", "ask install https://github.com/someone/ask-gemini"]
 
@@ -50,7 +50,7 @@ async function list(h: Home): Promise<number> {
   heading("install")
   const loaded = await active(h)
   const rows: [string, string, string][] = [
-    ...Object.values(builtin).map((x): [string, string, string] => [x.name, `${x.title} harness`, enabled(h, x.name) ? "installed" : "not installed"]),
+    ...Object.values(builtin).map((x): [string, string, string] => [x.name, `${x.title} integration`, enabled(h, x.name) ? "enabled" : "not enabled"]),
     ["skill", "Agent skill for Claude Code and Codex", skill.current() ? "installed" : "not installed"],
     ...installed(h.root).map((name): [string, string, string] => {
       const e = loaded.find((x) => x.name === name)
@@ -82,7 +82,7 @@ export function template(x: Harness): NonNullable<Config["harnesses"]>[string] {
 
 function turnOn(h: Home, x: Harness): number {
   enable(h, x.name, x)
-  say(`Installed the ${x.name} harness`)
+  say(`Enabled ${x.title}`)
   ready(h, x)
   return 0
 }

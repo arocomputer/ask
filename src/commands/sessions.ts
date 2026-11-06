@@ -11,7 +11,7 @@ import { Usage } from "./command.ts"
 
 export const summary = "Recent tasks"
 export const about = `List recent sessions started from this repository, or this folder outside one, newest first.
---all lists every session.`
+--all lists every session. A session contains a task and its follow-ups; each follow-up is a turn.`
 export const usage = "ask sessions [flags]"
 export const flags: [string, string][] = [
   ["-a, --all", "List sessions from everywhere"],

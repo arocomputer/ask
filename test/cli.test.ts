@@ -39,6 +39,15 @@ async function setup(replies: Reply[], catalog: unknown = defaultCatalog) {
 }
 
 describe("cli", () => {
+  test("empty model lists distinguish missing connections from unavailable selections", async () => {
+    const { home, run } = await setup([])
+    writeFileSync(join(home, "config.json"), JSON.stringify({ models: ["fake/missing"] }))
+    assert.match((await run(["models"])).stderr, /None of your selected models are available/)
+    writeFileSync(join(home, "auth.json"), "{}")
+    assert.match((await run(["models"])).stderr, /No providers connected/)
+    writeFileSync(join(home, "cache", "models.json"), JSON.stringify({ fake: { id: "fake", name: "Fake", env: [], models: {} } }))
+    assert.match((await run(["models", "fake"])).stderr, /No supported models found for the requested providers/)
+  })
   test("legacy records and transcripts are readable without conversion or cleanup", async () => {
     const { home, run } = await setup([])
     const folder = join(home, "agent", "sessions", "20260101-abc123")
