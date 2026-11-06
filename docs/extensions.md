@@ -115,8 +115,8 @@ there is kept as `SKILL.md.bak`, and `ask remove skill` puts it back.
 
 ## Turning tools off, and replacing them
 
-ask's own loop gives a subagent `read`, `list`, `grep`, `fetch` and `search`, plus `write`,
-`edit` and `shell` in a write task. `ask tools` lists them, where each comes from, and whether
+ask's own loop gives a subagent `read`, `list`, `grep`, `git`, `fetch` and `search`, plus
+`write`, `edit` and `shell` in a write task. `ask tools` lists them, where each comes from, and whether
 it is on:
 
 ```sh
@@ -128,8 +128,8 @@ ask tools on shell
 Turning one off sets it to `false` under `"tools"` in `~/.ask/config.json`, which you can also
 edit. An extension's tool with a built-in's name replaces the built-in, so an extension can
 swap ask's `search` for another engine, or `fetch` for one that renders pages. A read-only task
-only takes read-only tools, so a replacement for `read`, `list`, `grep`, `fetch` or `search`
-must say `readonly: true`. These are tools for ask's own loop; Claude Code and Codex use their
+only takes read-only tools, so a replacement for `read`, `list`, `grep`, `git`, `fetch` or
+`search` must say `readonly: true`. These are tools for ask's own loop; Claude Code and Codex use their
 own.
 
 ## Installing an extension

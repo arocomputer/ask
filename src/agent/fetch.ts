@@ -10,7 +10,8 @@ import { reach } from "../sandbox/proxy.ts"
 import type { Tool } from "./tools.ts"
 
 const downloadLimit = 2 * 1024 * 1024
-const textLimit = 48 * 1024
+/** Characters of a page per call; a long page is read on with `offset`, so a model reads only as far as it needs. */
+const textLimit = 16 * 1024
 const redirects = 5
 
 /**
@@ -105,19 +106,23 @@ export async function download(href: string, signal?: AbortSignal, form?: string
 export const fetch: Tool = {
   name: "fetch",
   description:
-    "Read a web page or file over http or https, such as documentation. HTML comes back as plain text. Only public addresses; nothing on this machine or the local network.",
-  parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"], additionalProperties: false },
+    "Read a web page or file over http or https, such as documentation. HTML comes back as plain text, 16k characters at a time; a longer page says the offset to read on from. Only public addresses; nothing on this machine or the local network.",
+  parameters: {
+    type: "object",
+    properties: { url: { type: "string" }, offset: { type: "integer", description: "Character to start from, for reading on in a long page" } },
+    required: ["url"],
+    additionalProperties: false,
+  },
   readonly: true,
   async run(args, { signal }) {
     const { status, url, type, body, cut: big } = await download(String(args.url ?? ""), signal)
-    let cut = big
     if (!/^(text\/|application\/(json|xml|javascript|x-yaml|yaml)|[^;]*\+(json|xml))/i.test(type) && body.includes(0))
       return `${status} ${url.href}\n${type || "binary content"}, ${body.length} bytes; not text`
-    let out = /html/i.test(type) ? text(body.toString("utf8")) : body.toString("utf8")
-    if (out.length > textLimit) {
-      out = out.slice(0, textLimit)
-      cut = true
-    }
-    return `${status} ${url.href}\n\n${out}${cut ? "\n\n[cut: the page is longer]" : ""}`
+    const all = /html/i.test(type) ? text(body.toString("utf8")) : body.toString("utf8")
+    const from = Math.max(0, Math.floor(Number(args.offset) || 0))
+    const out = all.slice(from, from + textLimit)
+    const rest = all.length - from - out.length
+    const more = rest > 0 ? `\n\n[${rest} more characters; fetch again with offset ${from + out.length} to read on]` : big ? "\n\n[the download stopped at 2 MiB]" : ""
+    return `${status} ${url.href}${from ? ` (from character ${from} of ${all.length})` : ""}\n\n${out}${more}`
   },
 }

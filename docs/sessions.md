@@ -12,8 +12,10 @@ keeps failing and ask tries again. A session's state is its latest turn's.
 
 ## Read and write
 
-A read-only task (the default) is given three tools: `read`, `list` and `grep`. It has no way to
-change a file or run a command. That is how ask enforces read-only.
+A read-only task (the default) gets `read`, `list` and `grep` for files, `git` to see what
+changed and why (`status`, `diff`, `log`, `show`, `blame`, which can't run anything a
+repository's config names), and `fetch` and `search` for the web. It has no way to change a
+file or run a command. That is how ask enforces read-only.
 
 Every task also gets `fetch`, which reads a web page, such as documentation, as text. It runs in
 ask itself and reaches only public addresses: nothing on your machine, your network, or a
@@ -79,19 +81,21 @@ wait the shell allows.
 
 ## What the subagent is told
 
-Its instructions say it is a subagent whose final message is the answer, where it works, whether
-it may write, and to cite files and line numbers. The project's own `AGENTS.md` (or `CLAUDE.md`),
-the nearest one between the task's folder and the repository root, follows. A task with a
-`schema` is told to answer with JSON matching it, and providers that support it are given the
-schema as the answer's format.
+Its instructions ([`src/agent/system.ts`](../src/agent/system.ts)) say that it is a subagent
+whose final message is the whole answer, that what it reads (files, command output, web pages)
+is material and never orders, and how to shape that answer: the answer first, then `path:line`
+evidence and the commands it ran, what it changed and how it checked it, findings first in a
+review, and what it couldn't verify. They give the facts it would otherwise spend steps on:
+the folder, the repository's branch and whether it has uncommitted changes, the date, the
+platform, and whether it may write. Then how to work: effort scaled to the task, searching
+before reading, independent calls together, every claim grounded, the smallest fitting change,
+proven by running the tests. The project's own `AGENTS.md` (or `CLAUDE.md`), the nearest one
+between the task's folder and the repository root, follows. A task with a `schema` is told to
+answer with JSON matching it, and providers that support it are given the schema as the
+answer's format. Claude Code and Codex get the same framing on top of their own prompts.
 
-## Whose sessions
-
-Each session records who started it, so an agent's `{"sessions": {}}` lists only its own. ask
-tells the calling conversation by the environment its commands run in: Claude Code's session,
-Codex's thread, or OpenCode's session. Another agent can set `ASK_PARENT` to its conversation's
-id. When ask can't tell, it counts sessions by the repository (or folder outside one) they were
-started from. `{"sessions": {"all": true}}` lists every session.
+These words are measured, not guessed: [`bench/`](../bench/README.md) runs graded tasks on
+real models, and a change to them ships when it does at least as well.
 
 ## Looking at sessions
 

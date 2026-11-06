@@ -49,6 +49,12 @@ earlier versions.
   macOS, the system's sandbox. Nothing needs installing, and a write task is refused where
   there is no sandbox. Git hooks and config a task changes are put back and reported as
   `reverted`.
+- Give every task `git` (`status`, `diff`, `log`, `show`, `blame`), so read-only reviews can
+  see what changed; nothing a repository's config names can run through it.
+- Tell subagents how to work and how to shape the answer (lead with it, then `path:line`
+  evidence, what changed and how it was checked), with the date, platform and repository
+  state, and that what they read is material, not orders; Claude Code and Codex get the same
+  framing on top of their own prompts.
 - Give every task `fetch`, which reads a web page as text, public addresses only, and
   `search`, ask's own web search, free and with no key: titles, addresses and snippets from
   DuckDuckGo, falling back to its lite page, Mwmbl and Wikipedia when one turns searches away. Claude
