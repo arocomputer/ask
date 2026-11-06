@@ -93,7 +93,7 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
   const page = Math.min(7, Math.max(1, (out.rows || 24) - 10))
   const top = Math.max(0, Math.min(cursor - page + 1, items.length - page))
   const lines: string[] = title ? [...wrap(title, cols), ""] : []
-  if (query) lines.push(`Filter  ${query}`, "")
+  if (query) lines.push(`> ${query}`, "")
   for (const [index, item] of items.slice(top, top + page).entries()) {
     const focused = top + index === cursor
     const prefix = selected ? selected.has(item.value) ? "[x] " : "[ ] " : `${focused ? "❙" : " "} `
@@ -106,7 +106,11 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
   if (!items.length) lines.push("  No matches")
   const focused = items[cursor]
   if (focused?.hint) lines.push("", ...wrap(focused.hint, cols).map(st.gray))
-  if (items.length > page) lines.push(st.gray(`${cursor + 1} of ${items.length}`))
+  if (selected) {
+    const count = items.filter((item) => selected.has(item.value)).length
+    const footer = `${count} of ${items.length} · ↑↓ move · space toggle · enter save · esc back`
+    lines.push("", ...wrap(footer, cols).map(st.gray))
+  } else if (items.length > page) lines.push(st.gray(`${cursor + 1} of ${items.length}`))
   return lines
 }
 

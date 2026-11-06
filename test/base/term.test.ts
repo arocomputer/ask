@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
+import { menu } from "../../src/base/input.ts"
 import { plain, style, table, text, width } from "../../src/base/term.ts"
 
 /** Run terminal capture outside the test reporter's own stdout/stderr. */
@@ -20,9 +21,14 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
     assert.match(models, /\x1b\[1m\[ \] Writer\x1b\[22m  \x1b\[2mopencode-go\x1b\[22m/)
     assert.doesNotMatch(models, /❙/)
     assert.doesNotMatch(plain(models), /Models|selected|opencode-go\//)
-    assert.match(plain(models).trimEnd(), /2 of 8$/)
+    assert.match(plain(models).replace(/\n/g, " "), /1 of 30 · ↑↓ move · space toggle · enter save · esc back/)
+    const filtered = plain(menu("", Array.from({ length: 30 }, (_, i) => ({ label: `Model ${i + 1}`, value: i })), 0, "reader", new Set()).join("\n"))
+    assert.match(filtered, /> reader/)
+    assert.match(filtered.replace(/\n/g, " "), /0 of 30 · ↑↓ move/)
+    assert.doesNotMatch(filtered, /Filter/)
     assert.doesNotMatch(result, /fixture-only-do-not-display/)
-    assert.doesNotMatch(result, /↑↓|enter (?:select|save|submit|keeps)|esc (?:clear|back)|space select|← none|type to filter/)
+    const nonModelPickers = result.split("--- model selection ---")[0] + result.split("--- empty filter ---")[1]
+    assert.doesNotMatch(nonModelPickers, /↑↓|enter (?:select|save|submit|keeps)|esc (?:clear|back)|space toggle|← none|type to filter/)
     const settings = plain(result).split("--- settings picker ---")[1].split("--- model selection ---")[0]
     assert.match(settings, /ask \/ settings\n\n  Default model\n/)
     assert.doesNotMatch(settings, /^Settings$/m)

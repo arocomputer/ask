@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Restore compact model-multiselect keybinds, preceded by the selected/available count; use `>`
+  as the search prompt and keep the count based on the full list while filtering.
 - Simplify model pickers: omit the multiselect title and receipt, show muted provider names
   beside models, and retain the position counter below long lists.
 - Use checkboxes alone in model multiselect lists, with the focused checkbox and text both bold.

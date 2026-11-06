@@ -29,7 +29,9 @@ back without saving the unfinished prompt. Completed changes remain saved. Model
 once a provider is connected. A terminal is required; in scripts, use the files below.
 
 Model lists show the provider beside each model in muted text, with the position counter below
-long lists. The model multiselect omits its own title and selection receipt.
+long single-choice lists. The model multiselect omits its own title and selection receipt; its
+bottom line shows the selected count (for example, `0 of 30`) followed by compact keybinds.
+Search appears as `> query`, without a “Filter” label.
 
 The default model is shown by name and provider. **Models** shows the selection count, or
 **All models from connected providers** when no shortlist is saved. **Task timeout** shows
