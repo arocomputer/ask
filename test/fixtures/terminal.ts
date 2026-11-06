@@ -57,7 +57,7 @@ export async function preview(columns: number, monochrome = true): Promise<strin
     section("empty filter")
     output += menu("Models", [], 0, "not-found").join("\n") + "\n"
     section("callback paste")
-    output += field("Callback URL", "http://127.0.0.1:1455/auth/callback?code=example&state=example", "58 characters · enter submit").join("\n") + "\n"
+    output += field("Callback URL", "http://127.0.0.1:1455/auth/callback?code=example&state=example", "58 characters").join("\n") + "\n"
     section("secret paste")
     output += field("API key", "fixture-only-do-not-display", "", true).join("\n") + "\n"
     section("doctor")

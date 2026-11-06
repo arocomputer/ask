@@ -17,6 +17,7 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
     assert.match(result, /❙ \x1b\[1mConnect a provider\x1b\[22m/)
     assert.match(result, /  \[x\] Reader\n❙ \[ \] \x1b\[1mWriter/)
     assert.doesNotMatch(result, /fixture-only-do-not-display/)
+    assert.doesNotMatch(result, /↑↓|enter (?:select|save|submit|keeps)|esc (?:clear|back)|space select|← none|type to filter/)
     const settings = plain(result).split("--- settings picker ---")[1].split("--- model selection ---")[0]
     assert.match(settings, /ask \/ settings\n\n  Default model\n/)
     assert.doesNotMatch(settings, /^Settings$/m)

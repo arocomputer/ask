@@ -176,7 +176,7 @@ async function signIn(h: Home): Promise<boolean> {
       say("Open this link in your browser:")
       say(attempt.url)
       say("After signing in, copy the address of the page that cannot load.")
-      say("Paste it below and press Enter. This link stays active until you cancel.")
+      say("Paste it below. This link stays active until you cancel.")
     } else {
       say("Your browser is opening. If needed, open this link:")
       say(attempt.url)

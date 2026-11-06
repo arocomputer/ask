@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Remove keyboard-instruction footers from pickers and input fields, keeping contextual details
+  and input status.
 - Remove the duplicate settings title and hub navigation receipts beneath `ask / settings`.
 - Keep the general help title on one line: **Ask** followed by a muted “Background tasks, handled.”
 - Make `ask -h` and `ask COMMAND -h` the documented help forms, retaining old help aliases.

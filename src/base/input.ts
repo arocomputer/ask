@@ -103,9 +103,6 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
   const focused = items[cursor]
   if (focused?.hint) lines.push("", ...wrap(focused.hint, cols).map(st.gray))
   if (items.length > page) lines.push(st.gray(`${cursor + 1} of ${items.length}`))
-  lines.push("", st.gray(selected ? "space select · enter save" : "↑↓ move · enter select"))
-  lines.push(st.gray(query ? "type to filter · esc clear" : "type to filter · esc back"))
-  if (selected) lines.push(st.gray("← none · → all"))
   return lines
 }
 
@@ -162,14 +159,15 @@ export function field(title: string, value: string, hint: string, secret = false
   const room = Math.max(1, (out.columns || 80) - 3)
   const chars = [...value]
   const preview = secret ? value ? "••••••••" : "" : chars.length > room ? "…" + chars.slice(-(room - 1)).join("") : value
-  return [title, "", `❙ ${preview || style(out).gray("Paste or type here")}`, "", style(out).gray(secret ? value ? "Key received · enter save" : "Input hidden · esc back" : hint)]
+  const detail = secret ? value ? "Key received" : "Input hidden" : hint
+  return [title, "", `❙ ${preview}`, ...(detail ? ["", style(out).gray(detail)] : [])]
 }
 
 /** One editable field. Empty input keeps a default, callback input waits, Esc goes back. */
 async function entry(title: string, initial = "", secret = false, signal?: AbortSignal): Promise<string | undefined> {
   const screen = canvas()
   let value = ""
-  const render = () => screen.draw(field(title, value, value ? `${[...value].length} characters · enter submit` : initial ? `enter keeps ${initial}` : "enter submit · esc back", secret))
+  const render = () => screen.draw(field(title, value, value ? `${[...value].length} characters` : initial ? `Default  ${initial}` : "", secret))
   process.stderr.write("\x1b[?25l")
   render()
   try {

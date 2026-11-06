@@ -22,8 +22,6 @@ ask / settings
 
 ChatGPT, API keys or installed harnesses
 
-↑↓ move · enter select
-type to filter · esc back
 ```
 
 The focused item is bold with a narrow `❙` bar beside it. Typing filters lists; arrows move,
@@ -63,12 +61,12 @@ ask / connect ChatGPT
 Open this link in your browser:
 https://auth.openai.com/api/accounts/authorize?...
 After signing in, copy the address of the page that cannot load.
-Paste it below and press Enter. This link stays active until you cancel.
+Paste it below. This link stays active until you cancel.
 Callback URL
 
 ❙ http://127.0.0.1:1455/auth/callback?...
 
-… characters · enter submit
+… characters
 
 Connected to ChatGPT as you@example.com
 Usage settings  https://chatgpt.com/settings/usage
