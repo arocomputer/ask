@@ -12,13 +12,13 @@ import { join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { connect } from "../providers/catalog.ts"
 import { changes, snapshot } from "../base/git.ts"
-import { readJSON, type Config, type Home } from "../base/home.ts"
-import { resolve } from "./models.ts"
+import { readJSON, writeJSON, type Config, type Home } from "../base/home.ts"
+import { readModels, resolve } from "./models.ts"
 import { web } from "../agent/search.ts"
 import { harness, settings, tools } from "../harnesses/extensions.ts"
 import { open, support, type Sandbox } from "../sandbox/confine.ts"
 import { history, type Harness, type Outcome } from "../harnesses/harness.ts"
-import { run } from "../agent/loop.ts"
+import { run, type Checkpoint } from "../agent/loop.ts"
 import { withRetries, type Message, type Usage } from "../providers/stream.ts"
 import { latest, lock, now, save, saveTranscript, transcript, unlock, worker, type Session } from "./store.ts"
 
@@ -112,6 +112,14 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
     t.error = { message: (err as Error).message }
     return finish()
   }
+  let models
+  try {
+    models = await readModels(h, target)
+  } catch (err) {
+    t.state = "failed"
+    t.error = { message: `cannot resolve the helper model: ${(err as Error).message}` }
+    return finish()
+  }
   // ask's own write turns run their commands in the sandbox, or not at all.
   let sandbox: Sandbox | undefined
   if (t.write && target.model.protocol !== "harness") {
@@ -156,9 +164,16 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
             save(s)
           }),
           maxOutput: target.model.output,
+          contextLimit: target.model.context,
+          checkpoint: readJSON<Checkpoint | undefined>(join(s.folder, "checkpoint.json"), undefined),
+          onCheckpoint(checkpoint, messages, usage) {
+            onUpdate(messages, usage)
+            writeJSON(join(s.folder, "checkpoint.json"), checkpoint)
+          },
           session: s.id,
           extra: await tools(h),
           sandbox,
+          models,
           search: web,
           off: Object.entries(readJSON<Config>(h.config, {}).tools ?? {}).flatMap(([name, on]) => (on === false ? [name] : [])),
         }).finally(async () => {

@@ -54,6 +54,18 @@ describe("tools", () => {
     assert.equal(await all.grep.run({ pattern: "two", glob: "*.ts" }, { dir: dir() }), "src/a.ts:2:two\nsrc/deep/b.ts:1:const two = 2")
   })
 
+  test("grep skips symlinks to outside files and environment files", async () => {
+    const d = dir()
+    const outside = mkdtempSync(join(tmpdir(), "ask-outside-"))
+    execFileSync("git", ["init", "-q"], { cwd: d })
+    writeFileSync(join(outside, "secret"), "outside-canary")
+    writeFileSync(join(d, ".env"), "env-canary")
+    symlinkSync(join(outside, "secret"), join(d, "outside.txt"))
+    symlinkSync(join(d, ".env"), join(d, "alias.txt"))
+    const result = await all.grep.run({ pattern: "canary" }, { dir: d })
+    assert.doesNotMatch(result, /outside-canary|env-canary/)
+  })
+
   test("edit refuses text that occurs more than once", async () => {
     const d = dir()
     writeFileSync(join(d, "twice.txt"), "x\nx\n")

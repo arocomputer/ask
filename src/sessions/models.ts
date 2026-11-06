@@ -1,9 +1,12 @@
 // Which model and key a task uses: the catalog with ask's own providers added (each harness's,
-// ChatGPT's when signed in), a provider's credential, and resolving a model name to all of it.
+// ChatGPT's when signed in), a provider's credential, resolving a model name to all of it, and
+// the model a turn's tools may ask when a helper is explicitly configured.
 
-import { find, harnessMarker, load, type Catalog, type Model } from "../providers/catalog.ts"
+import { connect, find, harnessMarker, load, type Catalog, type Model } from "../providers/catalog.ts"
 import { access, api, models, signedIn } from "../providers/chatgpt.ts"
 import type { Key } from "../providers/stream.ts"
+import type { Models } from "../agent/context.ts"
+import { token } from "../agent/context.ts"
 import { builtin, enabled, harnesses } from "../harnesses/extensions.ts"
 import { readJSON, type Auth, type Config, type Home } from "../base/home.ts"
 
@@ -52,3 +55,32 @@ export async function resolve(h: Home, name?: string): Promise<{ model: Model; k
   return { model, key: cred.key, baseURL: readJSON<Auth>(h.auth, {})[model.provider]?.base_url }
 }
 
+
+
+
+/**
+ * Bind tool calls to the turn's resolved model, or an explicitly named provider/model for
+ * the helper. Resolve its credential and endpoint independently; never infer a model family
+ * from its name or send one provider's credentials to another provider.
+ */
+export async function readModels(h: Home, target: { model: Model; key: Key; baseURL?: string }): Promise<Models | undefined> {
+  if (target.model.protocol === "harness") return undefined
+  const helper = process.env.ASK_MODEL_SMALL ? await resolve(h, process.env.ASK_MODEL_SMALL) : target
+  if (helper.model.protocol === "harness") throw new Error("the helper model must use a provider, not a harness")
+  const one = (use: typeof target): Models["small"] => {
+    const provider = connect(use.model, use.key, use.baseURL)
+    return async (instructions, prompt, maxOutput, signal) => {
+      const r = await provider.complete({
+        model: use.model.id,
+        instructions,
+        messages: [{ role: "user", text: prompt }],
+        tools: [],
+        maxOutput,
+        session: `ask-read-${token()}`,
+        signal,
+      })
+      return { text: r.message.text, usage: r.usage }
+    }
+  }
+  return { small: one(helper), large: one(target) }
+}

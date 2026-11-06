@@ -7,15 +7,15 @@ import { execFile, spawn } from "node:child_process"
 import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path"
 import type { ToolSpec } from "../providers/stream.ts"
-import type { Sandbox } from "../sandbox/confine.ts"
+import type { Context } from "./context.ts"
 import { fetch } from "./fetch.ts"
 import { git } from "./git.ts"
 
-/**
- * What a tool runs with: the task's folder, the turn's stop signal, and in a write turn the
- * sandbox every command must run in.
- */
-export type Context = { dir: string; signal?: AbortSignal; sandbox?: Sandbox }
+/** Where a tool comes from and who wrote it. */
+export type ToolSource = { extension?: string; builtin?: boolean }
+
+/** What a tool needs to run: set by the loop, not by whoever registered it. */
+export type ToolSpace = { source?: ToolSource }
 
 /** A tool the model may call. `readonly` tools may run in parallel. Errors become "error: ..." for the model. */
 export type Tool = ToolSpec & {
@@ -141,10 +141,11 @@ const grep: Tool = {
     for (const rel of list) {
       signal?.throwIfAborted()
       if (secret(rel)) continue
-      const full = join(base, rel)
+      const full = await resolve(dir, join(base, rel)).catch(() => undefined)
+      if (!full || secret(full)) continue
       const b = await readFile(full).catch(() => undefined)
       if (!b || b.length > 2 * 1024 * 1024 || b.subarray(0, 8192).includes(0)) continue
-      const shown = relative(root, full)
+      const shown = relative(root, join(base, rel))
       const lines = b.toString("utf8").split("\n")
       for (let i = 0; i < lines.length; i++) {
         if (!re.test(lines[i])) continue

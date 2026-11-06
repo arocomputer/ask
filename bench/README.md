@@ -27,6 +27,15 @@ copies of each repository. Results go to `bench/.runs/LABEL.jsonl`, answers incl
 `--compare` grades them again with today's graders. Read the failing answers before trusting a
 number: a grader can be wrong too.
 
+`bun bench/compact.ts provider/model` runs a small real-model compaction evaluation. It forces
+an overflow and checks the continuation for the objective, constraint, decision and reason,
+next file, blocker and interrupted action. It prints the answer, usage and elapsed time; inspect
+the answer as well as the simple checks. This spends quota and is not run by `npm test`.
+One isolated run on `opencode-go/glm-5.3` passed all six checks in 22.9 seconds (1,969 input,
+2,049 output tokens, including 20 cached input). The answer also stated that the interrupted
+write's outcome was unknown and should be checked. This single synthetic run is not a comparison
+against uncompacted context or evidence of reliability across models and tasks.
+
 `bench/callers.ts` measures the other side: Claude Code and Codex, given work to hand off,
 with a version of ask's skill in their instructions (never installed), graded on the outcome
 and on how they delegated: sessions, whether they started together, how much their task

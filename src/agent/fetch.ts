@@ -7,8 +7,11 @@
 import { request as http, type IncomingMessage } from "node:http"
 import { request as https } from "node:https"
 import { reach } from "../sandbox/proxy.ts"
+import { askInstructions, askPrompt, type Ask } from "./context.ts"
 import type { Tool } from "./tools.ts"
 
+/** A string argument, trimmed, or undefined. */
+const str = (args: Record<string, unknown>, k: string) => (typeof args[k] === "string" ? (args[k] as string).trim() : undefined)
 const downloadLimit = 2 * 1024 * 1024
 /** Characters of a page per call; a long page is read on with `offset`, so a model reads only as far as it needs. */
 const textLimit = 16 * 1024
@@ -106,23 +109,42 @@ export async function download(href: string, signal?: AbortSignal, form?: string
 export const fetch: Tool = {
   name: "fetch",
   description:
-    "Read a web page or file over http or https, such as documentation. HTML comes back as plain text, 16k characters at a time; a longer page says the offset to read on from. Only public addresses; nothing on this machine or the local network.",
+    "Read a web page or file over http or https, such as documentation. HTML comes back as plain text: 16k characters at a time, with an offset to read on. Pass question to ask a model to extract an answer instead. Only public addresses; nothing on this machine or the local network.",
   parameters: {
     type: "object",
-    properties: { url: { type: "string" }, offset: { type: "integer", description: "Character to start from, for reading on in a long page" } },
+    properties: {
+      url: { type: "string" },
+      offset: { type: "integer", description: "Character to start from, for reading on in a long page" },
+      question: { type: "string", description: "What you want to know from the page; the answer comes back, not the page" },
+    },
     required: ["url"],
     additionalProperties: false,
   },
   readonly: true,
-  async run(args, { signal }) {
+  async run(args, { signal, models }) {
     const { status, url, type, body, cut: big } = await download(String(args.url ?? ""), signal)
-    if (!/^(text\/|application\/(json|xml|javascript|x-yaml|yaml)|[^;]*\+(json|xml))/i.test(type) && body.includes(0))
-      return `${status} ${url.href}\n${type || "binary content"}, ${body.length} bytes; not text`
+    const binary = !/^(text\/|application\/(json|xml|javascript|x-yaml|yaml)|[^;]*\+(json|xml))/i.test(type) && body.includes(0)
+    if (binary) return `${status} ${url.href}\n${type || "binary content"}, ${body.length} bytes; not text`
     const all = /html/i.test(type) ? text(body.toString("utf8")) : body.toString("utf8")
+    const want = str(args, "question")
+    if (want) {
+      if (!models) return `${status} ${url.href}\n\nok, but ask has no model to read it: run without question`
+      return answer(models.small, want, all, signal).then((r) => `${status} ${url.href}\n\n${r}${big ? "\n\n[the download stopped at 2 MiB]" : ""}`)
+    }
     const from = Math.max(0, Math.floor(Number(args.offset) || 0))
     const out = all.slice(from, from + textLimit)
     const rest = all.length - from - out.length
     const more = rest > 0 ? `\n\n[${rest} more characters; fetch again with offset ${from + out.length} to read on]` : big ? "\n\n[the download stopped at 2 MiB]" : ""
     return `${status} ${url.href}${from ? ` (from character ${from} of ${all.length})` : ""}\n\n${out}${more}`
   },
+}
+
+/** The page answered: the model's reply, or, if it fails, the start of the raw page, said so. */
+async function answer(ask: Ask, question: string, all: string, signal?: AbortSignal): Promise<string> {
+  try {
+    return (await ask(askInstructions, askPrompt(`Question: ${question}`, all), 2000, signal)).text.trim() || "(no answer)"
+  } catch (err) {
+    signal?.throwIfAborted()
+    return `couldn't be read by the answering model (${(err as Error).message}); fetch again without question to read the page`
+  }
 }

@@ -2,8 +2,13 @@
 
 A session is one conversation with a subagent: one folder, one six-character id like `k3f9a2`,
 and one turn per prompt. `start` creates a session and its first turn; `continue` adds a turn.
-The subagent sees everything the session read, said and did in earlier turns, even when a turn
-changes models. Moving to a [harness](extensions.md) that wasn't part of the conversation, it
+The subagent can continue conversations across turns, even when a turn changes models. If a
+provider reports that the context is full, or when a known model limit is approaching, ask summarizes older conversation into a checkpoint
+and keeps the latest tool exchange alongside it; the complete original transcript remains on disk.
+The summary may omit details, and its model call counts toward the turn's usage. If compaction
+cannot fit or fails, the turn fails with the transcript intact. Checkpoints are saved alongside
+the transcript and reused on later turns only when the transcript prefix still matches. Moving to a
+[harness](extensions.md) that wasn't part of the conversation, it
 gets the conversation so far as text with its prompt; turns that stay with one harness continue
 its own session.
 
@@ -21,6 +26,11 @@ Every task also gets `fetch`, which reads a web page, such as documentation, as 
 ask itself and reaches only public addresses: nothing on your machine, your network, or a
 cloud's metadata service.
 
+To extract an answer rather than read the raw page, a task can give `fetch` a `question`. The
+turn's model handles it by default; `ASK_MODEL_SMALL=provider/model` chooses a helper instead.
+The helper uses that provider's own credentials and endpoint. Its usage counts towards the turn.
+Extraction can miss details, so omit `question` to inspect the page directly.
+
 And `search`, ask's own web search: it returns each result's title, address and snippet, for
 `fetch` to read in full. It is free and needs no key or provider: it asks DuckDuckGo, then
 DuckDuckGo's lite page, Mwmbl's open API, then Wikipedia's, so one engine turning a busy machine away
@@ -37,8 +47,9 @@ the task's folder, symlinks included. Each `shell` command runs in ask's sandbox
 - It can write only the task's folder (and its repository's `.git`, so commits work) and a
   private temp folder, which is also its `HOME`. It can read the system and the tools on your
   `PATH`, but not your home folder.
-- It gets no API keys, tokens or passwords from the environment, and can't reach your SSH or
-  GPG agent, the desktop session, or Docker.
+- It inherits only basic process settings such as `PATH`, locale and terminal settings, not
+  arbitrary environment variables; it can't reach your SSH or GPG agent, the desktop session,
+  or Docker. Credentials stored in files inside the task folder remain accessible.
 - It reaches the web through ask's proxy, public addresses only; servers it starts itself, on
   this machine, work as usual.
 - It can't signal or look into your other programs, or gain privileges with `sudo`.

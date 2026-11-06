@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFileSync, spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, lstatSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs"
 import { request } from "node:http"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
@@ -52,6 +52,18 @@ describe("sandbox", { skip: !can.ok && `this machine can't sandbox: ${!can.ok &&
     assert.doesNotMatch(r.out, /FAKE_API_KEY|SSH_AUTH_SOCK/)
   })
 
+  test("sandbox commands do not inherit arbitrary credential-bearing variables", async () => {
+    const previous = process.env.DATABASE_URL
+    process.env.DATABASE_URL = "database-secret"
+    try {
+      const r = await inside(repo(), "env")
+      assert.doesNotMatch(r.out, /DATABASE_URL|database-secret/)
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL
+      else process.env.DATABASE_URL = previous
+    }
+  })
+
   test("git hooks and config a command changes are put back, and reported", async () => {
     const dir = repo()
     const config = readFileSync(join(dir, ".git", "config"), "utf8")
@@ -59,6 +71,18 @@ describe("sandbox", { skip: !can.ok && `this machine can't sandbox: ${!can.ok &&
     assert.ok(!existsSync(join(dir, ".git", "hooks", "pre-commit")))
     assert.equal(readFileSync(join(dir, ".git", "config"), "utf8"), config)
     assert.deepEqual(r.reverted.map((p) => p.slice(dir.length + 1)).sort(), [".git/config", ".git/hooks/pre-commit"])
+  })
+
+  test("git hook symlinks are removed or restored after a task", async () => {
+    const dir = repo()
+    const hooks = join(dir, ".git", "hooks")
+    symlinkSync("original", join(hooks, "post-commit"))
+    const r = await inside(dir, "ln -s ../../payload .git/hooks/pre-commit && rm .git/hooks/post-commit && ln -s ../../payload .git/hooks/post-commit")
+    assert.equal(r.code, 0, r.out)
+    assert.equal(lstatSync(join(hooks, "pre-commit"), { throwIfNoEntry: false }), undefined)
+    assert.ok(lstatSync(join(hooks, "post-commit")).isSymbolicLink())
+    assert.equal(readlinkSync(join(hooks, "post-commit")), "original")
+    assert.ok(r.reverted.includes(join(hooks, "pre-commit")))
   })
 
   test("a commit works, with the user's name though the home folder is hidden", { skip: !spawnSync("git", ["config", "user.email"]).stdout?.toString().trim() && "no git identity here" }, async () => {
@@ -103,4 +127,3 @@ describe("proxy", () => {
     }
   })
 })
-

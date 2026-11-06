@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Confine `grep` symlink targets, restore Git hook symlinks after write tasks, and restrict
+  sandboxed commands to basic inherited environment settings.
+- Preserve interrupted tool calls when providers reuse IDs, and continue with the original
+  request if optional proactive compaction fails.
+- On context overflow, summarize older conversation into a checkpoint while preserving the
+  original transcript and the latest tool exchange.
+- Let `fetch` answer a question about a page with the turn's model, or an explicitly configured
+  `ASK_MODEL_SMALL=provider/model`, resolving the helper's own credentials and endpoint.
+
 ask is rewritten in TypeScript around its own agent loop. Agents use it through JSON requests,
 and the command line is for setting it up and looking at sessions. It does not read the runs of
 earlier versions.

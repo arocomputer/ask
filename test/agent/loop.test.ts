@@ -4,8 +4,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
 import { connect, type Model } from "../../src/providers/catalog.ts"
-import { interrupted, run, toolset } from "../../src/agent/loop.ts"
-import type { Protocol } from "../../src/providers/stream.ts"
+import { interrupted, run, toolset, type Checkpoint } from "../../src/agent/loop.ts"
+import type { Message, Protocol } from "../../src/providers/stream.ts"
 import { responses } from "../../src/providers/responses.ts"
 import { serve } from "../fake.ts"
 
@@ -89,23 +89,143 @@ describe("loop", () => {
     }
   })
 
-  test("an overflowing context elides old tool outputs and tries again", async () => {
+  for (const protocol of ["responses", "chat", "anthropic"] as const) test(`${protocol}: overflow is summarized without changing the transcript or latest tool exchange`, async () => {
     const dir = project()
     writeFileSync(join(dir, "big.txt"), "x".repeat(5000))
-    const fake = await serve("chat", [
+    const fake = await serve(protocol, [
       { calls: [{ name: "read", args: { path: "big.txt" } }] },
       { text: "", calls: [{ name: "list", args: {} }] },
       { status: 400, error: "This model's maximum context length is 1000 tokens" },
+      { text: "Goal: Go. The file contained x's." },
+      { text: "done" },
+    ])
+    try {
+      const r = await run({ provider: connect(model(protocol, fake.url), "k"), model: "m", dir, prompt: "Go" })
+      assert.equal(r.answer, "done")
+      assert.match(JSON.stringify(fake.requests[3]), /xxxxx/)
+      assert.match(JSON.stringify(fake.requests[4]), /conversation-checkpoint/)
+      assert.match(JSON.stringify(fake.requests[4]), /Goal: Go/)
+      assert.match(JSON.stringify(fake.requests[4]), /list/)
+      assert.doesNotMatch(JSON.stringify(fake.requests[4]), /xxxxx/)
+      assert.match(JSON.stringify(r.messages), /xxxxx/)
+      assert.doesNotMatch(JSON.stringify(r.messages), /output elided/)
+      assert.equal(r.usage.input, 400)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("a checkpoint request that overflows retries without long older tool outputs", async () => {
+    const dir = project()
+    writeFileSync(join(dir, "big.txt"), "x".repeat(5000))
+    const overflow = { status: 400, error: "This model's maximum context length is 1000 tokens" }
+    const fake = await serve("chat", [
+      { calls: [{ name: "read", args: { path: "big.txt" } }] },
+      { calls: [{ name: "list", args: {} }] },
+      overflow, overflow, overflow,
+      { text: "Goal: Go; reread big.txt if needed." },
       { text: "done" },
     ])
     try {
       const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir, prompt: "Go" })
       assert.equal(r.answer, "done")
-      assert.doesNotMatch(JSON.stringify(fake.requests[3]), /xxxxx/)
-      assert.match(JSON.stringify(fake.requests[3]), /output elided/)
+      assert.match(JSON.stringify(fake.requests[4]), /output elided/)
+      assert.match(JSON.stringify(fake.requests[4]), /xxxxx/)
+      assert.doesNotMatch(JSON.stringify(fake.requests[5]), /xxxxx/)
+      assert.match(JSON.stringify(r.messages), /xxxxx/)
     } finally {
       await fake.close()
     }
+  })
+
+  test("a failed compaction leaves the original conversation recoverable", async () => {
+    const dir = project()
+    writeFileSync(join(dir, "big.txt"), "x".repeat(5000))
+    const fake = await serve("chat", [
+      { calls: [{ name: "read", args: { path: "big.txt" } }] },
+      { calls: [{ name: "list", args: {} }] },
+      { status: 400, error: "This model's maximum context length is 1000 tokens" },
+      { text: "" },
+    ])
+    try {
+      const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir, prompt: "Go" })
+      assert.match(r.error?.message ?? "", /compaction failed/)
+      assert.match(JSON.stringify(r.messages), /xxxxx/)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("a checkpoint is reused on a later turn only when its transcript prefix matches", async () => {
+    const dir = project()
+    writeFileSync(join(dir, "big.txt"), "x".repeat(5000))
+    const fake = await serve("chat", [
+      { calls: [{ name: "read", args: { path: "big.txt" } }] },
+      { calls: [{ name: "list", args: {} }] },
+      { status: 400, error: "This model's maximum context length is 1000 tokens" },
+      { text: "Goal: Go." }, { text: "done" }, { text: "continued" }, { text: "again" },
+    ])
+    try {
+      let saved: Checkpoint | undefined
+      const provider = connect(model("chat", fake.url), "k")
+      const first = await run({ provider, model: "m", dir, prompt: "Go", onCheckpoint: (c) => { saved = c } })
+      assert.ok(saved)
+      await run({ provider, model: "m", dir, messages: first.messages, prompt: "Continue", checkpoint: saved })
+      assert.match(JSON.stringify(fake.requests[5]), /conversation-checkpoint/)
+      assert.doesNotMatch(JSON.stringify(fake.requests[5]), /xxxxx/)
+      const changed: Message[] = [{ role: "user", text: "Different task" }, ...first.messages.slice(1)]
+      await run({ provider, model: "m", dir, messages: changed, prompt: "Continue", checkpoint: saved })
+      assert.doesNotMatch(JSON.stringify(fake.requests[6]), /conversation-checkpoint/)
+      assert.match(JSON.stringify(fake.requests[6]), /xxxxx/)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("a known context limit triggers compaction before an overflow", async () => {
+    const fake = await serve("chat", [{ text: "Goal: investigate." }, { text: "done" }])
+    const messages: Message[] = [
+      { role: "user", text: "investigate " + "x".repeat(5000) },
+      { role: "assistant", text: "working", calls: [] },
+      { role: "user", text: "continue" },
+      { role: "assistant", text: "checking", calls: [] },
+    ]
+    try {
+      const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), messages, contextLimit: 1000 })
+      assert.equal(r.answer, "done")
+      assert.match(JSON.stringify(fake.requests[0]), /concise handoff/)
+      assert.match(JSON.stringify(fake.requests[1]), /conversation-checkpoint/)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("failed proactive compaction still attempts the original request", async () => {
+    const fake = await serve("chat", [{ text: "x".repeat(8000) }, { text: "done" }])
+    const messages: Message[] = [
+      { role: "user", text: "x".repeat(5000) },
+      { role: "assistant", text: "working", calls: [] },
+      { role: "user", text: "continue" },
+      { role: "assistant", text: "checking", calls: [] },
+    ]
+    try {
+      const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), messages, contextLimit: 1000 })
+      assert.equal(r.answer, "done")
+      assert.doesNotMatch(JSON.stringify(fake.requests[1]), /conversation-checkpoint/)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("an older result with the same id does not hide an interrupted call", () => {
+    const call = { id: "reused", name: "shell", arguments: "{}" }
+    const messages: Message[] = [
+      { role: "assistant", text: "", calls: [call] },
+      { role: "tool", id: "reused", name: "shell", output: "old result" },
+      { role: "user", text: "next" },
+      { role: "assistant", text: "", calls: [call] },
+    ]
+    assert.match(JSON.stringify(interrupted(messages).at(-1)), /interrupted before it finished/)
   })
 
   test("a read-only task is offered no way to write or run commands", async () => {

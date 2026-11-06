@@ -80,8 +80,8 @@ export function policy(dir: string, tmp: string, network: Policy["network"]): Po
   }
 }
 
-/** Variables that point at secrets or at the user's agents and session, never passed on. */
-const withheld = /(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$|^(ASK_|SSH_AUTH_SOCK$|SSH_AGENT_PID$|GPG_AGENT_INFO$|DBUS_SESSION_BUS_ADDRESS$|XDG_RUNTIME_DIR$|DOCKER_HOST$|KRB5CCNAME$|AWS_|GOOGLE_APPLICATION_CREDENTIALS$|AZURE_)/
+/** Ordinary process settings needed by shells and build tools; credentials are not inherited. */
+const inherited = /^(PATH|LANG|LANGUAGE|LC_[A-Z_]+|TERM|COLORTERM|NO_COLOR|FORCE_COLOR|CI|TZ)$/
 
 /** The user's git name and email, read outside the sandbox, since the home folder is hidden inside. */
 function identity(dir: string): NodeJS.ProcessEnv {
@@ -101,7 +101,7 @@ function identity(dir: string): NodeJS.ProcessEnv {
  */
 export function environment(p: Policy): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
-  for (const [k, v] of Object.entries(process.env)) if (!withheld.test(k)) env[k] = v
+  for (const [k, v] of Object.entries(process.env)) if (inherited.test(k)) env[k] = v
   // rustup finds its toolchains through HOME unless told where they are; cargo's own folder
   // stays in the temp HOME, where it can download into.
   if (!env.RUSTUP_HOME && existsSync(join(home, ".rustup"))) env.RUSTUP_HOME = join(home, ".rustup")

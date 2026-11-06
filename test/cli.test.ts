@@ -10,8 +10,10 @@ const cli = join(import.meta.dirname, "..", "src", "cli.ts")
 const fakes: Fake[] = []
 after(() => Promise.all(fakes.map((f) => f.close())))
 
+const defaultCatalog = (url: string) => ({ fake: { id: "fake", name: "Fake", env: ["FAKE_API_KEY"], npm: "@ai-sdk/openai-compatible", api: url, models: { m: { id: "m", name: "M" } } } })
+
 /** A home with a one-model catalog served by a fake provider, a key, and a project folder. */
-async function setup(replies: Reply[]) {
+async function setup(replies: Reply[], catalog: unknown = defaultCatalog) {
   const fake = await serve("chat", replies)
   fakes.push(fake)
   const root = mkdtempSync(join(tmpdir(), "ask-cli-"))
@@ -20,8 +22,8 @@ async function setup(replies: Reply[]) {
   mkdirSync(join(home, "cache"), { recursive: true })
   mkdirSync(project)
   writeFileSync(join(project, "port.txt"), "7341\n")
-  const catalog = { fake: { id: "fake", name: "Fake", env: ["FAKE_API_KEY"], npm: "@ai-sdk/openai-compatible", api: fake.url, models: { m: { id: "m", name: "M" } } } }
-  writeFileSync(join(home, "cache", "models.json"), JSON.stringify(catalog))
+  const resolved = typeof catalog === "function" ? (catalog as (url: string) => unknown)(fake.url) : catalog
+  writeFileSync(join(home, "cache", "models.json"), JSON.stringify(resolved))
   writeFileSync(join(home, "config.json"), JSON.stringify({ model: "fake/m" }))
   writeFileSync(join(home, "auth.json"), JSON.stringify({ fake: { api_key: "k" } }))
   const run = (args: string[], input = "", env: NodeJS.ProcessEnv = {}) =>

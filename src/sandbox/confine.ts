@@ -4,7 +4,7 @@
 // puts back. Every command then runs through `command`. A write task that can't be sandboxed
 // doesn't run: callers check `support` first.
 
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync, lstatSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, readlinkSync, symlinkSync, rmSync, statSync, writeFileSync, chmodSync, lstatSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { abi, helper, wrap as linux } from "./linux.ts"
@@ -55,7 +55,8 @@ function guarded(dir: string): string[] {
   return [join(git, "config"), join(git, "hooks")]
 }
 
-type Copy = Map<string, { data: Buffer; mode: number } | null>
+type Entry = { kind: "file"; data: Buffer; mode: number } | { kind: "directory"; mode: number } | { kind: "symlink"; target: string } | { kind: "other" } | null
+type Copy = Map<string, Entry>
 
 /** Every file under the guarded paths, as they are now; null for a path that doesn't exist. */
 function snapshot(paths: string[]): Copy {
@@ -63,8 +64,12 @@ function snapshot(paths: string[]): Copy {
   const walk = (p: string) => {
     const s = lstatSync(p, { throwIfNoEntry: false })
     if (!s) return copy.set(p, null)
-    if (s.isDirectory()) for (const n of readdirSync(p)) walk(join(p, n))
-    else if (s.isFile()) copy.set(p, { data: readFileSync(p), mode: s.mode & 0o777 })
+    if (s.isDirectory()) {
+      copy.set(p, { kind: "directory", mode: s.mode & 0o777 })
+      for (const n of readdirSync(p)) walk(join(p, n))
+    } else if (s.isFile()) copy.set(p, { kind: "file", data: readFileSync(p), mode: s.mode & 0o777 })
+    else if (s.isSymbolicLink()) copy.set(p, { kind: "symlink", target: readlinkSync(p) })
+    else copy.set(p, { kind: "other" })
   }
   for (const p of paths) walk(p)
   return copy
@@ -74,23 +79,32 @@ function snapshot(paths: string[]): Copy {
 function restore(paths: string[], before: Copy): string[] {
   const now = snapshot(paths)
   const changed: string[] = []
-  for (const [p, was] of before) {
-    const is = now.get(p)
-    if (was === null ? is === null || is === undefined : is && is.data.equals(was.data) && is.mode === was.mode) continue
-    changed.push(p)
-    if (was === null) rmSync(p, { recursive: true, force: true })
-    else {
-      rmSync(p, { recursive: true, force: true })
-      mkdirSync(dirname(p), { recursive: true })
-      writeFileSync(p, was.data, { mode: was.mode })
-      chmodSync(p, was.mode)
-    }
-  }
-  for (const p of now.keys())
+  for (const p of [...now.keys()].reverse()) {
     if (!before.has(p)) {
       changed.push(p)
       rmSync(p, { recursive: true, force: true })
     }
+  }
+  for (const [p, was] of before) {
+    const is = now.get(p)
+    if (was?.kind === "other") throw new Error(`cannot restore unusual git metadata at ${p}`)
+    if (was === null ? is === null || is === undefined : was.kind === "directory" && is?.kind === "directory" && was.mode === is.mode || was.kind === "file" && is?.kind === "file" && was.mode === is.mode && was.data.equals(is.data) || was.kind === "symlink" && is?.kind === "symlink" && was.target === is.target) continue
+    changed.push(p)
+    if (was === null) rmSync(p, { recursive: true, force: true })
+    else if (was.kind === "directory") {
+      if (is?.kind !== "directory") rmSync(p, { recursive: true, force: true })
+      mkdirSync(p, { recursive: true })
+      chmodSync(p, was.mode)
+    } else {
+      rmSync(p, { recursive: true, force: true })
+      mkdirSync(dirname(p), { recursive: true })
+      if (was.kind === "symlink") symlinkSync(was.target, p)
+      else {
+        writeFileSync(p, was.data, { mode: was.mode })
+        chmodSync(p, was.mode)
+      }
+    }
+  }
   return changed
 }
 
@@ -106,6 +120,7 @@ export async function open(dir: string): Promise<Sandbox> {
   const env = environment(p)
   const paths = guarded(dir)
   const before = snapshot(paths)
+  for (const [path, entry] of before) if (entry?.kind === "other") throw new Error(`cannot guard unusual git metadata at ${path}`)
   const wrap = process.platform === "darwin" ? macos : linux
   const limits = [
     "Your commands run in a sandbox. They can write only this directory and $TMPDIR; HOME is a scratch folder, and the real home folder can't be read.",
