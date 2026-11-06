@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto"
 import { cheapest, connect, harnessMarker, providers, usable, type Catalog, type Model } from "../providers/catalog.ts"
 import { readJSON, writeJSON, type Auth, type Config, type Home } from "../base/home.ts"
 import { catalog, credential } from "../sessions/models.ts"
-import { account, begin, remote, signOut, signedIn, usagePage } from "../providers/chatgpt.ts"
+import { account, begin, CallbackError, remote, signOut, signedIn, usagePage } from "../providers/chatgpt.ts"
 import { harness, settings } from "../harnesses/extensions.ts"
 import { confirm, input, interactive, line, multi, secret, select } from "../base/input.ts"
 import { ProviderError, type Key } from "../providers/stream.ts"
@@ -159,22 +159,25 @@ async function addProvider(h: Home, c: Catalog): Promise<boolean> {
  * Signs in with ChatGPT. It waits for the browser's return to ask's 127.0.0.1 callback and, at
  * the same time, for the address the browser landed on to be pasted, so signing in works from
  * another device too. A browser is opened only when ask runs at the screen the user sees.
+ * Correctable paste errors keep this attempt alive instead of silently replacing its link.
  */
 async function signIn(h: Home): Promise<boolean> {
   const st = style(process.stderr)
   const first = !account(h)
-  for (let tries = 2; tries > 0; tries--) {
-    const attempt = await begin(h)
-    try {
-      const away = remote()
-      if (away || !open(attempt.url)) {
-        say(`${st.yellow("!")} Open this link on any device to sign in with ChatGPT:`)
-        say(attempt.url)
-        say(st.gray("  After you approve, your browser lands on a page that won't load. Copy that page's address and paste it here."))
-      } else {
-        say(`${st.yellow("!")} Your browser is opening to sign in with ChatGPT. If it doesn't, open:`)
-        say(attempt.url)
-      }
+  const attempt = await begin(h)
+  try {
+    const away = remote()
+    say("\nChatGPT login")
+    if (away || !open(attempt.url)) {
+      say("Open this link in your browser:")
+      say(attempt.url)
+      say("After signing in, copy the address of the page that cannot load.")
+      say("Paste it below and press Enter. This link stays active until you cancel.")
+    } else {
+      say("Your browser is opening. If needed, open this link:")
+      say(attempt.url)
+    }
+    for (;;) {
       const stop = new AbortController()
       const back = attempt.callback.then((address) => (stop.abort(), address))
       const pasted = line("Paste callback URL:", stop.signal, "finished in the browser")
@@ -194,12 +197,12 @@ async function signIn(h: Home): Promise<boolean> {
       } catch (err) {
         sp.stop()
         say(`${st.red("X")} ${(err as Error).message}`)
+        if (!(err instanceof CallbackError)) return false
       }
-    } finally {
-      attempt.close()
     }
+  } finally {
+    attempt.close()
   }
-  return false
 }
 
 /** Opens a link in the default browser; false when there is no way to. */

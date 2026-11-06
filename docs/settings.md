@@ -51,9 +51,11 @@ requests count against your plan. Manage how much ask may use at
 
 ```text
 ? Which provider? ChatGPT
-! Open this link on any device to sign in with ChatGPT:
+ChatGPT login
+Open this link in your browser:
 https://auth.openai.com/api/accounts/authorize?...
-  After you approve, your browser lands on a page that won't load. Copy that page's address and paste it here.
+After signing in, copy the address of the page that cannot load.
+Paste it below and press Enter. This link stays active until you cancel.
 ? Paste callback URL:
 http://127.0.0.1:1455/auth/callback?...
 … characters · Enter to submit
@@ -67,6 +69,8 @@ the link on any device, your phone included; after you approve, paste the addres
 lands on, then press Enter. The prompt shows the pasted address separately and reports its
 character count, including on narrow phone terminals. SSH is detected automatically; there is
 no `--remote` flag. Both ways are always open, so nothing needs choosing.
+If a pasted URL is incomplete or belongs to another attempt, ask keeps the current login link
+active and lets you paste again. It does not silently start a new sign-in. Ctrl-C cancels it.
 
 The models are your account's own, named `chatgpt/MODEL`. The sign-in renews itself; removing
 ChatGPT in `ask settings` signs out, ending the session with OpenAI too. One ChatGPT account at a

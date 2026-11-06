@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Keep the active ChatGPT login when a pasted callback needs correcting, distinguish missing
+  state from mismatched state, and exclude URL fragments when checking it. Reject unrelated
+  browser callbacks. Redraw pasted input once per chunk to reduce SSH terminal flicker.
 - Show callback URL input on its own line with a character count and Enter hint, so ChatGPT
   login pastes remain visible on narrow SSH terminals.
 - Bundle static, non-setuid bubblewrap 0.13.1 on Linux, with libcap 2.78, source archives,

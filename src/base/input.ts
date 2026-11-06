@@ -30,8 +30,9 @@ export function split(data: string): string[] {
 /**
  * Reads keys in raw mode, one at a time even when they arrive together (a paste, or a slow
  * link), until `onKey` returns true or `signal` aborts; Ctrl-C exits with 130.
+ * Optional onData redraws once per input chunk, avoiding a redraw per pasted character.
  */
-function keys(onKey: (key: string) => boolean | void, signal?: AbortSignal): Promise<void> {
+function keys(onKey: (key: string) => boolean | void, signal?: AbortSignal, onData?: () => void): Promise<void> {
   const stdin = process.stdin
   return new Promise((done) => {
     stdin.setRawMode(true)
@@ -49,6 +50,7 @@ function keys(onKey: (key: string) => boolean | void, signal?: AbortSignal): Pro
           return done()
         }
       }
+      onData?.()
     }
     const cleanup = () => {
       stdin.off("data", handler)
@@ -241,8 +243,7 @@ export async function line(text: string, signal: AbortSignal, done: string): Pro
     if (k === "\r" || k === "\n") return value.trim().length > 0 || undefined
     if (k === "\x7f" || k === "\b") value = value.slice(0, -1)
     else if (!k.startsWith("\x1b") && k >= " ") value += k
-    render()
-  }, signal)
+  }, signal, render)
   screen.settle(answered(text, signal.aborted ? done : "pasted"))
   return signal.aborted ? undefined : value.trim()
 }
