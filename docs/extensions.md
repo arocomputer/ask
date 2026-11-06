@@ -31,9 +31,14 @@ could take for a flag are refused.
 
 | | Read-only task | Write task |
 | --- | --- | --- |
-| ask's own loop | Reads only the task's folder; runs nothing | Commands in ask's sandbox ([Sessions](sessions.md#read-and-write)): writes only the folder, home hidden, web through ask's proxy |
+| ask's own loop | Confined read-only file/Git tools; no shell tool | Commands in ask's sandbox ([Sessions](sessions.md#read-and-write)): workspace/scratch writes, Git metadata protected, home hidden, no command networking |
 | Claude Code | Reads only the task's folder; runs nothing | Edits only the folder; commands in Claude Code's sandbox, home unreadable, no network. Refused where that sandbox can't run (Linux without `bubblewrap` and `socat`) |
 | Codex | Commands read the folder and system, not your home; write nothing; no network | Commands also write the folder and temp folders; no network |
+
+These are the default confined policies. Config-only `"sandbox": false` disables OS confinement
+for all three backends; see [settings](settings.md#sandbox). Harness command/argument overrides and
+extensions are trusted executable configuration and can change those guarantees. Tool-level read
+selection is not OS-enforced read-only access when confinement is disabled.
 
 Both harnesses can search the web with their own hosted search, which runs on Anthropic's or
 OpenAI's side, not on your machine: Claude Code with its WebSearch tool, Codex from OpenAI's
