@@ -9,6 +9,8 @@ also disables interactive prompts. Machine JSON and piped TSV are independent of
 
 - Compact sentence-case headings; general help opens with bold `Ask` and the muted tagline
   `Background tasks, handled.` on the same line. No repeated help boilerplate or decorative boxes.
+- A screen heading supplies its context once: the settings hub omits a second title and
+  navigation receipts, while action prompts retain their specific questions.
 - A narrow `❙` bar marks focus; its exact dimensions depend on the terminal font.
   Only the focused item label is bold in a picker. Multiselect
   checkboxes represent membership, independently of focus. Hints appear below the list.

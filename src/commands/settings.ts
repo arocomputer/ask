@@ -78,7 +78,7 @@ export async function run(h: Home): Promise<number> {
     const removable = ids.filter((p) => readJSON<Auth>(h.auth, {})[p]?.api_key || (p === "chatgpt" && signedIn(h)))
     let choice: string
     try {
-      choice = await select("Settings", [
+      choice = await select("", [
         ...(ids.length ? [
           { label: "Default model", hint: cfg.model ?? "Not set", value: "default" },
           { label: "Models", hint: `${cfg.models?.length ?? 0} selected`, value: "models" },

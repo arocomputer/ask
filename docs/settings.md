@@ -13,8 +13,6 @@ until you choose **Done** or press Esc at the main menu.
 ```text
 ask / settings
 
-Settings
-
   Default model
   Models
 ❙ Connect a provider

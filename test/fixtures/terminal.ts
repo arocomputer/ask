@@ -45,7 +45,8 @@ export async function preview(columns: number, monochrome = true): Promise<strin
       await main(args)
     }
     section("settings picker")
-    output += menu("Settings", [
+    output += "ask / settings\n\n"
+    output += menu("", [
       { label: "Default model", hint: "example/reader", value: "default" },
       { label: "Connect a provider", hint: "ChatGPT, API keys or installed harnesses", value: "connect" },
       { label: "Timeout", hint: "900 seconds", value: "timeout" },

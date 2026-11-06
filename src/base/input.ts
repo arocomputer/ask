@@ -85,13 +85,13 @@ function canvas() {
   }
 }
 
-/** The actual picker frame, also rendered by fixtures at desktop and phone widths. */
+/** The actual picker frame; an empty title lets a surrounding heading provide context. */
 export function menu<T>(title: string, items: Item<T>[], cursor: number, query = "", selected?: Set<T>, out = process.stderr): string[] {
   const st = style(out)
   const cols = Math.max(1, (out.columns || 80) - 1)
   const page = Math.min(7, Math.max(1, (out.rows || 24) - 10))
   const top = Math.max(0, Math.min(cursor - page + 1, items.length - page))
-  const lines = [title, ""]
+  const lines: string[] = title ? [title, ""] : []
   if (query) lines.push(`Filter  ${query}`, "")
   for (const [index, item] of items.slice(top, top + page).entries()) {
     const focused = top + index === cursor
@@ -142,12 +142,12 @@ async function pick<T>(title: string, items: Item<T>[], start: number, selected?
       refresh()
     }, render)
     const result = selected ? items.filter((item) => selected.has(item.value)) : [picked!]
-    screen.settle(`${title}  ${selected ? `${result.length} selected` : picked!.label}`)
+    screen.settle(title ? `${title}  ${selected ? `${result.length} selected` : picked!.label}` : "")
     return result.map((item) => item.value)
   } catch (err) { screen.settle(); throw err }
 }
 
-/** Choose one item; Esc cancels the prompt. */
+/** Choose one item; Esc cancels. An empty title omits the heading and navigation receipt. */
 export async function select<T>(title: string, items: Item<T>[], start = 0): Promise<T> {
   return (await pick(title, items, start))[0]
 }

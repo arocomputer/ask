@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Remove the duplicate settings title and hub navigation receipts beneath `ask / settings`.
 - Keep the general help title on one line: **Ask** followed by a muted “Background tasks, handled.”
 - Make `ask -h` and `ask COMMAND -h` the documented help forms, retaining old help aliases.
   Suggest close command/flag spellings and explain misplaced flags or help topics without
