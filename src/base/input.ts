@@ -1,5 +1,5 @@
-// Monochrome terminal prompts. A narrow text-sized bar marks focus; only the focused label
-// is bold. Hints sit beneath the list, and a completed prompt leaves one short receipt.
+// Monochrome terminal prompts. Single choices use a focus bar; multiselect uses checkboxes.
+// Only the focused label is bold. Hints sit beneath the list; completion leaves a short receipt.
 // Rendering is shared with the visual fixtures; raw input and screen ownership live here.
 
 import { plain, style, truncate, width, wrap } from "./term.ts"
@@ -95,7 +95,7 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
   if (query) lines.push(`Filter  ${query}`, "")
   for (const [index, item] of items.slice(top, top + page).entries()) {
     const focused = top + index === cursor
-    const prefix = `${focused ? "❙" : " "} ${selected ? selected.has(item.value) ? "[x] " : "[ ] " : ""}`
+    const prefix = selected ? selected.has(item.value) ? "[x] " : "[ ] " : `${focused ? "❙" : " "} `
     const label = truncate(item.label, Math.max(1, cols - width(prefix)))
     lines.push(prefix + (focused ? st.bold(label) : label))
   }

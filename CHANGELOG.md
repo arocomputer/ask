@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Use checkboxes alone in model multiselect lists, with bold text marking focus.
 - Clarify setup copy and credential sources, show readable default models and task timeouts,
   and remove duplicate model-selection confirmations. Distinguish enabling integrations from
   installing apps, and removing saved credentials from environment-provided access. Improve

@@ -21,7 +21,8 @@ ask / settings
   Done
 ```
 
-The focused item is bold with a narrow `❙` bar beside it. Typing filters lists with more than
+The focused item is bold. Single-choice lists use a narrow `❙` bar; model multiselect lists
+use only `[x]` / `[ ]` checkboxes. Typing filters lists with more than
 seven options; short menus such as Settings do not filter. Arrows move,
 Enter selects, and Space toggles models in multiselect lists. Esc clears a filter, then goes
 back without saving the unfinished prompt. Completed changes remain saved. Model actions appear
