@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
@@ -25,6 +25,17 @@ const commit = (dir: string, message: string) => {
 }
 
 describe("git", () => {
+  test("change bookkeeping never runs a repository's clean filter", () => {
+    const dir = repo()
+    const marker = join(dir, "filter-ran")
+    execFileSync("git", ["-C", dir, "config", "filter.evil.clean", `touch ${marker}`])
+    writeFileSync(join(dir, ".gitattributes"), "*.txt filter=evil\n")
+    writeFileSync(join(dir, "new.txt"), "new\n")
+    const before = snapshot(dir)!
+    writeFileSync(join(dir, "new.txt"), "changed\n")
+    assert.deepEqual(changes(before).changes, [{ path: "new.txt", change: "modified" }])
+    assert.equal(existsSync(marker), false)
+  })
   test("files a turn committed count as changes, with the commits", () => {
     const dir = repo()
     const before = snapshot(dir)!
@@ -59,6 +70,22 @@ describe("git", () => {
     const b = worktree(join(dir, "sub"), "fix-it", under)
     assert.deepEqual([a.branch, b.branch], ["ask/fix-it", "ask/fix-it-2"])
     assert.equal(a.dir, join(under, "fix-it", "sub/"))
+  })
+
+  test("creating a worktree does not execute a repository's post-checkout hook", () => {
+    const dir = repo()
+    const marker = join(dir, "hook-ran")
+    writeFileSync(join(dir, ".git", "hooks", "post-checkout"), `#!/bin/sh\ntouch '${marker}'\n`, { mode: 0o755 })
+    worktree(dir, "safe", mkdtempSync(join(tmpdir(), "ask-wt-")))
+    assert.equal(existsSync(marker), false)
+  })
+
+  test("worktree creation refuses external checkout filters before running them", () => {
+    const dir = repo()
+    const marker = join(dir, "filter-ran")
+    execFileSync("git", ["config", "filter.probe.smudge", `touch '${marker}'; cat`], { cwd: dir })
+    assert.throws(() => worktree(dir, "filtered", mkdtempSync(join(tmpdir(), "ask-wt-"))), /external Git checkout filters/)
+    assert.equal(existsSync(marker), false)
   })
 
   test("a slug comes from the prompt's first words", () => {

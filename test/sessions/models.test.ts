@@ -29,3 +29,23 @@ test("an explicitly named helper uses its own provider, credential and endpoint"
     await Promise.all([first.close(), second.close()])
   }
 })
+
+test("an incomplete helper response is not presented as an answer", async () => {
+  const fake = await serve("chat", [{ text: "partial", incomplete: true }])
+  const previous = process.env.ASK_MODEL_SMALL
+  try {
+    delete process.env.ASK_MODEL_SMALL
+    const h = home(mkdtempSync(join(tmpdir(), "ask-models-")))
+    mkdirSync(join(h.root, "cache"))
+    writeFileSync(h.catalog, JSON.stringify({ first: { id: "first", name: "first", npm: "@ai-sdk/openai-compatible", api: fake.url, env: [], models: { m: { id: "m", name: "M" } } } }))
+    writeFileSync(h.auth, JSON.stringify({ first: { api_key: "key" } }))
+    const bound = await readModels(h, await resolve(h, "first/m"))
+    const result = await bound!.small("instructions", "question", 100)
+    assert.match(result.text, /incomplete.*fetch again/i)
+    assert.equal(result.usage.input, 100)
+  } finally {
+    if (previous === undefined) delete process.env.ASK_MODEL_SMALL
+    else process.env.ASK_MODEL_SMALL = previous
+    await fake.close()
+  }
+})

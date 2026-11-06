@@ -29,7 +29,8 @@ cloud's metadata service.
 To extract an answer rather than read the raw page, a task can give `fetch` a `question`. The
 turn's model handles it by default; `ASK_MODEL_SMALL=provider/model` chooses a helper instead.
 The helper uses that provider's own credentials and endpoint. Its usage counts towards the turn.
-Extraction can miss details, so omit `question` to inspect the page directly.
+Extraction can miss details, so omit `question` to inspect the page directly. An incomplete
+extraction says to fetch the page directly rather than presenting partial text as an answer.
 
 And `search`, ask's own web search: it returns each result's title, address and snippet, for
 `fetch` to read in full. It is free and needs no key or provider: it asks DuckDuckGo, then
@@ -41,31 +42,37 @@ and an extension can replace any of them; see
 Environment files (`.env`, `.env.local`, ...) hold a project's real secrets, so `read` refuses
 them and `grep` skips them; their examples, like `.env.example`, stay readable.
 
-A write task (`"write": true`) also gets `write`, `edit` and `shell`. Every path is confined to
-the task's folder, symlinks included. Each `shell` command runs in ask's sandbox:
+A write task (`"write": true`) also gets `write`, `edit` and `shell`. Filesystem tools run in
+OS-confined child processes, with no workspace write grant for read-only tools. Their path
+checks restrict requests to the task folder. Each `shell` command runs in the same sandbox:
 
-- It can write only the task's folder (and its repository's `.git`, so commits work) and a
+- It can write only the task's folder, excluding Git metadata, and a
   private temp folder, which is also its `HOME`. It can read the system and the tools on your
   `PATH`, but not your home folder.
 - It inherits only basic process settings such as `PATH`, locale and terminal settings, not
   arbitrary environment variables; it can't reach your SSH or GPG agent, the desktop session,
   or Docker. Credentials stored in files inside the task folder remain accessible.
-- It reaches the web through ask's proxy, public addresses only; servers it starts itself, on
-  this machine, work as usual.
+- Its commands have no network access. The `fetch` and `search` tools still reach public web
+  addresses through ask itself.
 - It can't signal or look into your other programs, or gain privileges with `sudo`.
-- If it changes the repository's git hooks or config, which git would run later outside the
-  sandbox, ask puts them back after the turn, and the result lists them as `reverted`.
+- Existing Git metadata is read-only, including linked-worktree configuration and nested
+  repositories. Staging and commits are refused. Cleanup never restores Git files over changes
+  you made concurrently. Symlinked `.git` entries and hardlinked metadata files are refused.
 
-On Linux the sandbox is Landlock, part of the kernel since 5.13, through `sandybox`, a small
-helper that comes with ask; on macOS it is the system's own sandbox. Nothing needs installing.
-Older Linux kernels get less: before 6.7, commands have no network; before 7.1, they can't use
+On Linux, install `bubblewrap`; working unprivileged user namespaces and Landlock are required.
+ask's bundled `sandybox` helper applies Landlock and seccomp inside bubblewrap's mounts.
+On macOS, ask uses the system's Seatbelt sandbox. Harnesses use their own sandboxes.
+Older Linux kernels get less: before 7.1, commands can't use
 Unix sockets at all, so Python's process pools need one worker. Where there is no sandbox at
-all, write tasks are refused, with why; `ask doctor` shows what this machine has. Claude Code
+all, built-in filesystem tools and write tasks are refused, with why; `ask doctor` shows what this machine has. Claude Code
 and Codex keep to their own sandboxes; see
 [what a harness can reach](extensions.md#what-a-harness-can-reach). When the folder is in a git repository, the result lists every file the turn
 added, modified or deleted, including those in commits it made, and how many commits.
 
 ## Worktrees
+
+Creation refuses external Git checkout filters and conditional configuration includes, which
+could execute programs before the task sandbox exists. Use an existing checkout for those repositories.
 
 `"worktree": true` gives a write task a checkout of its own, so your files stay untouched. ask
 creates a branch `ask/NAME` from your current commit, where NAME comes from the prompt's first
@@ -81,7 +88,8 @@ worker is stopped partway (a crash, a reboot, or an environment that ends backgr
 when the command that started them ends), the next `collect` restarts the turn from where it
 stopped, up to ten times, and its result says `"resumed": N`. A tool call that was cut off reaches
 the model as interrupted, with a note to check whether it took effect before running it again,
-so a half-run command isn't silently repeated.
+so a half-run command isn't silently repeated. Previously recorded usage carries into the resumed
+turn; usage from an interrupted provider call may not be available.
 
 Some agent environments end every process a command started once the command returns. There,
 subagents only make progress while a `collect` is waiting. Once ask sees that, `collect` waits

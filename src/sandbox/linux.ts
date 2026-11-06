@@ -1,5 +1,5 @@
-// The Linux sandbox: runs commands through sandybox (native/sandybox.c), which applies Landlock
-// and seccomp. sandybox ships next to the release binary, and in the npm package for each
+// The Linux sandbox: bubblewrap makes Git metadata read-only; sandybox applies Landlock
+// and seccomp inside those mounts. sandybox ships next to the release binary, and in the npm package for each
 // architecture; a checkout of ask compiles it from source with the system's C compiler.
 
 import { spawnSync } from "node:child_process"
@@ -40,6 +40,11 @@ export function helper(): string | undefined {
 
 let version: number | undefined
 
+/** Bubblewrap must actually run: an installed binary alone does not prove namespaces work. */
+export function mounts(): boolean {
+  return spawnSync("bwrap", ["--unshare-user", "--unshare-net", "--ro-bind", "/", "/", "--", "/bin/true"], { timeout: 5000, stdio: "ignore" }).status === 0
+}
+
 /** The kernel's Landlock ABI version, as sandybox reports it; 0 without Landlock or sandybox. */
 export function abi(): number {
   if (version !== undefined) return version
@@ -53,6 +58,10 @@ export function wrap(p: Policy, argv: string[]): string[] {
   const args = [helper()!]
   for (const r of p.read) args.push("-r", r)
   for (const w of p.write) args.push("-w", w)
-  args.push("--net", p.network.mode === "proxy" ? "ports" : "none", "--", ...argv)
-  return args
+  args.push("--net", "none", "--", ...argv)
+  const mounted = ["bwrap", "--die-with-parent", "--new-session", "--unshare-user", "--unshare-pid", "--unshare-net", "--ro-bind", "/", "/"]
+  for (const w of [p.dir, p.tmp].filter((x) => p.write.includes(x))) mounted.push("--bind", w, w)
+  for (const r of p.protected) mounted.push("--ro-bind", r, r)
+  mounted.push("--proc", "/proc", "--dev", "/dev", "--", ...args)
+  return mounted
 }

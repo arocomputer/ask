@@ -75,6 +75,7 @@ class Ask < Formula
   end
 
   on_linux do
+    depends_on "bubblewrap"
     on_arm do
       url "$(url linux_arm64)"
       sha256 "$linux_arm64"
@@ -87,7 +88,7 @@ class Ask < Formula
 
   def install
     bin.install "ask"
-    # The helper that sandboxes write tasks' commands on Linux.
+    # Landlock/seccomp enforcement inside bubblewrap for commands and filesystem tools.
     bin.install "sandybox" if OS.linux?
   end
 

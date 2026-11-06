@@ -74,6 +74,23 @@ describe("cli", () => {
     assert.deepEqual(r.tasks[0], { id: tasks[0].id, state: "succeeded", answer: "Done.", resumed: 1 })
   })
 
+  test("a restarted worker preserves the turn's previously recorded usage", { timeout: 15_000 }, async () => {
+    const { ask, home, fake } = await setup([
+      { calls: [{ name: "read", args: { path: "port.txt" } }] },
+      { text: "late", delay: 3_000 },
+      { text: "done" },
+    ])
+    const { tasks } = await ask({ start: [{ prompt: "Task" }] })
+    while (fake.requests.length < 2) await new Promise((ok) => setTimeout(ok, 20))
+    const folder = join(home, "sessions", tasks[0].id)
+    const { pid } = JSON.parse(readFileSync(join(folder, "lock"), "utf8"))
+    process.kill(pid, "SIGKILL")
+    const result = await ask({ collect: [tasks[0].id], wait: 10 })
+    assert.equal(result.tasks[0].state, "succeeded")
+    const session = JSON.parse(readFileSync(join(folder, "session.json"), "utf8"))
+    assert.deepEqual(session.turns[0].usage, { input: 200, output: 20, cached: 0 })
+  })
+
   test("two collects that find the same lost turn restart it once", async () => {
     const { ask, home, fake } = await setup([{ text: "Done.", delay: 1_000 }])
     const { tasks } = await ask({ start: [{ prompt: "Task" }] })

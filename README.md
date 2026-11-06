@@ -90,6 +90,8 @@ npm install -g @arocomputer/ask                                                 
 
 The installer and Homebrew put one self-contained binary on your `PATH`. As a library,
 `import { handle } from "@arocomputer/ask"` takes the same requests as the command line.
+On Linux, built-in tasks also require `bubblewrap`, working unprivileged user namespaces and
+Landlock. `ask doctor` checks availability; macOS uses the system's Seatbelt sandbox.
 
 ## Docs
 

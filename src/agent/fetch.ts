@@ -6,7 +6,7 @@
 
 import { request as http, type IncomingMessage } from "node:http"
 import { request as https } from "node:https"
-import { reach } from "../sandbox/proxy.ts"
+import { reach } from "../sandbox/address.ts"
 import { askInstructions, askPrompt, type Ask } from "./context.ts"
 import type { Tool } from "./tools.ts"
 

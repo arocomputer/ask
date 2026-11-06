@@ -30,10 +30,18 @@ jobs:
           node-version: 24
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
+      - name: Install Linux sandbox prerequisite
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: npm run check
       # The same tests under both runtimes ask supports.
       - run: node --test 'test/**/*.test.ts'
       - run: bun test ./test/
+      - name: Install and run this checkout's npm package
+        run: |
+          npm pack --pack-destination "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/ask-npm" "$RUNNER_TEMP"/arocomputer-ask-*.tgz
+          "$RUNNER_TEMP/ask-npm/node_modules/.bin/ask" --version
       - name: Check the shell scripts
         if: runner.os == 'Linux'
         run: shellcheck install.sh .github/release/*.sh

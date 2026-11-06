@@ -165,6 +165,7 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
           }),
           maxOutput: target.model.output,
           contextLimit: target.model.context,
+          initialUsage: resuming ? t.usage : undefined,
           checkpoint: readJSON<Checkpoint | undefined>(join(s.folder, "checkpoint.json"), undefined),
           onCheckpoint(checkpoint, messages, usage) {
             onUpdate(messages, usage)

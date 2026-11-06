@@ -46,6 +46,8 @@ export type RunOptions = {
   maxOutput?: number
   /** The model's context limit, when known. */
   contextLimit?: number
+  /** Usage already recorded for this turn when restarting an interrupted worker. */
+  initialUsage?: Usage
   checkpoint?: Checkpoint
   onCheckpoint?: (checkpoint: Checkpoint, messages: Message[], usage: Usage) => void
   /** Model turns before giving up; 100 by default. */
@@ -81,9 +83,9 @@ export async function run(o: RunOptions): Promise<RunResult> {
   const messages: Message[] = o.prompt === undefined ? earlier : [...earlier, { role: "user", text: o.prompt }]
   // The provider's reduced view must never replace the saved transcript.
   let context = restore(messages, o.checkpoint)
-  const usage: Usage = { input: 0, output: 0, cached: 0 }
+  const usage: Usage = { input: 0, output: 0, cached: 0, ...o.initialUsage }
   const tools = toolset(o)
-  const system = o.instructions ?? instructions(o.dir, o.write ?? false, !!o.schema, o.sandbox?.limits, tools.some((t) => t.name === "shell"))
+  const system = o.instructions ?? await instructions(o.dir, o.write ?? false, !!o.schema, o.sandbox?.limits, tools.some((t) => t.name === "shell"))
   // The turn's models answer inside the turn, and their tokens belong to it.
   const models = o.models
     ? {

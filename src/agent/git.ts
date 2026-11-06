@@ -1,6 +1,6 @@
 // The git tool: lets every task, read-only ones included, see what changed and why: status,
-// diff, log, show and blame. Nothing it runs can write or execute anything a repository's own
-// config names: no diff filters or external diff programs, no signature checks (which would
+// diff, log, show and blame. tools.ts runs it in a read-only OS sandbox, since Git may execute
+// configured clean filters even for status. It also disables external diffs and signature checks (which would
 // start gpg.program), no filesystem monitor, no pager, no optional locks; and no option that
 // writes a file (--output) or reads outside the repository (--no-index).
 

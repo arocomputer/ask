@@ -1,12 +1,11 @@
 import assert from "node:assert/strict"
 import { execFileSync, spawnSync } from "node:child_process"
-import { existsSync, lstatSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs"
-import { request } from "node:http"
+import { existsSync, lstatSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync, mkdirSync, linkSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
 import { open, support } from "../../src/sandbox/confine.ts"
-import { blocked, start } from "../../src/sandbox/proxy.ts"
+import { blocked } from "../../src/sandbox/address.ts"
 
 const can = support()
 
@@ -19,7 +18,7 @@ async function inside(dir: string, script: string) {
 }
 
 function repo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "ask-sandbox-"))
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "ask-sandbox-")))
   execFileSync("git", ["init", "-q"], { cwd: dir })
   return dir
 }
@@ -31,7 +30,7 @@ describe("sandbox", { skip: !can.ok && `this machine can't sandbox: ${!can.ok &&
     const r = await inside(dir, `echo a > in.txt && echo b > "$TMPDIR/t" && echo c > ${outside}/escape.txt; echo $?`)
     assert.equal(readFileSync(join(dir, "in.txt"), "utf8"), "a\n")
     assert.ok(!existsSync(join(outside, "escape.txt")))
-    assert.match(r.out, /Permission denied|Operation not permitted/)
+    assert.match(r.out, /Permission denied|Operation not permitted|Read-only file system/)
   })
 
   test("a command can't read outside its folder, the home folder included", async () => {
@@ -64,31 +63,84 @@ describe("sandbox", { skip: !can.ok && `this machine can't sandbox: ${!can.ok &&
     }
   })
 
-  test("git hooks and config a command changes are put back, and reported", async () => {
+  test("git hooks and config are protected during execution", async () => {
     const dir = repo()
     const config = readFileSync(join(dir, ".git", "config"), "utf8")
     const r = await inside(dir, "echo evil > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit && git config core.hooksPath /tmp")
     assert.ok(!existsSync(join(dir, ".git", "hooks", "pre-commit")))
     assert.equal(readFileSync(join(dir, ".git", "config"), "utf8"), config)
-    assert.deepEqual(r.reverted.map((p) => p.slice(dir.length + 1)).sort(), [".git/config", ".git/hooks/pre-commit"])
+    assert.notEqual(r.code, 0, r.out)
+    assert.deepEqual(r.reverted, [])
   })
 
-  test("git hook symlinks are removed or restored after a task", async () => {
+  test("git hook symlinks cannot be replaced", async () => {
     const dir = repo()
     const hooks = join(dir, ".git", "hooks")
     symlinkSync("original", join(hooks, "post-commit"))
     const r = await inside(dir, "ln -s ../../payload .git/hooks/pre-commit && rm .git/hooks/post-commit && ln -s ../../payload .git/hooks/post-commit")
-    assert.equal(r.code, 0, r.out)
+    assert.notEqual(r.code, 0, r.out)
     assert.equal(lstatSync(join(hooks, "pre-commit"), { throwIfNoEntry: false }), undefined)
     assert.ok(lstatSync(join(hooks, "post-commit")).isSymbolicLink())
     assert.equal(readlinkSync(join(hooks, "post-commit")), "original")
-    assert.ok(r.reverted.includes(join(hooks, "pre-commit")))
+    assert.deepEqual(r.reverted, [])
   })
 
-  test("a commit works, with the user's name though the home folder is hidden", { skip: !spawnSync("git", ["config", "user.email"]).stdout?.toString().trim() && "no git identity here" }, async () => {
+  test("working files are writable but staging is refused", async () => {
     const dir = repo()
     const r = await inside(dir, "echo a > a && git add a && git commit -qm one && git log --format=%ae")
-    assert.equal(r.code, 0, r.out)
+    assert.notEqual(r.code, 0, r.out)
+    assert.equal(readFileSync(join(dir, "a"), "utf8"), "a\n")
+    assert.ok(!existsSync(join(dir, ".git", "index")))
+  })
+
+  test("closing concurrent sandboxes preserves the user's Git changes", async () => {
+    const dir = repo()
+    const first = await open(dir)
+    const second = await open(dir)
+    const config = join(dir, ".git", "config")
+    const updated = readFileSync(config, "utf8") + "\n# user changed this while tasks ran\n"
+    writeFileSync(config, updated)
+    await first.close()
+    await second.close()
+    assert.equal(readFileSync(config, "utf8"), updated)
+  })
+
+  test("linked worktree configuration cannot be planted", async () => {
+    const dir = repo()
+    execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "initial"], { cwd: dir })
+    execFileSync("git", ["config", "extensions.worktreeConfig", "true"], { cwd: dir })
+    const tree = join(mkdtempSync(join(tmpdir(), "ask-linked-")), "tree")
+    execFileSync("git", ["worktree", "add", "-qb", "test", tree], { cwd: dir })
+    const r = await inside(tree, "git config --worktree core.hooksPath payload")
+    assert.notEqual(r.code, 0, r.out)
+    assert.equal(spawnSync("git", ["config", "--worktree", "--get", "core.hooksPath"], { cwd: tree }).status, 1)
+  })
+
+  test("nested Git metadata cannot be moved out of protection", async () => {
+    const dir = repo()
+    mkdirSync(join(dir, "nested"))
+    execFileSync("git", ["init", "-q", join(dir, "nested")])
+    const original = readFileSync(join(dir, "nested", ".git", "config"), "utf8")
+    const r = await inside(dir, "mv nested moved && echo poison > moved/.git/config")
+    assert.notEqual(r.code, 0, r.out)
+    const location = existsSync(join(dir, "nested")) ? "nested" : "moved"
+    assert.equal(readFileSync(join(dir, location, ".git", "config"), "utf8"), original)
+  })
+
+  test("Git metadata with writable hardlink aliases is refused", async () => {
+    const dir = repo()
+    linkSync(join(dir, ".git", "config"), join(dir, "alias"))
+    await assert.rejects(open(dir), /hardlink aliases/)
+  })
+
+  test("included Git configuration in the workspace is read-only", async () => {
+    const dir = repo()
+    writeFileSync(join(dir, "..included.conf"), "[core]\n\tfilemode = true\n")
+    execFileSync("git", ["config", "include.path", "../..included.conf"], { cwd: dir })
+    const original = readFileSync(join(dir, "..included.conf"), "utf8")
+    const r = await inside(dir, "echo poison > ..included.conf")
+    assert.notEqual(r.code, 0, r.out)
+    assert.equal(readFileSync(join(dir, "..included.conf"), "utf8"), original)
   })
 
   test("a command can't reach a Unix socket made outside it", async () => {
@@ -101,29 +153,25 @@ describe("sandbox", { skip: !can.ok && `this machine can't sandbox: ${!can.ok &&
     assert.doesNotMatch(r.out, /reached/)
   })
 
-  test("commands reach the web only through the proxy, and never port 80 or 443 directly", { skip: can.ok && can.network !== "proxy" && "no network here" }, async () => {
-    const r = await inside(repo(), `${process.execPath} -e 'require("net").connect(80,"169.254.169.254").on("connect",()=>console.log("reached")).on("error",e=>console.log(e.code))'; echo "proxy=$HTTPS_PROXY"`)
-    assert.doesNotMatch(r.out, /reached/)
-    assert.match(r.out, /proxy=http:\/\/127\.0\.0\.1:\d+/)
+  test("commands cannot connect to a host service on a nonstandard port", async () => {
+    const server = (await import("node:net")).createServer()
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+    try {
+      const port = (server.address() as import("node:net").AddressInfo).port
+      const r = await inside(repo(), `node -e 'require("net").connect(${port},"127.0.0.1").on("connect",()=>console.log("reached")).on("error",e=>console.log(e.code))'`)
+      assert.doesNotMatch(r.out, /reached/)
+      assert.match(r.out, /EPERM|EACCES|Operation not permitted|Permission denied/)
+    } finally {
+      server.close()
+    }
   })
 })
 
-describe("proxy", () => {
+describe("public addresses", () => {
   test("private, loopback, link-local and mapped addresses are blocked; public ones aren't", () => {
     for (const a of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "::", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "::ffff:169.254.169.254", "64:ff9b::a9fe:a9fe", "2002:a9fe:a9fe::1", "not-an-ip"])
       assert.equal(blocked(a), true, a)
     for (const a of ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111", "::ffff:1.1.1.1"]) assert.equal(blocked(a), false, a)
   })
 
-  test("CONNECT to a private address, or a name for one, is refused", async () => {
-    const p = await start()
-    try {
-      for (const target of ["127.0.0.1:22", "localhost:22", "169.254.169.254:80"]) {
-        const status = await new Promise<number>((done) => request({ host: "127.0.0.1", port: p.port, method: "CONNECT", path: target }).on("connect", (res, socket) => (socket.destroy(), done(res.statusCode ?? 0))).on("error", () => done(-1)).end())
-        assert.equal(status, 403, target)
-      }
-    } finally {
-      await p.close()
-    }
-  })
 })

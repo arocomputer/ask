@@ -80,8 +80,8 @@ RESPONSE
   error      {"message", "hint"}, when it failed; hint says what to do next
   changes    Files a write task changed: [{"path", "change"}]
   commits    How many commits it made, when it made any
-  reverted   Git hooks or config it changed, which ask put back: the sandbox doesn't let
-             a task leave code that git would run later
+  reverted   Legacy turns only: Git hooks or config restored by an older ask version.
+             New built-in turns protect Git metadata during execution instead.
   worktree   {"path", "branch"} of a worktree task's checkout
   retrying   Why the provider is being retried, while it is
   activity   Its latest step, while it runs
@@ -116,7 +116,7 @@ export type Result = {
   changes?: Change[]
   /** Commits a write task made on top of where it started. */
   commits?: number
-  /** Git hooks or config a write task changed, which ask put back. */
+  /** Legacy cleanup report, retained for reading older turns. */
   reverted?: string[]
   /** The checkout and branch a worktree task works on. */
   worktree?: { path: string; branch: string }
@@ -177,7 +177,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       for (const [i, t] of tasks.entries()) {
         const dir = folder(t.dir, `start[${i}]`)
         if (t.worktree && !top(dir)) throw new Invalid(`start[${i}].worktree needs a git repository, and ${dir} is not in one`)
-        ready.push({ t, dir, model: await chosen(h, t.model, (t.write ?? false) || !!t.worktree) })
+        ready.push({ t, dir, model: await chosen(h, t.model) })
       }
       const started: Session[] = []
       for (const r of ready) started.push(begin(h, r.t, r.dir, r.model))
@@ -209,7 +209,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
         Object.assign(last, { state: "failed", finished: now(), error: { message: "the worker stopped before the turn finished" } })
         delete last.retry
       }
-      const target = await chosen(h, t.model ?? last.model, t.write ?? false)
+      const target = await chosen(h, t.model ?? last.model)
       s.turns.push({
         prompt: t.prompt,
         model: target,
@@ -406,10 +406,10 @@ async function stop(s: Session): Promise<Session> {
 }
 
 /**
- * The full name of the model a task uses. A write task on ask's own loop needs the sandbox, so
- * it is refused here, before it starts, where this machine can't provide one.
+ * Resolve the public model name. Built-in filesystem tools require an OS sandbox even for
+ * read turns; reject unsupported hosts before spending model quota.
  */
-async function chosen(h: Home, name: string | undefined, write: boolean): Promise<string> {
+async function chosen(h: Home, name: string | undefined): Promise<string> {
   let m
   try {
     m = (await model(h, name)).model
@@ -417,7 +417,7 @@ async function chosen(h: Home, name: string | undefined, write: boolean): Promis
     throw new Invalid((err as Error).message)
   }
   const can = support()
-  if (write && m.protocol !== "harness" && !can.ok) throw new Invalid(`write tasks need a sandbox, and ${can.detail}`, can.fix)
+  if (m.protocol !== "harness" && !can.ok) throw new Invalid(`built-in tasks need a sandbox, and ${can.detail}`, can.fix)
   return `${m.provider}/${m.id}`
 }
 

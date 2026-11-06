@@ -39,7 +39,7 @@ export type Turn = {
   changes?: Change[]
   /** Commits a write turn made on top of where it started. */
   commits?: number
-  /** Git hooks or config the turn changed, which ask put back. */
+  /** Legacy cleanup report, retained for reading older turns. */
   reverted?: string[]
 }
 

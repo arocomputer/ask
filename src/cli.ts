@@ -12,6 +12,7 @@ import { open } from "./sessions/store.ts"
 import { style } from "./base/term.ts"
 import { version } from "./base/version.ts"
 import { main as worker } from "./sessions/worker.ts"
+import { toolMain } from "./agent/tools.ts"
 import * as doctor from "./commands/doctor.ts"
 import * as install from "./commands/install.ts"
 import * as models from "./commands/models.ts"
@@ -94,6 +95,10 @@ async function read(): Promise<string> {
 export async function main(argv: string[]): Promise<number> {
   const h = home()
   const [first, ...rest] = argv
+  if (first === "__tool") {
+    process.stdout.write(await toolMain(rest[0], await read()))
+    return 0
+  }
   if (first === "__worker") {
     await worker(h, open(h, rest[0].split("/").pop()!))
     return 0

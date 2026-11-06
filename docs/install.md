@@ -1,10 +1,12 @@
 # Install
 
 The installer and Homebrew give you one self-contained binary, and on Linux `sandybox`, the
-small helper that sandboxes write tasks' commands. Through npm, ask runs on Node 24 or newer,
+small helper that confines commands and filesystem tools. Through npm, ask runs on Node 24 or newer,
 and the package carries `sandybox` too. Git is needed for worktrees and for listing what a
-write task changed. Write tasks need Linux 5.13 or newer with Landlock on (the default on
-current Ubuntu, Debian and Fedora), or macOS; `ask doctor` says what this machine has.
+write task changed. Built-in tasks need Linux with Landlock, `bubblewrap` and working unprivileged
+user namespaces, or macOS with Seatbelt. On Debian/Ubuntu, install `bubblewrap` with your system
+package manager. Homebrew installs the dependency on Linux. `ask doctor` probes availability;
+ask does not change host security settings or fall back to unconfined filesystem tools.
 
 ## The installer
 

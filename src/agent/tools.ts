@@ -1,11 +1,13 @@
 // The subagent's tools: read, list, grep, git (git.ts) and fetch (fetch.ts), plus write, edit
-// and shell in a write turn. A read turn has no way to change a file or start a process; that is how ask
-// enforces read-only. Paths are confined to the working directory, symlinks included. Every result is
+// and shell in a write turn. Filesystem tools run in credential-free, OS-confined children;
+// read-only tools get no workspace write grant. Path checks narrow their interface. Every result is
 // bounded, and says how to get more when it was cut.
 
 import { execFile, spawn } from "node:child_process"
 import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path"
+import { fileURLToPath } from "node:url"
+import { open as confine } from "../sandbox/confine.ts"
 import type { ToolSpec } from "../providers/stream.ts"
 import type { Context } from "./context.ts"
 import { fetch } from "./fetch.ts"
@@ -34,7 +36,89 @@ const fileLimit = 20_000
 
 /** The tools for a turn: read-only, or with write, edit and shell too. */
 export function tools(write: boolean): Tool[] {
-  return write ? [read, list, grep, git, fetch, writeTool, edit, shell] : [read, list, grep, git, fetch]
+  const files = [read, list, grep, git, ...(write ? [writeTool, edit] : [])]
+  return [...files.map((tool) => ({ ...tool, run: (args: Args, ctx: Context) => isolated(tool, args, ctx) })), fetch, ...(write ? [{ ...shell, async run(args: Args, ctx: Context) {
+    if (ctx.sandbox) return shell.run(args, ctx)
+    const sandbox = await confine(ctx.dir)
+    try { return await shell.run(args, { ...ctx, sandbox }) }
+    finally { await sandbox.close() }
+  } }] : [])]
+}
+
+/** Run filesystem tools in an OS-confined child, never in the credential-bearing agent. */
+async function isolated(tool: Tool, args: Args, ctx: Context): Promise<string> {
+  const sb = await confine(ctx.dir, !tool.readonly)
+  try {
+    const script = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../files.ts" : "../files.js", import.meta.url))
+    const bundled = script.startsWith("/$bunfs")
+    const command = sb.execute([process.execPath, ...(bundled ? ["__tool"] : [script]), tool.name], [process.execPath, ...(bundled ? [] : [dirname(script), join(dirname(script), "..", "package.json")])])
+    return await new Promise<string>((resolve, reject) => {
+      const child = spawn(command.file, command.args, { cwd: ctx.dir, env: command.env, detached: true, stdio: ["pipe", "pipe", "pipe"] })
+      const chunks: Buffer[] = []
+      const stderr = collector()
+      let bytes = 0
+      let failure = ""
+      const kill = (reason: string) => {
+        failure ||= reason
+        group(child.pid, "SIGKILL")
+      }
+      const stop = () => kill("stopped")
+      const timer = setTimeout(() => kill("timed out after 120 seconds"), 120_000)
+      ctx.signal?.addEventListener("abort", stop, { once: true })
+      if (ctx.signal?.aborted) stop()
+      child.stdout.on("data", (chunk: Buffer) => {
+        bytes += chunk.length
+        if (bytes > 16 * 1024 * 1024) kill("output limit exceeded")
+        else chunks.push(chunk)
+      })
+      child.stderr.on("data", stderr.add)
+      child.on("error", (err) => { failure = err.message })
+      child.on("close", (code) => {
+        clearTimeout(timer)
+        ctx.signal?.removeEventListener("abort", stop)
+        if (failure || code !== 0) return reject(new Error(`confined ${tool.name} failed: ${failure || stderr.text(4000) || `exit ${code}`}`))
+        try {
+          const response = JSON.parse(Buffer.concat(chunks).toString("utf8"))
+          if (response.error) reject(new Error(response.error))
+          else resolve(response.result)
+        } catch (error) { reject(error) }
+      })
+      child.stdin?.on("error", () => {})
+      child.stdin?.end(JSON.stringify(args))
+    })
+  } finally { await sb.close() }
+}
+
+/** Internal child entry point. Only local filesystem tools are available here. */
+export async function toolMain(name: string, input: string): Promise<string> {
+  const tool = [read, list, grep, git, writeTool, edit, project].find((t) => t.name === name)
+  try {
+    if (!tool) throw new Error("unknown filesystem tool")
+    return JSON.stringify({ result: await tool.run(JSON.parse(input), { dir: process.cwd() }) })
+  } catch (err) { return JSON.stringify({ error: (err as Error).message }) }
+}
+
+/** Load parent-directory instructions without giving the credential-bearing process file access. */
+export function projectInstructions(dir: string, root: string): Promise<string> {
+  return isolated(project, { path: dir }, { dir: root })
+}
+
+/** Internal instruction loader; never offered as a model tool. */
+const project: Tool = {
+  name: "__project", description: "Load repository instructions", parameters: {}, readonly: true,
+  async run(args, { dir }) {
+    const root = await realpath(dir)
+    for (let d = await resolve(dir, str(args, "path")); ; d = dirname(d)) {
+      for (const name of ["AGENTS.md", "CLAUDE.md"]) {
+        try {
+          const path = await resolve(root, join(d, name))
+          const text = (await readFile(path, "utf8")).trim()
+          return text.length > 32 * 1024 ? text.slice(0, 32 * 1024) + "\n[truncated]" : text
+        } catch {}
+      }
+      if (d === root || dirname(d) === d) return ""
+    }
+  },
 }
 
 function schema(properties: object, required: string[] = []): object {
@@ -136,6 +220,7 @@ const grep: Tool = {
     const isFile = (await stat(path)).isFile()
     const base = isFile ? dirname(path) : path
     let list = isFile ? [relative(base, path)] : await files(path)
+    list.sort()
     if (str(args, "glob")) list = list.filter(matcher(str(args, "glob")))
     const out: string[] = []
     for (const rel of list) {
@@ -202,7 +287,8 @@ const shell: Tool = {
   run(args, { dir, signal, sandbox }) {
     const command = str(args, "command")
     if (!command.trim()) return Promise.reject(new Error("command is required"))
-    const run = sandbox ? sandbox.command(command) : { file: "sh", args: ["-c", command], env: toolEnv() }
+    if (!sandbox) return Promise.reject(new Error("shell requires an OS sandbox"))
+    const run = sandbox.command(command)
     const seconds = Math.min(Math.max(num(args, "timeout") ?? 120, 1), 600)
     return new Promise((done) => {
       const child = spawn(run.file, run.args, { cwd: dir, env: run.env, detached: true, stdio: ["ignore", "pipe", "pipe"] })
@@ -272,13 +358,6 @@ function collector() {
   }
 }
 
-/** The environment commands run in: ask's, minus provider credentials and ask's own variables. */
-function toolEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {}
-  for (const [k, v] of Object.entries(process.env)) if (!k.endsWith("_API_KEY") && !k.startsWith("ASK_")) env[k] = v
-  return env
-}
-
 /** Confines a tool path to the working directory, resolving symlinks in the part that exists. */
 export async function resolve(dir: string, path: string): Promise<string> {
   const root = await realpath(dir)
@@ -290,7 +369,8 @@ export async function resolve(dir: string, path: string): Promise<string> {
     try {
       real = join(await realpath(probe), rest)
       break
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
       const parent = dirname(probe)
       if (parent === probe) break
       rest = join(probe.slice(parent.length + 1), rest)

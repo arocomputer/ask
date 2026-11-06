@@ -4,12 +4,7 @@
 // Changes here are measured with bench/ before they ship.
 
 import { execFileSync } from "node:child_process"
-import { readFileSync } from "node:fs"
-import { dirname, join } from "node:path"
-
-/** Project instruction files, first found wins, from the working directory up to the repository root. */
-const files = ["AGENTS.md", "CLAUDE.md"]
-const projectLimit = 32 * 1024
+import { projectInstructions } from "./tools.ts"
 
 function git(dir: string, args: string[]): string | undefined {
   try {
@@ -22,8 +17,8 @@ function git(dir: string, args: string[]): string | undefined {
 /** The facts a subagent would otherwise spend steps finding out. */
 function environment(dir: string, write: boolean): string {
   const branch = git(dir, ["rev-parse", "--abbrev-ref", "HEAD"])
-  const dirty = branch === undefined ? 0 : (git(dir, ["status", "--porcelain"]) ?? "").split("\n").filter(Boolean).length
-  const repo = branch === undefined ? "not a git repository" : `git, on ${branch}${dirty ? `, ${dirty} uncommitted change${dirty === 1 ? "" : "s"} (not yours to undo)` : ", clean"}`
+  // Status can execute clean filters; only the confined Git tool may inspect working content.
+  const repo = branch === undefined ? "not a git repository" : `git, on ${branch}`
   return [
     `Directory: ${dir}`,
     `Repository: ${repo}`,
@@ -51,7 +46,8 @@ Your final message:
 - Complete but brief: no preamble, no restating the task, no closing offers.`
 }
 
-export function instructions(dir: string, write: boolean, schema: boolean, limits?: string, commands = write): string {
+/** Build the prompt, loading repository instructions through a read-only OS boundary. */
+export async function instructions(dir: string, write: boolean, schema: boolean, limits?: string, commands = write): Promise<string> {
   const work = [
     "- Scale the effort to the task: a lookup takes a few targeted searches; tracing a flow or fixing a bug means reading every part involved. Stop once you can back the answer up.",
     "- Find before you read: grep for names and strings, list for file patterns, then read the parts that matter. Make independent calls together in one step, and don't read a file twice.",
@@ -70,20 +66,7 @@ export function instructions(dir: string, write: boolean, schema: boolean, limit
   } else work.push("- This task is read-only: you can read, list and search the files, look at git, and search and fetch the web, but not change anything or run commands. If the task needs a change, describe it exactly instead.")
   let s = `${framing()}\n\n# Where you work\n\n${environment(dir, write)}\n\n# How to work\n\n${work.join("\n")}`
   if (schema) s += "\n\nYour final answer must be JSON matching the required schema, and nothing else."
-  const project = projectInstructions(dir)
+  const project = await projectInstructions(dir, git(dir, ["rev-parse", "--show-toplevel"]) || dir)
   if (project) s += `\n\n# Project instructions\n\n${project}`
   return s
-}
-
-function projectInstructions(dir: string): string {
-  const root = git(dir, ["rev-parse", "--show-toplevel"]) || dir
-  for (let d = dir; ; d = dirname(d)) {
-    for (const name of files) {
-      try {
-        const text = readFileSync(join(d, name), "utf8").trim()
-        return text.length > projectLimit ? text.slice(0, projectLimit) + "\n[truncated]" : text
-      } catch {}
-    }
-    if (d === root || dirname(d) === d) return ""
-  }
 }

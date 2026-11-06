@@ -1,11 +1,9 @@
 // The macOS sandbox: runs commands with /usr/bin/sandbox-exec and a Seatbelt profile written
 // from the policy. The profile denies everything, then allows what commands need: running
-// programs, reading all but the home folder (plus what the policy re-allows inside it), writing
-// only the policy's folders, Unix sockets only in the task's own folders, and network only to
-// this machine, where ask's proxy and the task's own servers listen.
+// programs, reading only the policy's folders, writing
+// only the policy's folders, Unix sockets only in writable folders, and no IP networking.
 
 import { dirname } from "node:path"
-import { homedir } from "node:os"
 import type { Policy } from "./policy.ts"
 
 /** A string as a Seatbelt literal. */
@@ -20,8 +18,7 @@ function ancestors(path: string): string[] {
 
 /** The Seatbelt profile for a policy. */
 export function profile(p: Policy): string {
-  const home = homedir()
-  const inside = [p.dir, p.tmp, ...p.read, ...p.write].filter((x) => x === home || x.startsWith(home + "/"))
+  const inside = [...new Set([p.dir, p.tmp, ...p.read, ...p.write])]
   const writable = p.write.filter((w) => !w.startsWith("/dev/"))
   return [
     "(version 1)",
@@ -34,14 +31,17 @@ export function profile(p: Policy): string {
     "(allow pseudo-tty)",
     '(allow iokit-open (iokit-registry-entry-class "RootDomainUserClient"))',
     '(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo") (global-name "com.apple.system.notification_center") (global-name "com.apple.dnssd.service"))',
-    `(allow file-read* (require-all (subpath "/") (require-not (subpath ${q(home)}))))`,
+    // dyld opens the root directory while locating the shared cache; no descendants granted.
+    '(allow file-read* (literal "/"))',
+    '(allow file-read-metadata (literal "/var") (literal "/var/db") (literal "/etc") (literal "/tmp"))',
     ...(inside.length
       ? [`(allow file-read* ${inside.map((x) => `(subpath ${q(x)})`).join(" ")})`, `(allow file-read-metadata ${[...new Set(inside.flatMap(ancestors))].map((x) => `(literal ${q(x)})`).join(" ")})`]
       : []),
     `(allow file-write* ${writable.map((x) => `(subpath ${q(x)})`).join(" ")})`,
+    ...p.protected.map((x) => `(deny file-write* (subpath ${q(x)}))`),
+    // Renaming an ancestor must not move a protected subtree outside its path-based rule.
+    ...[...new Set(p.protected.flatMap(ancestors))].map((x) => `(deny file-write-unlink (literal ${q(x)}))`),
     '(allow file-write-data file-ioctl (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (regex #"^/dev/ttys[0-9]+$"))',
-    `(allow network-bind network-inbound (local ip "localhost:*"))`,
-    `(allow network-outbound (remote ip "localhost:*"))`,
     `(allow network-outbound (remote unix-socket ${writable.map((x) => `(subpath ${q(x)})`).join(" ")}))`,
   ].join("\n")
 }

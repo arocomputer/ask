@@ -200,6 +200,16 @@ describe("loop", () => {
     }
   })
 
+  test("a resumed turn adds new usage to the usage already recorded", async () => {
+    const fake = await serve("chat", [{ text: "done" }])
+    try {
+      const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Go", initialUsage: { input: 300, output: 20, cached: 10 } })
+      assert.deepEqual(r.usage, { input: 400, output: 30, cached: 10 })
+    } finally {
+      await fake.close()
+    }
+  })
+
   test("failed proactive compaction still attempts the original request", async () => {
     const fake = await serve("chat", [{ text: "x".repeat(8000) }, { text: "done" }])
     const messages: Message[] = [

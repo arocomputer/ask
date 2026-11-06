@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Confine built-in filesystem tools in credential-free child processes. Use bubblewrap plus
+  Landlock/seccomp on Linux and an explicit read allowlist on macOS. Git metadata is read-only
+  during execution; staging and commits are refused, and cleanup no longer restores Git files.
+  Linux now requires bubblewrap and working unprivileged user namespaces.
+- Protect workspace-local Git configuration includes; refuse missing or symlinked included
+  paths. Refuse worktree creation with external checkout filters or conditional Git includes.
+- Load project instructions inside the read-only sandbox and stop running Git status while
+  building prompts. The TypeScript `instructions()` helper now returns a promise.
+- Disable sandboxed command networking until a proxy-only boundary can be enforced; ask's
+  fetch and search tools still reach public addresses.
+- Keep recorded token usage when a worker resumes a turn, and report incomplete helper
+  extractions instead of presenting them as answers.
+- Compare working files without running Git clean filters during change bookkeeping.
 - Confine `grep` symlink targets, restore Git hook symlinks after write tasks, and restrict
   sandboxed commands to basic inherited environment settings.
 - Preserve interrupted tool calls when providers reuse IDs, and continue with the original

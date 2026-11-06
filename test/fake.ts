@@ -18,6 +18,7 @@ export type Reply = {
   status?: number
   error?: string
   delay?: number
+  incomplete?: boolean
   when?: string
 }
 
@@ -76,7 +77,7 @@ function encode(protocol: Protocol, r: Reply, turn: number): [string, object][] 
           ["", { choices: [{ index: 0, delta: { tool_calls: [{ index: i, id: c.id, type: "function", function: { name: c.name, arguments: "" } }] } }] }],
           ["", { choices: [{ index: 0, delta: { tool_calls: [{ index: i, function: { arguments: c.args } }] } }] }],
         ]),
-        ["", { choices: [{ index: 0, delta: {}, finish_reason: calls.length ? "tool_calls" : "stop" }] }],
+        ["", { choices: [{ index: 0, delta: {}, finish_reason: r.incomplete ? "length" : calls.length ? "tool_calls" : "stop" }] }],
         ["", { choices: [], usage: { prompt_tokens: 100, completion_tokens: 10 } }],
       ]
     case "anthropic": {

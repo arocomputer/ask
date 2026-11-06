@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
@@ -27,14 +27,51 @@ describe("tools", () => {
 
   test("a symlink can't lead outside the working directory", async () => {
     const d = dir()
-    symlinkSync(tmpdir(), join(d, "out"))
-    await assert.rejects(all.read.run({ path: "out/x" }, { dir: d }), /outside the working directory/)
+    const outside = mkdtempSync(join(tmpdir(), "ask-secret-"))
+    writeFileSync(join(outside, "secret"), "outside-canary")
+    symlinkSync(outside, join(d, "out"))
+    await assert.rejects(all.read.run({ path: "out/secret" }, { dir: d }), /outside the working directory|EACCES|EPERM|ENOENT/)
   })
 
   test("a write can't land outside the working directory", async () => {
     const d = dir()
-    await assert.rejects(all.write.run({ path: "../escaped.txt", content: "x" }, { dir: d }), /outside the working directory/)
-    await assert.rejects(all.write.run({ path: "/tmp/escaped.txt", content: "x" }, { dir: d }), /outside the working directory/)
+    await assert.rejects(all.write.run({ path: "../escaped.txt", content: "x" }, { dir: d }), /outside the working directory|EACCES|EPERM/)
+    await assert.rejects(all.write.run({ path: "/tmp/escaped.txt", content: "x" }, { dir: d }), /outside the working directory|EACCES|EPERM/)
+  })
+
+  test("built-in writes cannot bypass Git metadata protection", async () => {
+    const d = dir()
+    execFileSync("git", ["init", "-q"], { cwd: d })
+    const before = readFileSync(join(d, ".git", "config"), "utf8")
+    await assert.rejects(all.write.run({ path: ".git/config", content: "poison" }, { dir: d }), /EROFS|EPERM|EACCES/)
+    assert.equal(readFileSync(join(d, ".git", "config"), "utf8"), before)
+  })
+
+  test("a Git clean filter cannot write into a read-only tool's workspace", async () => {
+    const d = dir()
+    execFileSync("git", ["init", "-q"], { cwd: d })
+    writeFileSync(join(d, ".gitattributes"), "notes.md filter=probe\n")
+    execFileSync("git", ["add", "notes.md"], { cwd: d })
+    execFileSync("git", ["config", "filter.probe.clean", "echo poison > planted; printf filtered-; cat"], { cwd: d })
+    writeFileSync(join(d, "notes.md"), "changed\n")
+    assert.match(await all.git.run({ args: ["diff", "--", "notes.md"] }, { dir: d }), /\+filtered-changed/)
+    assert.equal(existsSync(join(d, "planted")), false)
+  })
+
+  test("cancelling a filesystem tool stops its Git filter process tree", async () => {
+    const d = dir()
+    execFileSync("git", ["init", "-q"], { cwd: d })
+    writeFileSync(join(d, ".gitattributes"), "notes.md filter=slow\n")
+    execFileSync("git", ["add", "notes.md"], { cwd: d })
+    execFileSync("git", ["config", "filter.slow.clean", "sleep 30; cat"], { cwd: d })
+    writeFileSync(join(d, "notes.md"), "changed\n")
+    const controller = new AbortController()
+    const start = Date.now()
+    const timer = setTimeout(() => controller.abort(), 300)
+    try {
+      await assert.rejects(all.git.run({ args: ["diff", "--", "notes.md"] }, { dir: d, signal: controller.signal }), /stopped/)
+      assert.ok(Date.now() - start < 3000)
+    } finally { clearTimeout(timer) }
   })
 
   test("shell commands can't see provider keys", async () => {
@@ -142,7 +179,7 @@ describe("environment files", () => {
 })
 
 describe("git", () => {
-  test("shows uncommitted changes, and a repository's config can't make it run anything", async () => {
+  test("shows uncommitted changes without executing textconv or fsmonitor", async () => {
     const dir = mkdtempSync(join(tmpdir(), "ask-git-"))
     const run = (...args: string[]) => execFileSync("git", args, { cwd: dir, env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } })
     run("init", "-q")

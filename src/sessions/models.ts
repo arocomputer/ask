@@ -79,7 +79,10 @@ export async function readModels(h: Home, target: { model: Model; key: Key; base
         session: `ask-read-${token()}`,
         signal,
       })
-      return { text: r.message.text, usage: r.usage }
+      const text = r.incomplete || r.message.calls.length
+        ? "The extraction was incomplete; fetch again without a question to read the page directly."
+        : r.message.text
+      return { text, usage: r.usage }
     }
   }
   return { small: one(helper), large: one(target) }
