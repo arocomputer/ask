@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Disable filtering in menus with seven or fewer options; keep search for longer lists.
 - Remove keyboard-instruction footers from pickers and input fields, keeping contextual details
   and input status.
 - Remove the duplicate settings title and hub navigation receipts beneath `ask / settings`.

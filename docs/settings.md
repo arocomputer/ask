@@ -24,7 +24,8 @@ ChatGPT, API keys or installed harnesses
 
 ```
 
-The focused item is bold with a narrow `❙` bar beside it. Typing filters lists; arrows move,
+The focused item is bold with a narrow `❙` bar beside it. Typing filters lists with more than
+seven options; short menus such as Settings do not filter. Arrows move,
 Enter selects, and Space toggles models in multiselect lists. Esc clears a filter, then goes
 back without saving the unfinished prompt. Completed changes remain saved. Model actions appear
 once a provider is connected. A terminal is required; in scripts, use the files below.

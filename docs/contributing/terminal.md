@@ -15,6 +15,8 @@ also disables interactive prompts. Machine JSON and piped TSV are independent of
   Only the focused item label is bold in a picker. Multiselect
   checkboxes represent membership, independently of focus. Hints appear below the list.
 - Esc clears a filter or goes back. Enter confirms; completed actions save independently.
+- Only lists with more than seven options accept filtering; short menus ignore typed text.
+  This uses the original list size so narrowing search results does not disable search.
 - Prompts omit keyboard-instruction footers. Supporting text describes the focused item or
   input state (defaults, character counts and hidden-key confirmation), rather than controls.
 - Text fields show a tail preview and count; API keys show a fixed mask. Callback values are

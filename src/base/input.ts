@@ -106,9 +106,10 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
   return lines
 }
 
-/** Shared picker behavior; focus and multiselect membership are independent. */
+/** Shared picker behavior; only lists longer than seven items accept a search query. */
 async function pick<T>(title: string, items: Item<T>[], start: number, selected?: Set<T>): Promise<T[]> {
   const screen = canvas()
+  const searchable = items.length > 7
   let query = "", cursor = start
   let shown = items
   const refresh = () => {
@@ -135,7 +136,7 @@ async function pick<T>(title: string, items: Item<T>[], start: number, selected?
       } else if (selected && k === "\x1b[C") for (const item of shown) selected.add(item.value)
       else if (selected && k === "\x1b[D") for (const item of shown) selected.delete(item.value)
       else if (k === "\x7f" || k === "\b") query = [...query].slice(0, -1).join("")
-      else if (!k.startsWith("\x1b") && k >= " ") { query += k; cursor = 0 }
+      else if (searchable && !k.startsWith("\x1b") && k >= " ") { query += k; cursor = 0 }
       refresh()
     }, render)
     const result = selected ? items.filter((item) => selected.has(item.value)) : [picked!]
