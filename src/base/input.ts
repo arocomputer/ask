@@ -5,7 +5,7 @@
 
 import { plain, style, truncate, width, wrap } from "./term.ts"
 
-export type Item<T> = { label: string; hint?: string; value: T }
+export type Item<T> = { label: string; hint?: string; detail?: string; value: T }
 
 /** Esc returns from the current settings action without saving its unfinished prompt. */
 export class Back extends Error {}
@@ -14,10 +14,10 @@ export function interactive(): boolean {
   return !!process.stdin.isTTY && !!process.stderr.isTTY && process.env.TERM !== "dumb"
 }
 
-/** Items whose label or hint contains every word of the query. */
+/** Items whose label, inline detail or hint contains every word of the query. */
 export function filter<T>(items: Item<T>[], query: string): Item<T>[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-  return items.filter((o) => words.every((w) => `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(w)))
+  return items.filter((o) => words.every((w) => `${o.label} ${o.detail ?? ""} ${o.hint ?? ""}`.toLowerCase().includes(w)))
 }
 
 /** Splits raw input into keys; complete escape sequences stay together. */
@@ -86,7 +86,7 @@ function canvas() {
   }
 }
 
-/** The actual picker frame; an empty title lets a surrounding heading provide context. */
+/** Picker frame with dim inline details; an empty title uses the surrounding screen's context. */
 export function menu<T>(title: string, items: Item<T>[], cursor: number, query = "", selected?: Set<T>, out = process.stderr): string[] {
   const st = style(out)
   const cols = Math.max(1, (out.columns || 80) - 1)
@@ -97,8 +97,11 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
   for (const [index, item] of items.slice(top, top + page).entries()) {
     const focused = top + index === cursor
     const prefix = selected ? selected.has(item.value) ? "[x] " : "[ ] " : `${focused ? "❙" : " "} `
-    const label = truncate(item.label, Math.max(1, cols - width(prefix)))
-    lines.push(focused ? selected ? st.bold(prefix + label) : prefix + st.bold(label) : prefix + label)
+    const room = Math.max(1, cols - width(prefix))
+    const detail = item.detail ? truncate(item.detail, Math.max(1, Math.floor(room / 2) - 2)) : ""
+    const label = truncate(item.label, Math.max(1, room - (detail ? width(detail) + 2 : 0)))
+    const row = focused ? selected ? st.bold(prefix + label) : prefix + st.bold(label) : prefix + label
+    lines.push(row + (detail ? "  " + st.gray(detail) : ""))
   }
   if (!items.length) lines.push("  No matches")
   const focused = items[cursor]

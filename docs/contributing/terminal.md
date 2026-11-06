@@ -18,7 +18,9 @@ also disables interactive prompts. Machine JSON and piped TSV are independent of
 - Single-choice lists use a narrow `❙` focus bar; its exact dimensions depend on the terminal font.
   Multiselect lists use only `[x]` / `[ ]` checkboxes, without a bar. The focused label is bold,
   including its checkbox in multiselect lists. Checkboxes represent membership, independently of focus.
-  Hints appear below the list.
+  Hints appear below the list. Model providers appear as dim inline details beside each label,
+  without repeating the model identifier. Long-list position counters remain below the list.
+  Model multiselect has no repeated provider title or selection receipt.
 - Esc clears a filter or goes back. Enter confirms; completed actions save independently.
 - Only lists with more than seven options accept filtering; short menus ignore typed text.
   This uses the original list size so narrowing search results does not disable search.

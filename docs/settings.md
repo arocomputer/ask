@@ -28,6 +28,9 @@ Enter selects, and Space toggles models in multiselect lists. Esc clears a filte
 back without saving the unfinished prompt. Completed changes remain saved. Model actions appear
 once a provider is connected. A terminal is required; in scripts, use the files below.
 
+Model lists show the provider beside each model in muted text, with the position counter below
+long lists. The model multiselect omits its own title and selection receipt.
+
 The default model is shown by name and provider. **Models** shows the selection count, or
 **All models from connected providers** when no shortlist is saved. **Task timeout** shows
 whole minutes when possible; its editor accepts seconds.

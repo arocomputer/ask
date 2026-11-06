@@ -106,7 +106,7 @@ export async function run(h: Home): Promise<number> {
     try {
       if (choice === "default") await chooseDefault(h, c)
       if (choice === "models") {
-        const p = ids.length === 1 ? ids[0] : await select("Provider", ids.map((id) => ({ label: c[id].name, value: id })))
+        const p = ids.length === 1 ? ids[0] : await select("", ids.map((id) => ({ label: c[id].name, value: id })))
         await chooseModels(h, c, p)
       }
       if (choice === "add") await addProvider(h, c)
@@ -280,7 +280,7 @@ async function chooseModels(h: Home, c: Catalog, provider: string) {
       ? models.slice(0, 1).map((m) => m.id)
       : (suggested[provider] ?? []).filter((id) => models.some((m) => m.id === id))
   const ordered = [...models.filter((m) => start.includes(m.id)), ...models.filter((m) => !start.includes(m.id))]
-  const chosen = await multi(`${c[provider].name} models`, ordered.map((m) => ({ label: m.name, hint: `${provider}/${m.id}`, value: m.id })), start)
+  const chosen = await multi("", ordered.map((m) => ({ label: m.name, detail: provider, value: m.id })), start)
   update(h, (x) => {
     x.models = [...(x.models ?? []).filter((m) => !m.startsWith(provider + "/")), ...chosen.map((id) => `${provider}/${id}`)]
     if (x.model && !x.models.includes(x.model) && x.model.startsWith(provider + "/")) delete x.model
@@ -298,7 +298,7 @@ async function chooseDefault(h: Home, c: Catalog) {
   }
   const first = cfg.model ? names.indexOf(cfg.model) : names.findIndex((n) => suggested[n.split("/")[0]]?.[0] === n.slice(n.indexOf("/") + 1))
   if (!names.length) { say("No models available from connected providers. Refresh the catalog with ask models --refresh, or connect another provider."); return }
-  const model = await select("Default model", names.map((n) => ({ label: label(n), hint: n, value: n })), Math.max(0, first))
+  const model = await select("Default model", names.map((n) => ({ label: label(n), detail: n.slice(0, n.indexOf("/")), value: n })), Math.max(0, first))
   update(h, (x) => (x.model = model))
 }
 

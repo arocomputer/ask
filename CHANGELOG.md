@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Simplify model pickers: omit the multiselect title and receipt, show muted provider names
+  beside models, and retain the position counter below long lists.
 - Use checkboxes alone in model multiselect lists, with the focused checkbox and text both bold.
 - Clarify setup copy and credential sources, show readable default models and task timeouts,
   and remove duplicate model-selection confirmations. Distinguish enabling integrations from

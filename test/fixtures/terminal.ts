@@ -53,7 +53,9 @@ export async function preview(columns: number, monochrome = true): Promise<strin
       { label: "Done", value: "done" },
     ], 1).join("\n") + "\n"
     section("model selection")
-    output += menu("Models", [{ label: "Reader", value: "reader" }, { label: "Writer", value: "writer" }], 1, "", new Set(["reader"])).join("\n") + "\n"
+    output += menu("", [{ label: "Reader", detail: "opencode-go", value: "reader" }, { label: "Writer", detail: "opencode-go", value: "writer" },
+      ...Array.from({ length: 6 }, (_, i) => ({ label: `Model ${i + 3}`, detail: "opencode-go", value: `model-${i + 3}` })),
+    ], 1, "", new Set(["reader"])).join("\n") + "\n"
     section("empty filter")
     output += menu("Models", [], 0, "not-found").join("\n") + "\n"
     section("disconnect confirmation")
