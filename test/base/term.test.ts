@@ -14,8 +14,8 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
     const lines = plain(result).split("\n")
     assert.ok(lines.every((line) => width(line) < columns), `overflow at ${columns}: ${lines.filter((line) => width(line) >= columns).join("\n")}`)
     assert.doesNotMatch(result, /\x1b\[(?:3\d|4\d|9\d|10\d|38;|48;)/)
-    assert.match(result, /│ \x1b\[1mConnect a provider\x1b\[22m/)
-    assert.match(result, /  \[x\] Reader\n│ \[ \] \x1b\[1mWriter/)
+    assert.match(result, /█ \x1b\[1mConnect a provider\x1b\[22m/)
+    assert.match(result, /  \[x\] Reader\n█ \[ \] \x1b\[1mWriter/)
     assert.doesNotMatch(result, /fixture-only-do-not-display/)
     const session = result.slice(result.indexOf("--- show abc123"), result.indexOf("--- legacy"))
     assert.match(plain(session), /Answer\nThe callback/)
@@ -25,7 +25,7 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
 test("NO_COLOR produces the same readable fixtures without styling escapes", () => {
   const result = preview(40, false)
   assert.doesNotMatch(result, /\x1b/)
-  assert.match(result, /│ Connect a provider/)
+  assert.match(result, /█ Connect a provider/)
 })
 
 test("piped table fields stay TSV even when emphasis is forced", () => {

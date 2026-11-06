@@ -17,7 +17,7 @@ Settings
 
   Default model
   Models
-│ Connect a provider
+█ Connect a provider
   Disconnect a provider
   Timeout
   Done
@@ -28,7 +28,7 @@ ChatGPT, API keys or installed harnesses
 type to filter · esc back
 ```
 
-The focused item is bold with one text-height `│` beside it. Typing filters lists; arrows move,
+The focused item is bold with one text-height solid `█` cursor block beside it. Typing filters lists; arrows move,
 Enter selects, and Space toggles models in multiselect lists. Esc clears a filter, then goes
 back without saving the unfinished prompt. Completed changes remain saved. Model actions appear
 once a provider is connected. A terminal is required; in scripts, use the files below.
@@ -68,7 +68,7 @@ After signing in, copy the address of the page that cannot load.
 Paste it below and press Enter. This link stays active until you cancel.
 Callback URL
 
-│ http://127.0.0.1:1455/auth/callback?...
+█ http://127.0.0.1:1455/auth/callback?...
 
 … characters · enter submit
 
