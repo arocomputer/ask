@@ -1,5 +1,6 @@
 // Monochrome terminal prompts. Single choices use a focus bar; multiselect uses checkboxes.
-// Only the focused label is bold. Hints sit beneath the list; completion leaves a short receipt.
+// Focused labels and multiselect checkboxes are bold. Hints sit beneath the list;
+// completion leaves a short receipt.
 // Rendering is shared with the visual fixtures; raw input and screen ownership live here.
 
 import { plain, style, truncate, width, wrap } from "./term.ts"
@@ -97,7 +98,7 @@ export function menu<T>(title: string, items: Item<T>[], cursor: number, query =
     const focused = top + index === cursor
     const prefix = selected ? selected.has(item.value) ? "[x] " : "[ ] " : `${focused ? "❙" : " "} `
     const label = truncate(item.label, Math.max(1, cols - width(prefix)))
-    lines.push(prefix + (focused ? st.bold(label) : label))
+    lines.push(focused ? selected ? st.bold(prefix + label) : prefix + st.bold(label) : prefix + label)
   }
   if (!items.length) lines.push("  No matches")
   const focused = items[cursor]

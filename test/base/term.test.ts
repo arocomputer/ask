@@ -15,7 +15,7 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
     assert.ok(lines.every((line) => width(line) < columns), `overflow at ${columns}: ${lines.filter((line) => width(line) >= columns).join("\n")}`)
     assert.doesNotMatch(result, /\x1b\[(?:3\d|4\d|9\d|10\d|38;|48;)/)
     assert.match(result, /❙ \x1b\[1mConnect a provider\x1b\[22m/)
-    assert.match(result, /\[x\] Reader\n\[ \] \x1b\[1mWriter/)
+    assert.match(result, /\[x\] Reader\n\x1b\[1m\[ \] Writer\x1b\[22m/)
     const models = result.split("--- model selection ---")[1].split("--- empty filter ---")[0]
     assert.doesNotMatch(models, /❙/)
     assert.doesNotMatch(result, /fixture-only-do-not-display/)

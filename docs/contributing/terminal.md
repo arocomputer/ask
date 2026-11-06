@@ -16,8 +16,8 @@ also disables interactive prompts. Machine JSON and piped TSV are independent of
 - A screen heading supplies its context once: the settings hub omits a second title and
   navigation receipts, while action prompts retain their specific questions.
 - Single-choice lists use a narrow `❙` focus bar; its exact dimensions depend on the terminal font.
-  Multiselect lists use only `[x]` / `[ ]` checkboxes, without a bar. Only the focused item label
-  is bold in either picker. Checkboxes represent membership, independently of focus.
+  Multiselect lists use only `[x]` / `[ ]` checkboxes, without a bar. The focused label is bold,
+  including its checkbox in multiselect lists. Checkboxes represent membership, independently of focus.
   Hints appear below the list.
 - Esc clears a filter or goes back. Enter confirms; completed actions save independently.
 - Only lists with more than seven options accept filtering; short menus ignore typed text.
