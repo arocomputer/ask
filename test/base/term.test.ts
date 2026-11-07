@@ -17,8 +17,8 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
     assert.doesNotMatch(result, /\x1b\[(?:3\d|4\d|9\d|10\d|38;|48;)/)
     assert.match(result, /❙ \x1b\[1mConnect a provider\x1b\[22m/)
     const models = result.split("--- model selection ---")[1].split("--- empty filter ---")[0]
-    assert.match(models, /\[x\] Reader  \x1b\[2mopencode-go\x1b\[22m/)
-    assert.match(models, /\x1b\[1m\[ \] Writer\x1b\[22m  \x1b\[2mopencode-go\x1b\[22m/)
+    assert.match(models, /\[x\] Reader  \x1b\[2mOpenCode Go\x1b\[22m/)
+    assert.match(models, /\x1b\[1m\[ \] Writer\x1b\[22m  \x1b\[2mOpenCode Go\x1b\[22m/)
     assert.doesNotMatch(models, /❙/)
     assert.doesNotMatch(plain(models), /Models|selected|opencode-go\//)
     assert.match(plain(models).replace(/\n/g, " "), /1 of 30 · ↑↓ move · space toggle · enter save · esc back/)

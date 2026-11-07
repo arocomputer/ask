@@ -9,13 +9,20 @@ model of the providers you have keys for; `ask models PROVIDER` lists all of tha
 
 ## The catalog
 
-ask downloads models.dev's catalog once a day into `~/.ask/cache/models.json`, and uses the copy
+Ask downloads models.dev's catalog once a day into `~/.ask/cache/models.json`, and uses the copy
 it has when the network is down. For each model, the catalog says how to reach it: the endpoint,
 and which kind of API it speaks. ask speaks three:
 
 - OpenAI's **Responses** API, for OpenAI's models and gateways that offer it.
 - **Chat completions**, which most providers and gateways serve.
 - Anthropic's **Messages** API, for Anthropic's models and gateways that offer it.
+
+Catalog presence means Ask knows a model's endpoint and a supported protocol; it does not certify
+the provider's authentication method. Settings offers a curated API-key list plus ChatGPT and
+installed coding-agent sign-ins. For other endpoints, use the custom OpenAI-compatible option in
+[Settings](settings.md#custom-openai-compatible-endpoints). A catalog model may also be configured
+manually with a compatible credential, but catalog inclusion alone is not a guided or verified
+connection.
 
 A gateway can serve different models through different APIs, and ask follows the catalog for
 each. Signed in to ChatGPT, the `chatgpt` provider adds your account's own models, which OpenAI

@@ -1,11 +1,12 @@
 # Settings
 
-ask needs a model and a key for its provider. `ask settings` sets both up; you can also edit two
-small files, or use the provider's own key variable.
+Ask needs a model and a supported way to authenticate. `ask settings` connects a curated set of
+API-key providers, ChatGPT sign-in and installed Claude Code/Codex integrations. It also accepts
+custom OpenAI-compatible endpoints. You can edit two small files or use a provider's key variable.
 
 ## ask settings
 
-Choose **Connect a provider**, then a provider. API keys stay hidden as you paste, with a short
+Choose **Connect a provider**, then a supported provider. API keys stay hidden as you paste, with a short
 acknowledgement when input arrives. Ask checks the key with one tiny request before saving it,
 then asks for models and a default. While pasting a key, its first four characters are visible
 followed by a fixed mask; the rest and the key length stay hidden. Each completed action saves immediately; settings stays open
@@ -41,6 +42,20 @@ whole minutes when possible; its editor accepts seconds.
 Provider details distinguish a saved API key from one supplied by an environment variable.
 Disconnecting removes the saved credential and model selections; an environment-provided key
 can still make that provider available, and Ask reports that remaining access.
+
+## Custom OpenAI-compatible endpoints
+
+Choose **Connect a provider → Custom OpenAI-compatible endpoint**, then enter a display name,
+base URL, comma-separated model IDs, and an optional API key. Ask tests the first model with a
+small request before saving the endpoint. The URL should be the API base (often ending in `/v1`);
+Ask calls its `/chat/completions` route. In the setup flow, HTTPS is required when sending a key,
+except for localhost, so credentials aren't sent over an unencrypted network. Local endpoints can omit the
+key. Custom models appear as `custom-NAME/MODEL` and can be selected like catalog models.
+
+This route supports OpenAI Chat Completions-compatible APIs—not arbitrary OAuth, cloud signing,
+custom headers, or Anthropic Messages endpoints. The model catalog remains useful for discovery,
+but its entries alone don't guarantee an authentication flow. Ask's one-click API-key presets
+are the providers listed below.
 
 ## Sandbox
 
@@ -128,14 +143,25 @@ which models you want. ask never signs in for them: if one isn't signed in, sign
 - `extensions` and `harnesses` are what `ask install` turned on and how each harness runs; see
   [Harnesses and extensions](extensions.md#changing-how-a-harness-runs).
 
-`~/.ask/auth.json`, mode 0600, holds pasted keys, and the ChatGPT sign-in under `chatgpt`:
+`~/.ask/auth.json`, mode 0600, holds pasted keys, custom endpoints, and the ChatGPT sign-in under `chatgpt`:
 
 ```json
 { "opencode-go": { "api_key": "..." } }
 ```
 
-When it asks for a key, `ask settings` says where to make one and how it starts. For the
-common providers:
+A custom endpoint with no key uses this shape:
+
+```json
+{
+  "custom-local": {
+    "base_url": "http://localhost:11434/v1",
+    "custom": { "name": "Local", "models": ["qwen3"] }
+  }
+}
+```
+
+When it asks for a key, `ask settings` says where to make one and how it starts. These are the
+curated API-key providers available in the one-click list:
 
 | Provider | Where | Starts with |
 | --- | --- | --- |
@@ -154,17 +180,18 @@ common providers:
 | Moonshot AI | [platform.kimi.ai/console/api-keys](https://platform.kimi.ai/console/api-keys) | `sk-` |
 | DeepInfra | [deepinfra.com/dash/api_keys](https://deepinfra.com/dash/api_keys) | |
 
-Other providers get a link to their docs. OpenCode's free models only work inside OpenCode, so
-ask doesn't offer them.
+The catalog contains more providers than this curated list; catalog presence does not mean Ask
+has verified that provider's key-auth flow. OpenCode's free models only work inside OpenCode, so
+Ask doesn't offer them.
 
 A provider may also have `"base_url"` to send its requests somewhere other than the catalog's
 endpoint, such as a proxy.
 
 ## Keys from the environment
 
-A provider's own variable works without settings: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-`OPENROUTER_API_KEY` and so on, as the [catalog](models.md) names them. A pasted key wins over the
-variable. ask never reads another program's saved logins.
+A supported provider's own variable works without settings: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+`OPENROUTER_API_KEY` and so on, as the [catalog](models.md) names them. A pasted key wins over
+the variable. Ask never reads another program's saved logins.
 
 ## ask doctor
 

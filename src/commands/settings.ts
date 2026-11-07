@@ -3,18 +3,19 @@
 
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { cheapest, connect, harnessMarker, providers, usable, type Catalog, type Model } from "../providers/catalog.ts"
+import { cheapest, connect, find, harnessMarker, providers, usable, type Catalog, type Model } from "../providers/catalog.ts"
 import { readJSON, writeJSON, type Auth, type Config, type Home } from "../base/home.ts"
 import { catalog, credential } from "../sessions/models.ts"
 import { account, begin, CallbackError, remote, signOut, signedIn, usagePage } from "../providers/chatgpt.ts"
 import { harness, settings } from "../harnesses/extensions.ts"
 import { Back, confirm, input, interactive, line, multi, secret, select } from "../base/input.ts"
 import { ProviderError, type Key } from "../providers/stream.ts"
+import { baseURL as customBaseURL, entry as customEntry, id as customID, modelIDs as customModelIDs } from "../providers/custom.ts"
 import { heading, spinner, style, text } from "../base/term.ts"
 
 export const summary = "Providers, models and defaults"
-export const about = `Manage providers, models and task defaults. Changes are saved as you go.
-Esc returns to settings; choose Done to exit.
+export const about = `Connect supported API-key providers, ChatGPT, installed coding agents or a custom OpenAI-compatible endpoint.
+Manage models and task defaults; changes are saved as you go. Esc returns to settings; choose Done to exit.
 
 Everything is saved in ~/.ask/config.json and ~/.ask/auth.json, which you can also edit. A
 provider's own key variable, like OPENAI_API_KEY, works without settings.`
@@ -53,6 +54,8 @@ const suggested: Record<string, string[]> = {
   opencode: ["gpt-5.5"],
   openai: ["gpt-5.5"],
 }
+const apiKeyProviders = new Set(Object.keys(keyPages))
+const customChoice = "__custom_openai_compatible__"
 
 const say = (line: string) => text(line, process.stderr)
 const config = (h: Home) => readJSON<Config>(h.config, {})
@@ -88,7 +91,7 @@ export async function run(h: Home): Promise<number> {
   for (;;) {
     const cfg = config(h)
     const ids = keyed(h, c)
-    const removable = ids.filter((p) => readJSON<Auth>(h.auth, {})[p]?.api_key || (p === "chatgpt" && signedIn(h)))
+    const removable = ids.filter((p) => readJSON<Auth>(h.auth, {})[p]?.api_key || readJSON<Auth>(h.auth, {})[p]?.custom || (p === "chatgpt" && signedIn(h)))
     let choice: string
     try {
       choice = await select("", [
@@ -132,7 +135,7 @@ function keyed(h: Home, c: Catalog): string[] {
 async function addProvider(h: Home, c: Catalog): Promise<boolean> {
   const rank = (id: string) => (common.includes(id) ? common.indexOf(id) : common.length)
   const items = providers(c)
-    .filter((p) => p.id !== "chatgpt" && c[p.id].npm !== harnessMarker)
+    .filter((p) => apiKeyProviders.has(p.id))
     .sort((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name))
     .map((p) => {
       const source = credential(h, p.id, p.env)?.source
@@ -142,7 +145,10 @@ async function addProvider(h: Home, c: Catalog): Promise<boolean> {
   const harnesses = providers(c)
     .filter((p) => c[p.id].npm === harnessMarker)
     .map((p) => ({ label: p.name, hint: `Uses your ${p.name} sign-in`, value: p.id }))
-  const provider = await select("Connect a provider", [chatgpt, ...harnesses, ...items])
+  const provider = await select("Connect a provider", [chatgpt, ...harnesses, ...items, {
+    label: "Custom OpenAI-compatible endpoint", hint: "Enter an endpoint and model IDs", value: customChoice,
+  }])
+  if (provider === customChoice) return addCustomProvider(h, c)
   if (c[provider]?.npm === harnessMarker) {
     const st = style(process.stderr)
     const x = await harness(h, provider)
@@ -172,6 +178,40 @@ async function addProvider(h: Home, c: Catalog): Promise<boolean> {
   if (!reuse && !(await paste(h, c, provider))) return false
   await chooseModels(h, c, provider)
   if (!config(h).model) await chooseDefault(h, c)
+  return true
+}
+
+/** Add a manually described Chat Completions endpoint and verify it before saving. */
+async function addCustomProvider(h: Home, c: Catalog): Promise<boolean> {
+  const name = (await input("Provider name")).trim()
+  if (!name) { say("Provider name cannot be empty"); return false }
+  let provider: string
+  try { provider = customID(name) } catch (err) { say((err as Error).message); return false }
+  if (c[provider]) { say(`${name} already exists; disconnect it first, or use a different name.`); return false }
+
+  const rawURL = await input("API endpoint (base URL)")
+  let baseURL: string
+  let models: string[]
+  try {
+    baseURL = customBaseURL(rawURL, false)
+    models = customModelIDs(await input("Model IDs (comma-separated)"))
+  } catch (err) { say((err as Error).message); return false }
+  const key = await secret("API key (leave blank if not required)")
+  try { baseURL = customBaseURL(rawURL, !!key) }
+  catch (err) { say((err as Error).message); return false }
+
+  const custom = { id: provider, name, baseURL, models }
+  const candidates = { ...c, ...customEntry(custom) }
+  const problem = await check(find(candidates, `${provider}/${models[0]}`), key, baseURL)
+  if (problem) { say(`${style(process.stderr).bold("error")}  Endpoint check failed: ${problem}`); return false }
+
+  const auth = readJSON<Auth>(h.auth, {})
+  auth[provider] = { ...(key ? { api_key: key } : {}), base_url: baseURL, custom: { name, models } }
+  writeJSON(h.auth, auth)
+  say(`Connected to ${name}`)
+  const fresh = { ...c, ...customEntry(custom) }
+  await chooseModels(h, fresh, provider)
+  if (!config(h).model) await chooseDefault(h, fresh)
   return true
 }
 
@@ -278,9 +318,11 @@ async function chooseModels(h: Home, c: Catalog, provider: string) {
     ? mine
     : provider === "chatgpt"
       ? models.slice(0, 1).map((m) => m.id)
-      : (suggested[provider] ?? []).filter((id) => models.some((m) => m.id === id))
+      : readJSON<Auth>(h.auth, {})[provider]?.custom
+        ? models.map((m) => m.id)
+        : (suggested[provider] ?? []).filter((id) => models.some((m) => m.id === id))
   const ordered = [...models.filter((m) => start.includes(m.id)), ...models.filter((m) => !start.includes(m.id))]
-  const chosen = await multi("", ordered.map((m) => ({ label: m.name, detail: provider, value: m.id })), start)
+  const chosen = await multi("", ordered.map((m) => ({ label: m.name, detail: c[provider].name, value: m.id })), start)
   update(h, (x) => {
     x.models = [...(x.models ?? []).filter((m) => !m.startsWith(provider + "/")), ...chosen.map((id) => `${provider}/${id}`)]
     if (x.model && !x.models.includes(x.model) && x.model.startsWith(provider + "/")) delete x.model
@@ -298,7 +340,10 @@ async function chooseDefault(h: Home, c: Catalog) {
   }
   const first = cfg.model ? names.indexOf(cfg.model) : names.findIndex((n) => suggested[n.split("/")[0]]?.[0] === n.slice(n.indexOf("/") + 1))
   if (!names.length) { say("No models available from connected providers. Refresh the catalog with ask models --refresh, or connect another provider."); return }
-  const model = await select("Default model", names.map((n) => ({ label: label(n), detail: n.slice(0, n.indexOf("/")), value: n })), Math.max(0, first))
+  const model = await select("Default model", names.map((n) => {
+    const provider = n.slice(0, n.indexOf("/"))
+    return { label: label(n), detail: c[provider]?.name ?? provider, value: n }
+  }), Math.max(0, first))
   update(h, (x) => (x.model = model))
 }
 

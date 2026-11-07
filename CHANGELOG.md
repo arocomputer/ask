@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Limit one-click API-key setup to Ask's curated provider presets, and add custom OpenAI
+  Chat-Completions-compatible endpoints with manual model IDs, optional local keys, TLS checks,
+  and a connection test before saving. Clarify that models.dev catalog coverage is not auth support.
 - Show the first four API-key characters while pasting, followed by a fixed mask that hides the
   remainder and does not reveal the full key length.
 - Restore compact model-multiselect keybinds, preceded by the selected/available count; use `>`
