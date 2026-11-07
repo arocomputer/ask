@@ -1,28 +1,61 @@
 # Settings
 
-ask needs a model and a key for its provider. `ask settings` sets both up; you can also edit two
-small files, or use the provider's own key variable.
+Ask needs a model and a supported way to authenticate. `ask settings` connects a curated set of
+API-key providers, ChatGPT sign-in and installed Claude Code/Codex integrations. It also accepts
+custom OpenAI-compatible endpoints. You can edit two small files or use a provider's key variable.
 
 ## ask settings
 
-The first time, it asks which provider to use, takes its API key (hidden as you paste it, then
-checked with one tiny request before it is saved), asks which of the provider's models you want,
-and which is the default:
+Choose **Connect a provider**, then a supported provider. API keys stay hidden as you paste, with a short
+acknowledgement when input arrives. Ask checks the key with one tiny request before saving it,
+then asks for models and a default. While pasting a key, its first four characters are visible
+followed by a fixed mask; the rest and the key length stay hidden. Each completed action saves immediately; settings stays open
+until you choose **Done** or press Esc at the main menu.
 
 ```text
-? Which provider? OpenCode Go
-! Get a key at https://opencode.ai/console
-? Paste your OpenCode Go API key: ******************
-✓ Logged in to OpenCode Go
-? Which OpenCode Go models do you want? GLM-5.3, MiniMax-M3
-✓ Saved 2 models
-? Default model? GLM-5.3
-✓ Default model set to opencode-go/glm-5.3
+ask / settings
+
+  Default model
+  Models
+❙ Connect a provider
+  Disconnect a provider
+  Task timeout
+  Done
 ```
 
-Run it again and it asks what to change: the default model, your models, adding or removing a
-provider, or the timeout. In every list, typing filters it, the arrow keys move, Enter picks and,
-in a list of models, Space toggles one. It needs a terminal; in a script, use the files below.
+The focused item is bold. Single-choice lists use a narrow `❙` bar; model multiselect lists
+use only `[x]` / `[ ]` checkboxes, bold along with the focused label. Typing filters lists with more than
+seven options; short menus such as Settings do not filter. Arrows move,
+Enter selects, and Space toggles models in multiselect lists. Esc clears a filter, then goes
+back without saving the unfinished prompt. Completed changes remain saved. Model actions appear
+once a provider is connected. A terminal is required; in scripts, use the files below.
+
+Model lists show the provider beside each model in muted text, with the position counter below
+long single-choice lists. The model multiselect omits its own title and selection receipt; its
+bottom line shows the selected count (for example, `0 of 30`) followed by compact keybinds.
+Search appears as `> query`, without a “Filter” label.
+
+The default model is shown by name and provider. **Models** shows the selection count, or
+**All models from connected providers** when no shortlist is saved. **Task timeout** shows
+whole minutes when possible; its editor accepts seconds.
+
+Provider details distinguish a saved API key from one supplied by an environment variable.
+Disconnecting removes the saved credential and model selections; an environment-provided key
+can still make that provider available, and Ask reports that remaining access.
+
+## Custom OpenAI-compatible endpoints
+
+Choose **Connect a provider → Custom OpenAI-compatible endpoint**, then enter a display name,
+base URL, comma-separated model IDs, and an optional API key. Ask tests the first model with a
+small request before saving the endpoint. The URL should be the API base (often ending in `/v1`);
+Ask calls its `/chat/completions` route. In the setup flow, HTTPS is required when sending a key,
+except for localhost, so credentials aren't sent over an unencrypted network. Local endpoints can omit the
+key. Custom models appear as `custom-NAME/MODEL` and can be selected like catalog models.
+
+This route supports OpenAI Chat Completions-compatible APIs—not arbitrary OAuth, cloud signing,
+custom headers, or Anthropic Messages endpoints. The model catalog remains useful for discovery,
+but its entries alone don't guarantee an authentication flow. Ask's one-click API-key presets
+are the providers listed below.
 
 ## Sandbox
 
@@ -44,33 +77,47 @@ Disabled execution does not require it or bubblewrap.
 
 ## ChatGPT
 
-Choose **ChatGPT** in `ask settings` to use your ChatGPT Plus or Pro plan instead of an API key.
-It follows OpenAI's sign-in for open-source tools: you approve ask in your browser, and its
+Choose **Connect a provider → ChatGPT** in `ask settings` to use your ChatGPT Plus or Pro plan instead of an API key.
+It follows OpenAI's sign-in for open-source tools: you approve Ask in your browser, and its
 requests count against your plan. Manage how much ask may use at
 [ChatGPT settings → Usage](https://chatgpt.com/settings/usage).
 
 ```text
-? Which provider? ChatGPT
-! Open this link on any device to sign in with ChatGPT:
+Connect a provider  ChatGPT
+
+ask / connect ChatGPT
+Open this link in your browser:
 https://auth.openai.com/api/accounts/authorize?...
-  After you approve, your browser lands on a page that won't load. Copy that page's address and paste it here.
-? Paste the address, or finish in the browser: pasted
-✓ Signed in to ChatGPT as you@example.com
-! You're using your ChatGPT plan. Manage how much ask may use at https://chatgpt.com/settings/usage
+After signing in, your browser may show a page that cannot load.
+Copy its full address and paste it below.
+Sign-in return URL
+
+❙ http://127.0.0.1:1455/auth/callback?...
+
+… characters
+
+Connected to ChatGPT as you@example.com
+Usage settings  https://chatgpt.com/settings/usage
 ```
 
 It works wherever ask runs. When ask runs at your screen, it opens your browser, and the sign-in
 finishes by itself when the browser comes back. Over SSH, or anywhere without a screen, open
 the link on any device, your phone included; after you approve, paste the address the browser
-lands on. Both ways are always open, so nothing needs choosing.
+lands on, then press Enter. The prompt shows the pasted address separately and reports its
+character count, including on narrow phone terminals. SSH is detected automatically; there is
+no `--remote` flag. Both ways are always open, so nothing needs choosing.
+If a pasted URL is incomplete or belongs to another attempt, ask keeps the current login link
+active and lets you paste again. It does not silently start a new sign-in. Ctrl-C cancels it.
 
 The models are your account's own, named `chatgpt/MODEL`. The sign-in renews itself; removing
 ChatGPT in `ask settings` signs out, ending the session with OpenAI too. One ChatGPT account at a
 time: sign out to switch.
+New registrations request the display name **Ask**; an existing registration may retain the
+name it was originally given. The command, provider identifiers and filesystem paths remain lowercase.
 
 ## Claude Code and Codex
 
-Once `ask install claude` or `ask install codex` has turned a harness on, it is listed in
+Once `ask install claude` or `ask install codex` has enabled the integration, it is listed in
 `ask settings` as a provider. Choosing it checks that it is installed and signed in, then asks
 which models you want. ask never signs in for them: if one isn't signed in, sign in its own way
 (`claude`, then `/login`; `codex login`). See [Harnesses and extensions](extensions.md).
@@ -96,14 +143,25 @@ which models you want. ask never signs in for them: if one isn't signed in, sign
 - `extensions` and `harnesses` are what `ask install` turned on and how each harness runs; see
   [Harnesses and extensions](extensions.md#changing-how-a-harness-runs).
 
-`~/.ask/auth.json`, mode 0600, holds pasted keys, and the ChatGPT sign-in under `chatgpt`:
+`~/.ask/auth.json`, mode 0600, holds pasted keys, custom endpoints, and the ChatGPT sign-in under `chatgpt`:
 
 ```json
 { "opencode-go": { "api_key": "..." } }
 ```
 
-When it asks for a key, `ask settings` says where to make one and how it starts. For the
-common providers:
+A custom endpoint with no key uses this shape:
+
+```json
+{
+  "custom-local": {
+    "base_url": "http://localhost:11434/v1",
+    "custom": { "name": "Local", "models": ["qwen3"] }
+  }
+}
+```
+
+When it asks for a key, `ask settings` says where to make one and how it starts. These are the
+curated API-key providers available in the one-click list:
 
 | Provider | Where | Starts with |
 | --- | --- | --- |
@@ -122,33 +180,37 @@ common providers:
 | Moonshot AI | [platform.kimi.ai/console/api-keys](https://platform.kimi.ai/console/api-keys) | `sk-` |
 | DeepInfra | [deepinfra.com/dash/api_keys](https://deepinfra.com/dash/api_keys) | |
 
-Other providers get a link to their docs. OpenCode's free models only work inside OpenCode, so
-ask doesn't offer them.
+The catalog contains more providers than this curated list; catalog presence does not mean Ask
+has verified that provider's key-auth flow. OpenCode's free models only work inside OpenCode, so
+Ask doesn't offer them.
 
 A provider may also have `"base_url"` to send its requests somewhere other than the catalog's
 endpoint, such as a proxy.
 
 ## Keys from the environment
 
-A provider's own variable works without settings: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-`OPENROUTER_API_KEY` and so on, as the [catalog](models.md) names them. A pasted key wins over the
-variable. ask never reads another program's saved logins.
+A supported provider's own variable works without settings: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+`OPENROUTER_API_KEY` and so on, as the [catalog](models.md) names them. A pasted key wins over
+the variable. Ask never reads another program's saved logins.
 
 ## ask doctor
 
 ```text
-✓ Runtime   Bun 1.4.4
-✓ Home      /home/you/.ask is writable
-✓ Catalog   218 providers, updated about 2 hours ago
-✓ Model     opencode-go/glm-5.3
-✓ Key       OpenCode Go accepts the pasted key
-✓ claude    Claude Code 2.1.318 is signed in (claude.ai)
-✓ Sandbox   Landlock 6; no Unix sockets before Linux 7.1
-✓ Worker    background tasks can start
-✓ Git       git 2.47.3
+ask / doctor
+
+ok    Runtime    Bun 1.4.4
+ok    Home       /home/you/.ask is writable
+ok    Catalog    218 providers, updated about 2 hours ago
+ok    Model      opencode-go/glm-5.3
+ok    Key        OpenCode Go accepts the pasted key
+ok    claude     Claude Code is signed in
+ok    Sandbox    bubblewrap + Landlock 6; no command network; read-only Git metadata
+ok    Worker     background tasks can start
+ok    Git        git 2.47.3
 ```
 
-Each line is one thing a task needs; each installed harness gets a line of its own. Anything broken is marked `X` with how to fix it under it,
+Each entry is one thing a task needs; each installed harness gets an entry of its own. Narrow
+terminals stack the details below the name. Anything broken is marked `fail` with how to fix it,
 and `ask doctor` then exits 1. The key check sends one tiny request.
 
 ## Environment
@@ -156,4 +218,8 @@ and `ask doctor` then exits 1. The key check sends one tiny request.
 - `ASK_HOME` moves `~/.ask`.
 - `ASK_PARENT` names the agent conversation calling ask, for one ask can't recognize by itself
   (see [Sessions](sessions.md#whose-sessions)).
-- `NO_COLOR` turns color off; `CLICOLOR_FORCE` keeps it when output is piped.
+- Output is monochrome: the terminal's own foreground/background, bold and dim text. No RGB or
+  named colors are forced, so it works on dark and light themes.
+- `NO_COLOR` disables emphasis; `CLICOLOR_FORCE` forces monochrome emphasis for prose. Piped
+  tables always remain plain TSV, and JSON requests keep their machine-readable format.
+- `TERM=dumb` disables styling and interactive prompts.

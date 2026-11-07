@@ -3,13 +3,13 @@
 // with a built-in's name replaces it. Claude Code and Codex use their own tools, not these.
 
 import { readJSON, writeJSON, type Config, type Home } from "../base/home.ts"
-import { style, table } from "../base/term.ts"
+import { heading, style, table, text } from "../base/term.ts"
 import { search } from "../agent/search.ts"
 import { tools as builtIn, type Tool } from "../agent/tools.ts"
 import { active } from "../harnesses/extensions.ts"
 import { Usage } from "./command.ts"
 
-export const summary = "List, turn off or turn on a subagent's tools"
+export const summary = "Manage task tools"
 export const about = `List the tools ask's own loop gives a subagent: where each comes from, whether read-only tasks
 get it, and whether it is on. Turn one off, or back on, by name.
 
@@ -39,16 +39,17 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   const all = await rows(h)
   if (!verb) {
     const st = style()
+    heading("tools")
     table(
-      all.map((r) => [[r.name, r.name], [r.from, st.gray(r.from)], [r.tasks, r.tasks], [r.on ? "on" : "off", r.on ? st.green("on") : st.yellow("off")]]),
-      { header: ["TOOL", "FROM", "TASKS", "STATUS"], flex: 1 },
+      all.map((r) => [[r.name, st.bold(r.name)], [r.from, st.gray(r.from)], [r.tasks, r.tasks], [r.on ? "on" : "off", r.on ? "on" : "off"]]),
+      { header: ["Tool", "From", "Tasks", "Status"], flex: 1 },
     )
     return 0
   }
   if (verb !== "off" && verb !== "on") throw new Usage(`unknown action: ${verb}`)
   if (!name) throw new Usage(`name the tool to turn ${verb}`)
   if (!all.some((r) => r.name === name)) {
-    process.stderr.write(`no tool named ${name}; the tools are ${all.map((r) => r.name).join(", ")}\n`)
+    text(`error  No tool named ${name}.\nAvailable tools: ${all.map((r) => r.name).join(", ")}`, process.stderr)
     return 1
   }
   const c = readJSON<Config>(h.config, {})
@@ -58,6 +59,6 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   if (Object.keys(tools).length) c.tools = tools
   else delete c.tools
   writeJSON(h.config, c)
-  process.stderr.write(`${style(process.stderr).green("✓")} Turned ${name} ${verb}\n`)
+  text(`${name}  ${verb}`, process.stderr)
   return 0
 }

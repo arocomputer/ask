@@ -123,13 +123,13 @@ describe("chatgpt", () => {
     const attempt = await begin(h)
     try {
       const q = o.authorize(attempt.url)
-      assert.deepEqual([q.get("client_id"), q.get("agent_name_hint"), q.get("code_challenge_method"), q.get("resource")], ["dynamic_agent_client", "ask", "S256", "https://api.openai.com/v1"])
+      assert.deepEqual([q.get("client_id"), q.get("agent_name_hint"), q.get("code_challenge_method"), q.get("resource")], ["dynamic_agent_client", "Ask", "S256", "https://api.openai.com/v1"])
       assert.equal(q.get("scope"), "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct")
       assert.match(q.get("redirect_uri")!, /^http:\/\/127\.0\.0\.1:\d+\/auth\/callback$/)
       const host = JSON.parse(readFileSync(join(h.root, "host.json"), "utf8")).id
       assert.match(host, /^urn:uuid:[0-9a-f-]{36}$/)
       assert.equal(q.get("ext_agent_host_id"), host)
-      await attempt.finish(`${q.get("redirect_uri")}?code=c1&state=${q.get("state")}&client_id=oaiapp_1`)
+      await attempt.finish(`${q.get("redirect_uri")}?code=c1&client_id=oaiapp_1&state=${q.get("state")}#_=_`)
     } finally {
       attempt.close()
     }
@@ -138,13 +138,15 @@ describe("chatgpt", () => {
     assert.ok(signedIn(h))
   })
 
-  test("the browser's return to ask's callback finishes the sign-in by itself", async () => {
+  test("the callback listener rejects unrelated returns before accepting the active sign-in", async () => {
     const o = await openai()
     servers.push(o)
     const h = fresh()
     const attempt = await begin(h)
     try {
       const q = o.authorize(attempt.url)
+      const unrelated = await fetch(`${q.get("redirect_uri")}?code=old&state=old`)
+      assert.equal(unrelated.status, 400)
       const page = await fetch(`${q.get("redirect_uri")}?code=c1&state=${q.get("state")}&client_id=oaiapp_1`)
       assert.match(await page.text(), /You can close this tab/)
       await attempt.finish(await attempt.callback)
@@ -182,13 +184,14 @@ describe("chatgpt", () => {
     assert.ok(!signedIn(h))
   })
 
-  test("an address from another sign-in is refused", async () => {
+  test("an address from another sign-in is refused without invalidating the active attempt", async () => {
     const o = await openai()
     servers.push(o)
     const attempt = await begin(fresh())
     try {
       const q = o.authorize(attempt.url)
-      await assert.rejects(attempt.finish(`${q.get("redirect_uri")}?code=c1&state=forged&client_id=oaiapp_1`), /another sign-in/)
+      await assert.rejects(attempt.finish(`${q.get("redirect_uri")}?code=c1&state=forged&client_id=oaiapp_1`), /does not match this login/)
+      await attempt.finish(`${q.get("redirect_uri")}?code=c1&state=${q.get("state")}&client_id=oaiapp_1`)
     } finally {
       attempt.close()
     }

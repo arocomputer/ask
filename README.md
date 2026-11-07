@@ -34,7 +34,7 @@ EOF
 `start` returns once the first task finishes, or right away without `wait`. `collect` waits for
 more, `continue` gives a finished session its next prompt or resumes a stopped one, `stop` stops
 one, and `show` lists its steps. A task can `write`, and work in its own git `worktree` and
-branch. Every response is small, and an error says what to send instead. `ask help requests` is
+branch. Every response is small, and an error says what to send instead. `ask -h requests` is
 the reference; [docs/requests.md](docs/requests.md) explains it.
 
 ## For people
@@ -95,7 +95,7 @@ Landlock. `ask doctor` checks availability; macOS uses the system's Seatbelt san
 
 ## Docs
 
-`ask help` is the reference. The pages in [docs/](docs/README.md) cover [installing](docs/install.md),
+`ask -h` is the reference. The pages in [docs/](docs/README.md) cover [installing](docs/install.md),
 [settings](docs/settings.md), [requests](docs/requests.md), [sessions](docs/sessions.md),
 [models](docs/models.md) and [harnesses and extensions](docs/extensions.md).
 

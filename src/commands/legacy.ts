@@ -5,10 +5,10 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseArgs } from "node:util"
 import type { Home } from "../base/home.ts"
-import { clean } from "../base/term.ts"
+import { clean, heading, table, text } from "../base/term.ts"
 import { Usage } from "./command.ts"
 
-export const summary = "Read sessions from the previous Go version"
+export const summary = "Read older sessions"
 export const about = "List legacy sessions, or print one original record as JSON. --transcript prints its native transcript. All access is read-only."
 export const usage = "ask legacy [id] [--transcript]"
 export const flags: [string, string][] = [["--transcript", "Print the original native transcript instead of the session record"]]
@@ -33,16 +33,22 @@ export async function run(h: Home, argv: string[]): Promise<number> {
     process.stdout.write(readFileSync(join(root, matches[0], values.transcript ? "transcript.json" : "session.json"), "utf8"))
     return 0
   }
+  heading("legacy sessions")
+  const rows: [string, string][][] = []
   for (const folder of folders) {
     try {
       const record = JSON.parse(readFileSync(join(root, folder, "session.json"), "utf8"))
       const turn = record.turns?.at(-1)
       if (!turn) throw new Error("no turns")
-      process.stdout.write([record.id, turn.state, turn.started, record.dir, turn.prompt].map((v) => clean(String(v ?? "")).replace(/[\t\r\n]/g, " ")).join("\t") + "\n")
+      rows.push([record.id, turn.state, turn.started, record.dir, turn.prompt].map((v): [string, string] => {
+        const value = clean(String(v ?? "")).replace(/[\t\r\n]/g, " ")
+        return [value, value]
+      }))
     } catch {
-      process.stderr.write(`cannot read legacy session ${clean(folder)}; original files retained\n`)
+      text(`Cannot read legacy session ${clean(folder)}; original files retained.`, process.stderr)
     }
   }
-  if (!folders.length) process.stderr.write(`no legacy sessions in ${root}\n`)
+  if (rows.length) table(rows, { header: ["ID", "State", "Started", "Folder", "Task"], flex: 4 })
+  if (!folders.length) text(`No legacy sessions in ${root}`, process.stderr)
   return 0
 }

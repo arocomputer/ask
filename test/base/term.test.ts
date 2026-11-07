@@ -1,0 +1,74 @@
+import assert from "node:assert/strict"
+import { execFileSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
+import { test } from "node:test"
+import { field, menu } from "../../src/base/input.ts"
+import { plain, style, table, text, width } from "../../src/base/term.ts"
+
+/** Run terminal capture outside the test reporter's own stdout/stderr. */
+const preview = (columns: number, monochrome = true) => execFileSync(process.execPath,
+  [fileURLToPath(new URL("../fixtures/terminal.ts", import.meta.url)), String(columns), ...(monochrome ? [] : ["plain"])], { encoding: "utf8" })
+
+test("human fixtures reflow on phones using only monochrome emphasis", () => {
+  for (const columns of [32, 40, 80]) {
+    const result = preview(columns)
+    const lines = plain(result).split("\n")
+    assert.ok(lines.every((line) => width(line) < columns), `overflow at ${columns}: ${lines.filter((line) => width(line) >= columns).join("\n")}`)
+    assert.doesNotMatch(result, /\x1b\[(?:3\d|4\d|9\d|10\d|38;|48;)/)
+    assert.match(result, /❙ \x1b\[1mConnect a provider\x1b\[22m/)
+    const models = result.split("--- model selection ---")[1].split("--- empty filter ---")[0]
+    assert.match(models, /\[x\] Reader  \x1b\[2mOpenCode Go\x1b\[22m/)
+    assert.match(models, /\x1b\[1m\[ \] Writer\x1b\[22m  \x1b\[2mOpenCode Go\x1b\[22m/)
+    assert.doesNotMatch(models, /❙/)
+    assert.doesNotMatch(plain(models), /Models|selected|opencode-go\//)
+    assert.match(plain(models).replace(/\n/g, " "), /1 of 30 · ↑↓ move · space toggle · enter save · esc back/)
+    const filtered = plain(menu("", Array.from({ length: 30 }, (_, i) => ({ label: `Model ${i + 1}`, value: i })), 0, "reader", new Set()).join("\n"))
+    assert.match(filtered, /> reader/)
+    assert.match(filtered.replace(/\n/g, " "), /0 of 30 · ↑↓ move/)
+    assert.doesNotMatch(filtered, /Filter/)
+    assert.doesNotMatch(result, /fixture-only-do-not-display/)
+    assert.match(result, /❙ fixt•{8}/)
+    const nonModelPickers = result.split("--- model selection ---")[0] + result.split("--- empty filter ---")[1]
+    assert.doesNotMatch(nonModelPickers, /↑↓|enter (?:select|save|submit|keeps)|esc (?:clear|back)|space toggle|← none|type to filter/)
+    const settings = plain(result).split("--- settings picker ---")[1].split("--- model selection ---")[0]
+    assert.match(settings, /ask \/ settings\n\n  Default model\n/)
+    assert.doesNotMatch(settings, /^Settings$/m)
+    const confirmation = plain(result).split("--- disconnect confirmation ---")[1].split("--- callback paste ---")[0]
+    assert.match(confirmation.replace(/\s+/g, " "), /Remove Example's saved API key and model selections\?/)
+    const session = result.slice(result.indexOf("--- show abc123"), result.indexOf("--- legacy"))
+    assert.match(plain(session), /Answer\nThe callback/)
+  }
+})
+
+test("NO_COLOR produces the same readable fixtures without styling escapes", () => {
+  const result = preview(40, false)
+  assert.doesNotMatch(result, /\x1b/)
+  assert.match(result, /❙ Connect a provider/)
+})
+
+test("piped table fields stay TSV even when emphasis is forced", () => {
+  const before = process.env.CLICOLOR_FORCE
+  process.env.CLICOLOR_FORCE = "1"
+  let result = ""
+  const out = { isTTY: false, write: (s: string) => { result += s } } as NodeJS.WriteStream
+  try {
+    table([[["succeeded", "done"], ["abc123", style(out).bold("abc123")]]], { header: ["State", "ID"], out })
+    assert.equal(result, "succeeded\tabc123\n")
+  } finally { if (before === undefined) delete process.env.CLICOLOR_FORCE; else process.env.CLICOLOR_FORCE = before }
+})
+
+test("phone output keeps standalone login URLs intact for copying", () => {
+  let result = ""
+  const out = { isTTY: true, columns: 32, write: (s: string) => { result += s } } as NodeJS.WriteStream
+  const url = "https://auth.example/authorize?state=example&code_challenge=long-example"
+  text(url, out)
+  assert.equal(result, url + "\n")
+})
+
+test("secret input reveals only a four-character prefix and a fixed mask", () => {
+  const short = field("API key", "sk-", "", true).map(plain).join("\n")
+  const long = field("API key", "sk-proj-secret-part", "", true).map(plain).join("\n")
+  assert.match(short, /❙ •••/)
+  assert.match(long, /❙ sk-p••••••••/)
+  assert.doesNotMatch(long, /secret-part/)
+})

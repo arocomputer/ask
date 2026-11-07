@@ -39,7 +39,7 @@ change a task's read/write tool selection. See [settings](settings.md#sandbox).
 
 ## Commands and extensions
 
-Agents now send JSON requests on stdin; `ask help requests` is the contract. Old `run`, `wait`,
+Agents now send JSON requests on stdin; `ask -h requests` is the contract. Old `run`, `wait`,
 `stop`, `continue` and batch CLI forms are replaced by the corresponding request operations.
 Run `ask install skill` to update supported callers' instructions.
 

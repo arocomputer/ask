@@ -84,7 +84,7 @@ export type Endpoint = { baseURL: string; key: Key; headers?: Record<string, str
 export async function send(endpoint: Endpoint, path: string, auth: (key: string) => Record<string, string>, req: Request, body: object): Promise<globalThis.Response> {
   const headers = async (renew: boolean) => {
     const key = typeof endpoint.key === "string" ? endpoint.key : await endpoint.key(renew)
-    return { ...auth(key), ...identity(req), ...endpoint.headers }
+    return { ...(key ? auth(key) : {}), ...identity(req), ...endpoint.headers }
   }
   const url = `${endpoint.baseURL}${path}`
   try {

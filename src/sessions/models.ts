@@ -3,6 +3,7 @@
 // the model a turn's tools may ask when a helper is explicitly configured.
 
 import { connect, find, harnessMarker, load, type Catalog, type Model } from "../providers/catalog.ts"
+import { entry } from "../providers/custom.ts"
 import { access, api, models, signedIn } from "../providers/chatgpt.ts"
 import type { Key } from "../providers/stream.ts"
 import type { Models } from "../agent/context.ts"
@@ -18,7 +19,9 @@ import { readJSON, type Auth, type Config, type Home } from "../base/home.ts"
 export function credential(h: Home, provider: string, env: string[]): { key: Key; source: string } | undefined {
   if (provider === "chatgpt") return signedIn(h) ? { key: (renew) => access(h, renew), source: "ChatGPT sign-in" } : undefined
   if (enabled(h, provider)) return { key: "", source: `${builtin[provider]?.title ?? provider}'s own sign-in` }
-  const pasted = readJSON<Auth>(h.auth, {})[provider]?.api_key
+  const saved = readJSON<Auth>(h.auth, {})[provider]
+  if (saved?.custom) return { key: saved.api_key ?? "", source: saved.api_key ? "pasted key" : "no key required" }
+  const pasted = saved?.api_key
   if (pasted) return { key: pasted, source: "pasted key" }
   for (const name of env) if (process.env[name]) return { key: process.env[name]!, source: `$${name}` }
   return undefined
@@ -34,6 +37,12 @@ export async function catalog(h: Home, refresh = false): Promise<Catalog> {
   for (const x of await harnesses(h)) {
     const models = Object.fromEntries(x.models(c).map((m) => [m.id, { id: m.id, name: m.name }]))
     c = { ...c, [x.name]: { id: x.name, name: x.title, env: [], npm: harnessMarker, models } }
+  }
+  const auth = readJSON<Auth>(h.auth, {})
+  for (const [id, saved] of Object.entries(auth)) {
+    if (!saved.custom) continue
+    if (c[id]) throw new Error(`custom provider ${id} conflicts with the model catalog; rename it in auth.json`)
+    c = { ...c, ...entry({ id, name: saved.custom.name, baseURL: saved.base_url ?? "", models: saved.custom.models }) }
   }
   if (!signedIn(h)) return c
   const list = await models(h, refresh).catch(() => [])

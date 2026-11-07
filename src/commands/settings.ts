@@ -1,22 +1,21 @@
-// ask settings: the one interactive command. Until there is a default model, it adds a provider: its key or,
-// for ChatGPT, a sign-in, then its models and the default. After that it asks what to change,
-// does that and exits. Everything is saved in config.json and auth.json, which can also be
-// edited by hand.
+// ask settings: a persistent monochrome settings hub. Each action saves independently; Esc
+// returns to the hub and Done exits. Provider setup uses keys or ChatGPT sign-in, then models.
 
 import { spawn } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { cheapest, connect, harnessMarker, providers, usable, type Catalog, type Model } from "../providers/catalog.ts"
+import { cheapest, connect, find, harnessMarker, providers, usable, type Catalog, type Model } from "../providers/catalog.ts"
 import { readJSON, writeJSON, type Auth, type Config, type Home } from "../base/home.ts"
 import { catalog, credential } from "../sessions/models.ts"
-import { account, begin, remote, signOut, signedIn, usagePage } from "../providers/chatgpt.ts"
+import { account, begin, CallbackError, remote, signOut, signedIn, usagePage } from "../providers/chatgpt.ts"
 import { harness, settings } from "../harnesses/extensions.ts"
-import { confirm, input, interactive, line, multi, secret, select } from "../base/input.ts"
+import { Back, confirm, input, interactive, line, multi, secret, select } from "../base/input.ts"
 import { ProviderError, type Key } from "../providers/stream.ts"
-import { spinner, style } from "../base/term.ts"
+import { baseURL as customBaseURL, entry as customEntry, id as customID, modelIDs as customModelIDs } from "../providers/custom.ts"
+import { heading, spinner, style, text } from "../base/term.ts"
 
-export const summary = "Choose providers, keys, models and the default"
-export const about = `Choose the providers ask uses, their keys, your models and the default model. The first run
-adds a provider; after that it asks what to change.
+export const summary = "Providers, models and defaults"
+export const about = `Connect supported API-key providers, ChatGPT, installed coding agents or a custom OpenAI-compatible endpoint.
+Manage models and task defaults; changes are saved as you go. Esc returns to settings; choose Done to exit.
 
 Everything is saved in ~/.ask/config.json and ~/.ask/auth.json, which you can also edit. A
 provider's own key variable, like OPENAI_API_KEY, works without settings.`
@@ -55,13 +54,28 @@ const suggested: Record<string, string[]> = {
   opencode: ["gpt-5.5"],
   openai: ["gpt-5.5"],
 }
+const apiKeyProviders = new Set(Object.keys(keyPages))
+const customChoice = "__custom_openai_compatible__"
 
-const say = (line: string) => process.stderr.write(line + "\n")
+const say = (line: string) => text(line, process.stderr)
 const config = (h: Home) => readJSON<Config>(h.config, {})
 const update = (h: Home, change: (c: Config) => void) => {
   const c = config(h)
   change(c)
   writeJSON(h.config, c)
+}
+
+/** A readable model name and provider, falling back to the saved identifier. */
+function modelLabel(c: Catalog, id: string): string {
+  const slash = id.indexOf("/")
+  const provider = c[id.slice(0, slash)]
+  const model = provider?.models[id.slice(slash + 1)]
+  return model ? `${model.name} · ${provider.name}` : id
+}
+
+/** Show whole minutes when possible while keeping unusual timeout values exact. */
+function timeoutLabel(seconds: number): string {
+  return seconds % 60 === 0 ? `${seconds / 60} minute${seconds === 60 ? "" : "s"}` : `${seconds} second${seconds === 1 ? "" : "s"}`
 }
 
 export async function run(h: Home): Promise<number> {
@@ -71,37 +85,43 @@ export async function run(h: Home): Promise<number> {
     say(`Instead, set the provider's key variable, like OPENAI_API_KEY, and put {"model": "openai/gpt-5.5"} in ${h.config}`)
     return 2
   }
-  const spin = spinner("Loading models from models.dev")
-  const c = await catalog(h).finally(() => spin.stop())
-  if (!config(h).model) return (await addProvider(h, c)) ? 0 : 1
-
-  const cfg = config(h)
-  const removable = keyed(h, c).filter((p) => readJSON<Auth>(h.auth, {})[p]?.api_key || (p === "chatgpt" && signedIn(h)))
-  const choice = await select("What do you want to change?", [
-    { label: "Default model", hint: cfg.model ?? "not set", value: "default" },
-    { label: "Models", hint: cfg.models?.length ? `${cfg.models.length} chosen` : "none chosen", value: "models" },
-    { label: "Add a provider", value: "add" },
-    ...(removable.length ? [{ label: "Remove a provider", value: "remove" }] : []),
-    { label: "Timeout", hint: `${cfg.timeout ?? 900}s`, value: "timeout" },
-  ])
-  if (choice === "default") await chooseDefault(h, c)
-  if (choice === "models") {
+  const spin = spinner("Loading models")
+  let c = await catalog(h).finally(() => spin.stop())
+  heading("settings", process.stderr)
+  for (;;) {
+    const cfg = config(h)
     const ids = keyed(h, c)
-    const p = ids.length === 1 ? ids[0] : await select("Which provider's models?", ids.map((id) => ({ label: c[id].name, value: id })))
-    await chooseModels(h, c, p)
+    const removable = ids.filter((p) => readJSON<Auth>(h.auth, {})[p]?.api_key || readJSON<Auth>(h.auth, {})[p]?.custom || (p === "chatgpt" && signedIn(h)))
+    let choice: string
+    try {
+      choice = await select("", [
+        ...(ids.length ? [
+          { label: "Default model", hint: cfg.model ? modelLabel(c, cfg.model) : "Not set", value: "default" },
+          { label: "Models", hint: cfg.models?.length ? `${cfg.models.length} selected` : "All models from connected providers", value: "models" },
+        ] : []),
+        { label: "Connect a provider", value: "add" },
+        ...(removable.length ? [{ label: "Disconnect a provider", value: "remove" }] : []),
+        { label: "Task timeout", hint: timeoutLabel(cfg.timeout ?? 900), value: "timeout" },
+        { label: "Done", value: "done" },
+      ])
+    } catch (err) { if (err instanceof Back) return 0; throw err }
+    if (choice === "done") return 0
+    try {
+      if (choice === "default") await chooseDefault(h, c)
+      if (choice === "models") {
+        const p = ids.length === 1 ? ids[0] : await select("", ids.map((id) => ({ label: c[id].name, value: id })))
+        await chooseModels(h, c, p)
+      }
+      if (choice === "add") await addProvider(h, c)
+      if (choice === "remove") await removeProvider(h, c, removable)
+      if (choice === "timeout") {
+        const n = Number(await input("Task timeout in seconds", String(cfg.timeout ?? 900)))
+        if (!(n > 0) || !Number.isFinite(n)) say(`${st.bold("error")}  Enter a positive number, such as 900.`)
+        else { update(h, (x) => (x.timeout = n)); say(`Task timeout saved  ${timeoutLabel(n)}`) }
+      }
+    } catch (err) { if (!(err instanceof Back)) throw err }
+    c = await catalog(h)
   }
-  if (choice === "add") return (await addProvider(h, c)) ? 0 : 1
-  if (choice === "remove") await removeProvider(h, c, removable)
-  if (choice === "timeout") {
-    const n = Number(await input("Seconds before a task is stopped:", String(cfg.timeout ?? 900)))
-    if (!(n > 0)) {
-      say(`${st.red("X")} The timeout is a number of seconds, like 900`)
-      return 1
-    }
-    update(h, (x) => (x.timeout = n))
-    say(`${st.green("✓")} Timeout set to ${n}s`)
-  }
-  return 0
 }
 
 /** Providers ask has a key for, pasted or in the environment. */
@@ -115,23 +135,29 @@ function keyed(h: Home, c: Catalog): string[] {
 async function addProvider(h: Home, c: Catalog): Promise<boolean> {
   const rank = (id: string) => (common.includes(id) ? common.indexOf(id) : common.length)
   const items = providers(c)
-    .filter((p) => p.id !== "chatgpt" && c[p.id].npm !== harnessMarker)
+    .filter((p) => apiKeyProviders.has(p.id))
     .sort((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name))
-    .map((p) => ({ label: p.name, hint: credential(h, p.id, p.env) ? "key saved" : undefined, value: p.id }))
-  const chatgpt = { label: "ChatGPT", hint: signedIn(h) ? "signed in" : "Continue with ChatGPT, on your Plus or Pro plan", value: "chatgpt" }
+    .map((p) => {
+      const source = credential(h, p.id, p.env)?.source
+      return { label: p.name, hint: source === "pasted key" ? "Saved API key" : source ? `From ${source.replace(/^\$/, "")}` : "API key", value: p.id }
+    })
+  const chatgpt = { label: "ChatGPT", hint: signedIn(h) ? "Signed in" : "Use your ChatGPT subscription", value: "chatgpt" }
   const harnesses = providers(c)
     .filter((p) => c[p.id].npm === harnessMarker)
-    .map((p) => ({ label: p.name, hint: "installed, signs in its own way", value: p.id }))
-  const provider = await select("Which provider?", [chatgpt, ...harnesses, ...items])
+    .map((p) => ({ label: p.name, hint: `Uses your ${p.name} sign-in`, value: p.id }))
+  const provider = await select("Connect a provider", [chatgpt, ...harnesses, ...items, {
+    label: "Custom OpenAI-compatible endpoint", hint: "Enter an endpoint and model IDs", value: customChoice,
+  }])
+  if (provider === customChoice) return addCustomProvider(h, c)
   if (c[provider]?.npm === harnessMarker) {
     const st = style(process.stderr)
     const x = await harness(h, provider)
     const s = x?.status(settings(h, provider)) ?? { ready: false, detail: `${provider} isn't available` }
     if (!s.ready) {
-      say(`${st.yellow("!")} ${s.detail}${s.fix ? `: ${s.fix}` : ""}. Then run ask settings again.`)
+      say(`${st.bold("not ready")}  ${s.detail}${s.fix ? `: ${s.fix}` : ""}`)
       return false
     }
-    say(`${st.green("✓")} ${s.detail}`)
+    say(s.detail)
     await chooseModels(h, c, provider)
     if (!config(h).model) await chooseDefault(h, c)
     return true
@@ -140,7 +166,7 @@ async function addProvider(h: Home, c: Catalog): Promise<boolean> {
     if (!(await signIn(h))) return false
     const fresh = await catalog(h, true)
     if (!fresh.chatgpt) {
-      say(`${style(process.stderr).red("X")} ChatGPT listed no models for this account`)
+      say("error  ChatGPT listed no models for this account")
       return false
     }
     await chooseModels(h, fresh, "chatgpt")
@@ -155,51 +181,88 @@ async function addProvider(h: Home, c: Catalog): Promise<boolean> {
   return true
 }
 
+/** Add a manually described Chat Completions endpoint and verify it before saving. */
+async function addCustomProvider(h: Home, c: Catalog): Promise<boolean> {
+  const name = (await input("Provider name")).trim()
+  if (!name) { say("Provider name cannot be empty"); return false }
+  let provider: string
+  try { provider = customID(name) } catch (err) { say((err as Error).message); return false }
+  if (c[provider]) { say(`${name} already exists; disconnect it first, or use a different name.`); return false }
+
+  const rawURL = await input("API endpoint (base URL)")
+  let baseURL: string
+  let models: string[]
+  try {
+    baseURL = customBaseURL(rawURL, false)
+    models = customModelIDs(await input("Model IDs (comma-separated)"))
+  } catch (err) { say((err as Error).message); return false }
+  const key = await secret("API key (leave blank if not required)")
+  try { baseURL = customBaseURL(rawURL, !!key) }
+  catch (err) { say((err as Error).message); return false }
+
+  const custom = { id: provider, name, baseURL, models }
+  const candidates = { ...c, ...customEntry(custom) }
+  const problem = await check(find(candidates, `${provider}/${models[0]}`), key, baseURL)
+  if (problem) { say(`${style(process.stderr).bold("error")}  Endpoint check failed: ${problem}`); return false }
+
+  const auth = readJSON<Auth>(h.auth, {})
+  auth[provider] = { ...(key ? { api_key: key } : {}), base_url: baseURL, custom: { name, models } }
+  writeJSON(h.auth, auth)
+  say(`Connected to ${name}`)
+  const fresh = { ...c, ...customEntry(custom) }
+  await chooseModels(h, fresh, provider)
+  if (!config(h).model) await chooseDefault(h, fresh)
+  return true
+}
+
 /**
  * Signs in with ChatGPT. It waits for the browser's return to ask's 127.0.0.1 callback and, at
  * the same time, for the address the browser landed on to be pasted, so signing in works from
  * another device too. A browser is opened only when ask runs at the screen the user sees.
+ * Correctable paste errors keep this attempt alive instead of silently replacing its link.
  */
 async function signIn(h: Home): Promise<boolean> {
   const st = style(process.stderr)
   const first = !account(h)
-  for (let tries = 2; tries > 0; tries--) {
-    const attempt = await begin(h)
-    try {
-      const away = remote()
-      if (away || !open(attempt.url)) {
-        say(`${st.yellow("!")} Open this link on any device to sign in with ChatGPT:`)
-        say(attempt.url)
-        say(st.gray("  After you approve, your browser lands on a page that won't load. Copy that page's address and paste it here."))
-      } else {
-        say(`${st.yellow("!")} Your browser is opening to sign in with ChatGPT. If it doesn't, open:`)
-        say(attempt.url)
-      }
+  const attempt = await begin(h)
+  try {
+    const away = remote()
+    heading("connect ChatGPT", process.stderr)
+    if (away || !open(attempt.url)) {
+      say("Open this link in your browser:")
+      say(attempt.url)
+      say("After signing in, your browser may show a page that cannot load.")
+      say("Copy its full address and paste it below.")
+    } else {
+      say("Your browser is opening. If needed, open this link:")
+      say(attempt.url)
+    }
+    for (;;) {
       const stop = new AbortController()
       const back = attempt.callback.then((address) => (stop.abort(), address))
-      const pasted = line("Paste the address, or finish in the browser:", stop.signal, "finished in the browser")
+      const pasted = line("Sign-in return URL", stop.signal)
       const address = (await Promise.race([back, pasted.then((v) => v ?? back)])) as string
       const sp = spinner("Signing in")
       try {
         const a = await attempt.finish(address)
         sp.stop()
         if (!a.scopes?.includes("chatgpt.tokens.use.direct")) {
-          say(`${st.red("X")} Signed in, but ChatGPT plan use wasn't allowed, so ask can't use your plan`)
-          say(st.gray("  Run ask settings again to allow it, or use a provider with an API key"))
+          say(`${st.bold("not connected")}  ChatGPT plan use wasn't allowed.`)
+          say(st.gray("Connect ChatGPT again and allow plan access, or choose a provider with an API key."))
           return false
         }
-        say(`${st.green("✓")} Signed in to ChatGPT${a.email ? ` as ${a.email}` : ""}`)
-        if (first) say(`${st.yellow("!")} You're using your ChatGPT plan. Manage how much ask may use at ${usagePage}`)
+        say(`Connected to ChatGPT${a.email ? ` as ${a.email}` : ""}`)
+        if (first) say(st.gray(`Usage settings  ${usagePage}`))
         return true
       } catch (err) {
         sp.stop()
-        say(`${st.red("X")} ${(err as Error).message}`)
+        say(`${st.bold("error")}  ${(err as Error).message}`)
+        if (!(err instanceof CallbackError)) return false
       }
-    } finally {
-      attempt.close()
     }
+  } finally {
+    attempt.close()
   }
-  return false
 }
 
 /** Opens a link in the default browser; false when there is no way to. */
@@ -220,11 +283,14 @@ async function paste(h: Home, c: Catalog, provider: string): Promise<boolean> {
   const name = c[provider].name
   const k = keyPages[provider]
   if (k) {
-    say(`${st.yellow("!")} Get a key at ${k.page}${k.where ? `, under ${k.where}` : ""}`)
-    if (k.prefix) say(st.gray(`  It starts with ${k.prefix}`))
+    say("Create an API key:")
+    say(k.page)
+    if (k.where) say(st.gray(k.where))
+    if (k.prefix) say(st.gray(`Key prefix  ${k.prefix}`))
   } else {
     const doc = c[provider].doc
-    say(`${st.yellow("!")} Get a key from your ${name} account${doc ? `; its docs: ${doc}` : ""}`)
+    say(`Create an API key in your ${name} account.`)
+    if (doc) say(doc)
   }
   for (let tries = 3; tries > 0; tries--) {
     const key = await secret(`Paste your ${name} API key:`)
@@ -236,37 +302,36 @@ async function paste(h: Home, c: Catalog, provider: string): Promise<boolean> {
       const auth = readJSON<Auth>(h.auth, {})
       auth[provider] = { ...auth[provider], api_key: key }
       writeJSON(h.auth, auth)
-      say(`${st.green("✓")} Logged in to ${name}`)
+      say(`Connected to ${name}`)
       return true
     }
-    say(`${st.red("X")} ${problem}`)
+    say(`${st.bold("error")}  ${problem}`)
   }
   return false
 }
 
 /** Asks which of a provider's models to use, and saves the choice. */
 async function chooseModels(h: Home, c: Catalog, provider: string) {
-  const st = style(process.stderr)
   const models = usable(c, provider)
   const mine = (config(h).models ?? []).filter((m) => m.startsWith(provider + "/")).map((m) => m.slice(provider.length + 1))
   const start = mine.length
     ? mine
     : provider === "chatgpt"
       ? models.slice(0, 1).map((m) => m.id)
-      : (suggested[provider] ?? []).filter((id) => models.some((m) => m.id === id))
+      : readJSON<Auth>(h.auth, {})[provider]?.custom
+        ? models.map((m) => m.id)
+        : (suggested[provider] ?? []).filter((id) => models.some((m) => m.id === id))
   const ordered = [...models.filter((m) => start.includes(m.id)), ...models.filter((m) => !start.includes(m.id))]
-  const chosen = await multi(`Which ${c[provider].name} models do you want?`, ordered.map((m) => ({ label: m.name, value: m.id })), start)
+  const chosen = await multi("", ordered.map((m) => ({ label: m.name, detail: c[provider].name, value: m.id })), start)
   update(h, (x) => {
     x.models = [...(x.models ?? []).filter((m) => !m.startsWith(provider + "/")), ...chosen.map((id) => `${provider}/${id}`)]
     if (x.model && !x.models.includes(x.model) && x.model.startsWith(provider + "/")) delete x.model
   })
-  say(`${st.green("✓")} Saved ${chosen.length} model${chosen.length === 1 ? "" : "s"}`)
   if (!config(h).model && config(h).models?.length) await chooseDefault(h, c)
 }
 
 /** Asks for the default among the chosen models, or every keyed provider's when none are chosen. */
 async function chooseDefault(h: Home, c: Catalog) {
-  const st = style(process.stderr)
   const cfg = config(h)
   const names = cfg.models?.length ? cfg.models : keyed(h, c).flatMap((p) => usable(c, p).map((m) => `${p}/${m.id}`))
   const label = (name: string) => {
@@ -274,17 +339,20 @@ async function chooseDefault(h: Home, c: Catalog) {
     return c[name.slice(0, slash)]?.models[name.slice(slash + 1)]?.name ?? name
   }
   const first = cfg.model ? names.indexOf(cfg.model) : names.findIndex((n) => suggested[n.split("/")[0]]?.[0] === n.slice(n.indexOf("/") + 1))
-  const model = await select("Default model?", names.map((n) => ({ label: label(n), hint: n, value: n })), Math.max(0, first))
+  if (!names.length) { say("No models available from connected providers. Refresh the catalog with ask models --refresh, or connect another provider."); return }
+  const model = await select("Default model", names.map((n) => {
+    const provider = n.slice(0, n.indexOf("/"))
+    return { label: label(n), detail: c[provider]?.name ?? provider, value: n }
+  }), Math.max(0, first))
   update(h, (x) => (x.model = model))
-  say(`${st.green("✓")} Default model set to ${model}`)
 }
 
 async function removeProvider(h: Home, c: Catalog, removable: string[]) {
   const st = style(process.stderr)
-  const p = await select("Which provider?", removable.map((id) => ({ label: c[id].name, value: id })))
-  if (!(await confirm(`Remove ${c[p].name} and its models?`, false))) return
+  const p = await select("Disconnect a provider", removable.map((id) => ({ label: c[id].name, value: id })))
+  if (!(await confirm(`Remove ${c[p].name}'s saved ${p === "chatgpt" ? "sign-in" : "API key"} and model selections?`, false))) return
   if (p === "chatgpt") {
-    if (!(await signOut(h))) say(`${st.yellow("!")} Signed out here, but OpenAI didn't confirm it; disconnect ask in ChatGPT's settings to be sure`)
+    if (!(await signOut(h))) say(`${st.bold("note")}  Signed out here, but OpenAI didn't confirm it; disconnect Ask in ChatGPT's settings to be sure`)
   } else {
     const auth = readJSON<Auth>(h.auth, {})
     delete auth[p]
@@ -294,7 +362,9 @@ async function removeProvider(h: Home, c: Catalog, removable: string[]) {
     x.models = x.models?.filter((m) => !m.startsWith(p + "/"))
     if (x.model?.startsWith(p + "/")) delete x.model
   })
-  say(`${st.green("✓")} Removed ${c[p].name}`)
+  say(p === "chatgpt" ? "Signed out of ChatGPT on this device" : `Removed the saved ${c[p].name} API key and model selections`)
+  const remaining = credential(h, p, c[p].env ?? [])
+  if (remaining) say(`Still available through ${remaining.source}`)
   if (!config(h).model && keyed(h, c).length) await chooseDefault(h, c)
 }
 
