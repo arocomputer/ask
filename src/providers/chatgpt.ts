@@ -12,6 +12,7 @@ import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "no
 import { mkdirSync, rmSync, statSync } from "node:fs"
 import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
+import { userInfo } from "node:os"
 import { join } from "node:path"
 import { readJSON, writeJSON, type Auth, type Home } from "../base/home.ts"
 
@@ -74,11 +75,24 @@ export function remote(env = process.env, platform = process.platform): boolean 
   return platform === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY
 }
 
+/**
+ * The command that forwards the sign-in port from the computer with the browser to this one,
+ * when ask runs over SSH: with it running there, the browser's return to 127.0.0.1 reaches
+ * ask's listener and nothing needs pasting. The host is the address the SSH client reached.
+ */
+export function tunnel(port: number, env = process.env, user = userInfo().username): string | undefined {
+  const [, , host, sshPort] = (env.SSH_CONNECTION ?? "").split(" ")
+  if (!host) return undefined
+  return `ssh -N -L ${port}:127.0.0.1:${port} ${sshPort && sshPort !== "22" ? `-p ${sshPort} ` : ""}${user}@${host}`
+}
+
 const b64 = (b: Buffer) => b.toString("base64url")
 
 /** A sign-in in progress: the address to open, and how to finish it. */
 export type Attempt = {
   url: string
+  /** The 127.0.0.1 port the browser returns to. */
+  port: number
   /** Resolves when the browser comes back to the 127.0.0.1 callback. */
   callback: Promise<string>
   /** Finishes with the address the browser landed on, from the callback or pasted. */
@@ -103,7 +117,8 @@ export async function begin(h: Home): Promise<Attempt> {
     landed(`http://127.0.0.1${path}`)
     return true
   })
-  const redirect = `http://127.0.0.1:${(server.address() as AddressInfo).port}/auth/callback`
+  const port = (server.address() as AddressInfo).port
+  const redirect = `http://127.0.0.1:${port}/auth/callback`
   const params = new URLSearchParams({
     client_id: previous?.client_id ?? "dynamic_agent_client",
     ...(previous ? {} : { agent_name_hint: "Ask" }),
@@ -121,10 +136,13 @@ export async function begin(h: Home): Promise<Attempt> {
   })
   return {
     url: `${origins().auth}/api/accounts/authorize?${params}`,
+    port,
     callback,
     close: () => server.close(),
     async finish(address) {
       const q = parse(address)
+      if (!q.get("state") && /^(https:\/\/)?[\w.-]*(openai|chatgpt)\.com\//i.test(address.trim()))
+        throw new CallbackError(`that is OpenAI's own page, where the sign-in isn't finished yet; approve there first. The address to paste starts with ${redirect}`)
       if (!q.get("state")) throw new CallbackError("that address has no sign-in state; copy the full callback URL from the browser's address bar")
       if (q.get("state") !== state) throw new CallbackError("that callback does not match this login; this login is still active, so use its link above and paste the complete callback URL")
       if (q.get("error") === "access_denied") throw new Error("the sign-in was declined, so ask can't use your ChatGPT plan")
@@ -153,9 +171,12 @@ export async function begin(h: Home): Promise<Attempt> {
   }
 }
 
-/** Reads a callback address, or just its query, into parameters. */
+/**
+ * Reads a callback address, or just its query, into parameters. An address holds no spaces, so
+ * any are dropped: one copied across wrapped lines arrives with them.
+ */
 function parse(address: string): URLSearchParams {
-  const text = address.trim().split("#", 1)[0]
+  const text = address.replace(/\s+/g, "").split("#", 1)[0]
   const at = text.indexOf("?")
   return new URLSearchParams(at >= 0 ? text.slice(at + 1) : text)
 }

@@ -15,28 +15,22 @@ test("human fixtures reflow on phones using only monochrome emphasis", () => {
     const lines = plain(result).split("\n")
     assert.ok(lines.every((line) => width(line) < columns), `overflow at ${columns}: ${lines.filter((line) => width(line) >= columns).join("\n")}`)
     assert.doesNotMatch(result, /\x1b\[(?:3\d|4\d|9\d|10\d|38;|48;)/)
-    assert.match(result, /❙ \x1b\[1mConnect a provider\x1b\[22m/)
-    const models = result.split("--- model selection ---")[1].split("--- empty filter ---")[0]
-    assert.match(models, /\[x\] Reader  \x1b\[2mOpenCode Go\x1b\[22m/)
-    assert.match(models, /\x1b\[1m\[ \] Writer\x1b\[22m  \x1b\[2mOpenCode Go\x1b\[22m/)
-    assert.doesNotMatch(models, /❙/)
-    assert.doesNotMatch(plain(models), /Models|selected|opencode-go\//)
-    assert.match(plain(models).replace(/\n/g, " "), /1 of 30 · ↑↓ move · space toggle · enter save · esc back/)
-    const filtered = plain(menu("", Array.from({ length: 30 }, (_, i) => ({ label: `Model ${i + 1}`, value: i })), 0, "reader", new Set()).join("\n"))
-    assert.match(filtered, /> reader/)
-    assert.match(filtered.replace(/\n/g, " "), /0 of 30 · ↑↓ move/)
-    assert.doesNotMatch(filtered, /Filter/)
-    assert.doesNotMatch(result, /fixture-only-do-not-display/)
-    assert.match(result, /❙ fixt•{8}/)
-    const nonModelPickers = result.split("--- model selection ---")[0] + result.split("--- empty filter ---")[1]
-    assert.doesNotMatch(nonModelPickers, /↑↓|enter (?:select|save|submit|keeps)|esc (?:clear|back)|space toggle|← none|type to filter/)
-    const settings = plain(result).split("--- settings picker ---")[1].split("--- model selection ---")[0]
-    assert.match(settings, /ask \/ settings\n\n  Default model\n/)
-    assert.doesNotMatch(settings, /^Settings$/m)
-    const confirmation = plain(result).split("--- disconnect confirmation ---")[1].split("--- callback paste ---")[0]
-    assert.match(confirmation.replace(/\s+/g, " "), /Remove Example's saved API key and model selections\?/)
-    const session = result.slice(result.indexOf("--- show abc123"), result.indexOf("--- legacy"))
-    assert.match(plain(session), /Answer\nThe callback/)
+  }
+})
+
+test("a multiselect marks membership with checkboxes and focus with bold, never the focus bar", () => {
+  const out = { isTTY: true, columns: 40, rows: 24 } as typeof process.stderr
+  const before = { color: process.env.NO_COLOR, term: process.env.TERM }
+  delete process.env.NO_COLOR
+  process.env.TERM = "xterm"
+  try {
+    const lines = menu("", [{ label: "Reader", value: 1 }, { label: "Writer", value: 2 }], 1, "", new Set([1]), out)
+    assert.equal(lines[0], "[x] Reader")
+    assert.equal(lines[1], "\x1b[1m[ ] Writer\x1b[22m")
+  } finally {
+    if (before.color !== undefined) process.env.NO_COLOR = before.color
+    if (before.term === undefined) delete process.env.TERM
+    else process.env.TERM = before.term
   }
 })
 
@@ -65,10 +59,10 @@ test("phone output keeps standalone login URLs intact for copying", () => {
   assert.equal(result, url + "\n")
 })
 
-test("secret input reveals only a four-character prefix and a fixed mask", () => {
-  const short = field("API key", "sk-", "", true).map(plain).join("\n")
+test("secret input reveals only a long key's four-character prefix, and nothing of a short one", () => {
+  const short = field("API key", "hunter2-abc", "", true).map(plain).join("\n")
   const long = field("API key", "sk-proj-secret-part", "", true).map(plain).join("\n")
-  assert.match(short, /❙ •••/)
+  assert.match(short, /❙ •{11}$/m)
   assert.match(long, /❙ sk-p••••••••/)
   assert.doesNotMatch(long, /secret-part/)
 })

@@ -20,13 +20,20 @@ export function filter<T>(items: Item<T>[], query: string): Item<T>[] {
   return items.filter((o) => words.every((w) => `${o.label} ${o.detail ?? ""} ${o.hint ?? ""}`.toLowerCase().includes(w)))
 }
 
-/** Splits raw input into keys; complete escape sequences stay together. */
+/**
+ * Splits raw input into keys. An escape sequence stays whole, whatever its parameters (mouse
+ * and paste reports included), and so does Esc with the key after it (Alt-key), so only a
+ * bare Esc at the end of what arrived is the Esc key.
+ */
 export function split(data: string): string[] {
-  return data.match(/\x1b\[[0-9;]*[~A-Za-z]|\x1bO.|\x1b|[\s\S]/gu) ?? []
+  return data.match(/\x1b\[[0-?]*[ -\/]*[@-~]|\x1bO.|\x1b[^\x1b]?|[\s\S]/gu) ?? []
 }
 
-/** Raw input with one redraw per chunk, restored on completion, abort, Esc or Ctrl-C. */
-function keys(onKey: (key: string) => boolean | void, redraw: () => void, signal?: AbortSignal): Promise<void> {
+/**
+ * Raw input with one redraw per chunk, restored on completion, abort, Esc or Ctrl-C. `last`
+ * tells onKey the key ends what arrived together, which a newline inside a paste never does.
+ */
+function keys(onKey: (key: string, last: boolean) => boolean | void, redraw: () => void, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.resolve()
   const stdin = process.stdin
   return new Promise((done, fail) => {
@@ -40,13 +47,14 @@ function keys(onKey: (key: string) => boolean | void, redraw: () => void, signal
     const aborted = () => { cleanup(); done() }
     const handler = (data: string) => {
       try {
-        for (const key of split(data)) {
+        const all = split(data)
+        for (const [i, key] of all.entries()) {
           if (key === "\x03") {
             cleanup()
             process.stderr.write("\x1b[?25h\n")
             process.exit(130)
           }
-          if (onKey(key)) { cleanup(); done(); return }
+          if (onKey(key, i === all.length - 1)) { cleanup(); done(); return }
         }
         redraw()
       } catch (err) { cleanup(); fail(err) }
@@ -163,18 +171,26 @@ export function multi<T>(title: string, items: Item<T>[], chosen: T[] = []): Pro
   return pick(title, items, 0, new Set(chosen))
 }
 
-/** Input frame with a visible tail and count. Secrets show a fixed mask, never their contents. */
+/**
+ * Input frame with a visible tail and count. A secret shows its first four characters once it
+ * is at least twelve long (enough to recognize a key's prefix), then a fixed mask; a shorter
+ * one shows nothing of itself.
+ */
 export function field(title: string, value: string, hint: string, secret = false, out = process.stderr): string[] {
   const room = Math.max(1, (out.columns || 80) - 3)
   const chars = [...value]
   const preview = secret
-    ? chars.length >= 4 ? chars.slice(0, 4).join("") + "••••••••" : "•".repeat(chars.length)
+    ? chars.length >= 12 ? chars.slice(0, 4).join("") + "••••••••" : "•".repeat(chars.length)
     : chars.length > room ? "…" + chars.slice(-(room - 1)).join("") : value
   const detail = secret ? value ? "Key received" : "Input hidden" : hint
   return [title, "", `❙ ${preview}`, ...(detail ? ["", style(out).gray(detail)] : [])]
 }
 
-/** One editable field. Empty input keeps a default, callback input waits, Esc goes back. */
+/**
+ * One editable field. Empty input keeps a default and Esc goes back. With `signal` it is the
+ * sign-in address: it waits for text, and a newline in the middle of a paste (an address copied
+ * across wrapped lines) joins the lines instead of submitting half of it.
+ */
 async function entry(title: string, initial = "", secret = false, signal?: AbortSignal): Promise<string | undefined> {
   const screen = canvas()
   let value = ""
@@ -182,8 +198,8 @@ async function entry(title: string, initial = "", secret = false, signal?: Abort
   process.stderr.write("\x1b[?25l")
   render()
   try {
-    await keys((k) => {
-      if (k === "\r" || k === "\n") return !signal || !!value.trim()
+    await keys((k, last) => {
+      if (k === "\r" || k === "\n") return signal ? last && !!value.trim() : true
       if (k === "\x1b") throw new Back()
       if (k === "\x7f" || k === "\b") value = [...value].slice(0, -1).join("")
       else if (!k.startsWith("\x1b") && k >= " ") value += k
@@ -194,7 +210,7 @@ async function entry(title: string, initial = "", secret = false, signal?: Abort
   } catch (err) { screen.settle(); throw err }
 }
 
-/** API keys stay hidden, with a visible acknowledgement that input arrived. */
+/** An API key, masked as `field` describes, with a visible acknowledgement that input arrived. */
 export async function secret(title: string): Promise<string> { return (await entry(title, "", true))! }
 
 /** A plain field with an optional default. */

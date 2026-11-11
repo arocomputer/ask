@@ -28,8 +28,9 @@ also disables interactive prompts. Machine JSON and piped TSV are independent of
   This uses the original list size so narrowing search results does not disable search.
 - Prompts omit keyboard-instruction footers except for model multiselect, where the controls
   help explain checkbox selection. Supporting text otherwise describes focused items and input state.
-- Text fields show a tail preview and count; API keys reveal at most their first four characters,
-  then a fixed mask that does not disclose key length. Callback values are
+- Text fields show a tail preview and count; an API key of twelve or more characters shows its
+  first four, then a fixed mask that does not disclose key length, and a shorter secret shows
+  nothing of itself. Callback values are
   not retained in completed-prompt receipts. Login URLs remain intact for copying.
 - Tables use columns when there is room and labeled records on phones. Prose wraps instead of
   truncating. Session outcomes precede activity. Progress is a stable label, not an animation.
@@ -48,7 +49,8 @@ These call the actual command/prompt renderers using a disposable home and synth
 They cover help, models, tools, sessions/results, legacy empty state, command errors, picker focus,
 multiselect, empty filtering, callback/secret entry and doctor success/failure. No account or model
 is contacted. Review in both light and dark terminal themes. `test/base/term.test.ts` protects
-narrow layouts, monochrome emphasis, focus versus selection, secret masking and piped output.
+narrow layouts, monochrome emphasis, focus versus selection, secret masking and piped output;
+it does not pin wording, so copy can change without touching it.
 
 For interaction checks, use a disposable ASK_HOME and a real 32-column PTY: navigate, filter,
 paste, cancel a field, save a setting and return to the hub. Verify the cursor and terminal input

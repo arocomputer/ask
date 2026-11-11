@@ -13,6 +13,7 @@ import { harnesses, settings } from "../harnesses/extensions.ts"
 import { broken } from "../harnesses/harness.ts"
 import { support } from "../sandbox/confine.ts"
 import { check } from "./settings.ts"
+import { positional } from "./command.ts"
 
 export const summary = "Check your setup"
 export const about = `Check that ask can run tasks: its runtime, its home folder, the model catalog, the default
@@ -21,7 +22,8 @@ export const usage = "ask doctor"
 
 type Line = { mark: "ok" | "warn" | "fail"; name: string; detail: string; fix?: string }
 
-export async function run(h: Home): Promise<number> {
+export async function run(h: Home, argv: string[]): Promise<number> {
+  positional(argv)
   heading("doctor")
   const out: Line[] = []
   const add = (l: Line) => {

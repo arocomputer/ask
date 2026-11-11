@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, describe, test } from "node:test"
-import { access, begin, remote, signedIn, signOut } from "../../src/providers/chatgpt.ts"
+import { access, begin, remote, signedIn, signOut, tunnel } from "../../src/providers/chatgpt.ts"
 import { home, readJSON, type Auth } from "../../src/base/home.ts"
 import { catalog, credential } from "../../src/sessions/models.ts"
 import { connect, find } from "../../src/providers/catalog.ts"
@@ -129,7 +129,8 @@ describe("chatgpt", () => {
       const host = JSON.parse(readFileSync(join(h.root, "host.json"), "utf8")).id
       assert.match(host, /^urn:uuid:[0-9a-f-]{36}$/)
       assert.equal(q.get("ext_agent_host_id"), host)
-      await attempt.finish(`${q.get("redirect_uri")}?code=c1&client_id=oaiapp_1&state=${q.get("state")}#_=_`)
+      // As a phone hands it over: copied across a wrapped line, with a fragment on the end.
+      await attempt.finish(`${q.get("redirect_uri")}?code=c1&client_id=oaiapp_1\n &state=${q.get("state")}#_=_`)
     } finally {
       attempt.close()
     }
@@ -182,6 +183,23 @@ describe("chatgpt", () => {
       attempt.close()
     }
     assert.ok(!signedIn(h))
+  })
+
+  test("a pasted OpenAI page is named as unfinished, with the address to look for", async () => {
+    const o = await openai()
+    servers.push(o)
+    const attempt = await begin(fresh())
+    try {
+      await assert.rejects(attempt.finish("https://auth.openai.com/sign-in-with-chatgpt/consent"), new RegExp(`isn't finished yet.*http://127\\.0\\.0\\.1:${attempt.port}/auth/callback`))
+    } finally {
+      attempt.close()
+    }
+  })
+
+  test("over SSH, the port-forward command targets the address the client reached", () => {
+    assert.equal(tunnel(1455, { SSH_CONNECTION: "203.0.113.9 50000 198.51.100.7 22" }, "me"), "ssh -N -L 1455:127.0.0.1:1455 me@198.51.100.7")
+    assert.equal(tunnel(40123, { SSH_CONNECTION: "203.0.113.9 50000 198.51.100.7 2222" }, "me"), "ssh -N -L 40123:127.0.0.1:40123 -p 2222 me@198.51.100.7")
+    assert.equal(tunnel(1455, {}, "me"), undefined)
   })
 
   test("an address from another sign-in is refused without invalidating the active attempt", async () => {

@@ -138,10 +138,6 @@ export async function main(argv: string[]): Promise<number> {
     return 0
   }
   try {
-    if ((first === "settings" || first === "doctor") && rest.length)
-      throw new Usage(`${rest[0].startsWith("-") ? "unknown flag" : "unexpected argument"}: ${rest[0]}`)
-    if (["show", "install", "remove", "tools"].includes(first) && rest[0]?.startsWith("-"))
-      throw new Usage(`unknown flag: ${rest[0]}`)
     return await command.run(h, rest)
   } catch (err) {
     const e = err as Error & { code?: string }

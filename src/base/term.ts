@@ -9,7 +9,7 @@ type Stream = NodeJS.WriteStream
 
 /** Whether a stream gets monochrome emphasis (also honors the conventional force-color flag). */
 export function colored(s: Stream): boolean {
-  if (process.env.NO_COLOR !== undefined || process.env.TERM === "dumb") return false
+  if (process.env.NO_COLOR || process.env.TERM === "dumb") return false
   if (process.env.CLICOLOR_FORCE && process.env.CLICOLOR_FORCE !== "0") return true
   return !!s.isTTY && process.env.TERM !== "dumb"
 }

@@ -14,7 +14,7 @@ import { broken, folder, installed, load, type Extension, type Harness } from ".
 import { readJSON, writeJSON, type Config, type Home } from "../base/home.ts"
 import * as skill from "../harnesses/skill.ts"
 import { heading, style, table, text } from "../base/term.ts"
-import { Usage } from "./command.ts"
+import { positional, Usage } from "./command.ts"
 
 export const summary = "Connect coding agents and add extensions"
 export const about = `Connect coding agents and add extensions.
@@ -34,10 +34,9 @@ export const examples = ["ask install claude", "ask install skill", "ask install
 const say = (line: string) => text(line, process.stderr)
 
 export async function run(h: Home, argv: string[]): Promise<number> {
-  if (argv.length > 1) throw new Usage(`unexpected argument: ${argv[1]}`)
+  positional(argv, 1)
   const name = argv[0]
   if (!name) return list(h)
-  if (name.startsWith("-")) throw new Usage(`unknown flag: ${name}`)
   if (name === "skill") return installSkill()
   if (builtin[name]) return turnOn(h, builtin[name])
   if (remote(name) || existsSync(name)) return installExtension(h, name)

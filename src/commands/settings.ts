@@ -6,12 +6,13 @@ import { randomUUID } from "node:crypto"
 import { cheapest, connect, find, harnessMarker, providers, usable, type Catalog, type Model } from "../providers/catalog.ts"
 import { readJSON, writeJSON, type Auth, type Config, type Home } from "../base/home.ts"
 import { catalog, credential } from "../sessions/models.ts"
-import { account, begin, CallbackError, remote, signOut, signedIn, usagePage } from "../providers/chatgpt.ts"
+import { account, begin, CallbackError, remote, signOut, signedIn, tunnel, usagePage } from "../providers/chatgpt.ts"
 import { harness, settings } from "../harnesses/extensions.ts"
 import { Back, confirm, input, interactive, line, multi, secret, select } from "../base/input.ts"
 import { ProviderError, type Key } from "../providers/stream.ts"
 import { baseURL as customBaseURL, entry as customEntry, id as customID, modelIDs as customModelIDs } from "../providers/custom.ts"
 import { heading, spinner, style, text } from "../base/term.ts"
+import { positional } from "./command.ts"
 
 export const summary = "Providers, models and defaults"
 export const about = `Connect supported API-key providers, ChatGPT, installed coding agents or a custom OpenAI-compatible endpoint.
@@ -78,7 +79,8 @@ function timeoutLabel(seconds: number): string {
   return seconds % 60 === 0 ? `${seconds / 60} minute${seconds === 60 ? "" : "s"}` : `${seconds} second${seconds === 1 ? "" : "s"}`
 }
 
-export async function run(h: Home): Promise<number> {
+export async function run(h: Home, argv: string[]): Promise<number> {
+  positional(argv)
   const st = style(process.stderr)
   if (!interactive()) {
     say("ask settings needs a terminal")
@@ -229,10 +231,20 @@ async function signIn(h: Home): Promise<boolean> {
     const away = remote()
     heading("connect ChatGPT", process.stderr)
     if (away || !open(attempt.url)) {
+      // The browser returns to 127.0.0.1 on its own computer, which over SSH isn't this one.
+      const forward = tunnel(attempt.port)
+      if (forward) {
+        say("First, on the computer with your browser, forward the sign-in port to this one:")
+        say(forward)
+        say("")
+      }
       say("Open this link in your browser:")
       say(attempt.url)
-      say("After signing in, your browser may show a page that cannot load.")
-      say("Copy its full address and paste it below.")
+      say("")
+      say(forward
+        ? "With the port forwarded, signing in finishes here by itself."
+        : "After signing in, your browser lands on a 127.0.0.1 page that cannot load.")
+      say(`${forward ? "Without it, the browser ends on a 127.0.0.1 page that cannot load: copy" : "Copy"} that page's full address and paste it below.`)
     } else {
       say("Your browser is opening. If needed, open this link:")
       say(attempt.url)
@@ -282,16 +294,10 @@ async function paste(h: Home, c: Catalog, provider: string): Promise<boolean> {
   const st = style(process.stderr)
   const name = c[provider].name
   const k = keyPages[provider]
-  if (k) {
-    say("Create an API key:")
-    say(k.page)
-    if (k.where) say(st.gray(k.where))
-    if (k.prefix) say(st.gray(`Key prefix  ${k.prefix}`))
-  } else {
-    const doc = c[provider].doc
-    say(`Create an API key in your ${name} account.`)
-    if (doc) say(doc)
-  }
+  say("Create an API key:")
+  say(k.page)
+  if (k.where) say(st.gray(k.where))
+  if (k.prefix) say(st.gray(`Key prefix  ${k.prefix}`))
   for (let tries = 3; tries > 0; tries--) {
     const key = await secret(`Paste your ${name} API key:`)
     if (!key) continue

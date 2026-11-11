@@ -16,6 +16,7 @@ describe("custom endpoints", () => {
     assert.equal(baseURL("http://127.0.0.1:11434/v1/", true), "http://127.0.0.1:11434/v1")
     assert.equal(baseURL("https://api.example/v1", true), "https://api.example/v1")
     assert.throws(() => baseURL("http://api.example/v1", true), /Use HTTPS/)
+    assert.throws(() => baseURL("http://127.attacker.example/v1", true), /Use HTTPS/)
     assert.throws(() => baseURL("https://user:pass@api.example/v1", false), /without credentials/)
     assert.throws(() => modelIDs("   "), /at least one model ID/)
   })

@@ -5,7 +5,7 @@ import type { Home } from "../base/home.ts"
 import { open, status, transcript, type Turn } from "../sessions/store.ts"
 import { steps } from "../agent/steps.ts"
 import { ago, clean, count, duration, style, text, type Style } from "../base/term.ts"
-import { Usage } from "./command.ts"
+import { positional, Usage } from "./command.ts"
 
 export const summary = "Task results and activity"
 export const about = "View a session's results: each prompt and answer, followed by activity and changed files."
@@ -13,6 +13,7 @@ export const usage = "ask show <id>"
 export const examples = ["ask show k3f9a2"]
 
 export async function run(h: Home, argv: string[]): Promise<number> {
+  positional(argv, 1)
   if (argv.length !== 1) throw new Usage(argv.length ? "accepts 1 arg, received " + argv.length : "a session id is required")
   const s = open(h, argv[0])
   const messages = transcript(s)

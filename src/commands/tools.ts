@@ -7,7 +7,7 @@ import { heading, style, table, text } from "../base/term.ts"
 import { search } from "../agent/search.ts"
 import { tools as builtIn, type Tool } from "../agent/tools.ts"
 import { active } from "../harnesses/extensions.ts"
-import { Usage } from "./command.ts"
+import { positional, Usage } from "./command.ts"
 
 export const summary = "Manage task tools"
 export const about = `List the tools ask's own loop gives a subagent: where each comes from, whether read-only tasks
@@ -34,8 +34,8 @@ async function rows(h: Home): Promise<Row[]> {
 }
 
 export async function run(h: Home, argv: string[]): Promise<number> {
-  const [verb, name, ...rest] = argv
-  if (rest.length) throw new Usage(`unexpected argument: ${rest[0]}`)
+  positional(argv, 2)
+  const [verb, name] = argv
   const all = await rows(h)
   if (!verb) {
     const st = style()

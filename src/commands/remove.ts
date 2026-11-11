@@ -11,7 +11,7 @@ import { readJSON, writeJSON, type Config, type Home } from "../base/home.ts"
 import * as skill from "../harnesses/skill.ts"
 import { style, text } from "../base/term.ts"
 import { template } from "./install.ts"
-import { Usage } from "./command.ts"
+import { positional, Usage } from "./command.ts"
 
 export const summary = "Remove an integration"
 export const about = `Turn off a harness, the agent skill or an extension that ask install turned on. Its models
@@ -24,7 +24,8 @@ const say = (line: string) => text(line, process.stderr)
 
 export async function run(h: Home, argv: string[]): Promise<number> {
   const st = style(process.stderr)
-  if (argv.length !== 1 || argv[0].startsWith("-")) throw new Usage(argv.length ? `unexpected argument: ${argv[1] ?? argv[0]}` : "name what to remove")
+  positional(argv, 1)
+  if (!argv.length) throw new Usage("name what to remove")
   const name = argv[0]
   if (name === "skill") {
     const paths = skill.remove()

@@ -2,43 +2,41 @@
 
 ## Unreleased
 
-- Limit one-click API-key setup to Ask's curated provider presets, and add custom OpenAI
-  Chat-Completions-compatible endpoints with manual model IDs, optional local keys, TLS checks,
-  and a connection test before saving. Clarify that models.dev catalog coverage is not auth support.
-- Show the first four API-key characters while pasting, followed by a fixed mask that hides the
-  remainder and does not reveal the full key length.
-- Restore compact model-multiselect keybinds, preceded by the selected/available count; use `>`
-  as the search prompt and keep the count based on the full list while filtering.
-- Simplify model pickers: omit the multiselect title and receipt, show muted provider names
-  beside models, and retain the position counter below long lists.
-- Use checkboxes alone in model multiselect lists, with the focused checkbox and text both bold.
-- Clarify setup copy and credential sources, show readable default models and task timeouts,
-  and remove duplicate model-selection confirmations. Distinguish enabling integrations from
-  installing apps, and removing saved credentials from environment-provided access. Improve
-  empty model-list guidance, sign-in wording and doctor recovery instructions.
-- Disable filtering in menus with seven or fewer options; keep search for longer lists.
-- Remove keyboard-instruction footers from pickers and input fields, keeping contextual details
-  and input status.
-- Remove the duplicate settings title and hub navigation receipts beneath `ask / settings`.
-- Keep the general help title on one line: **Ask** followed by a muted “Background tasks, handled.”
-- Make `ask -h` and `ask COMMAND -h` the documented help forms, retaining old help aliases.
-  Suggest close command/flag spellings and explain misplaced flags or help topics without
-  executing corrections. Reject extra arguments to settings and doctor instead of ignoring them.
-- Redesign human-facing output in monochrome: compact help, word-based status, responsive tables,
-  result-first session details and quiet progress. Interactive focus uses a narrow text-sized
-  bar and a bold label; settings stays open until Done, with Esc to return from an action.
-  Add offline wide/phone visual fixtures. Keep TSV and JSON interfaces stable. New ChatGPT
-  registrations request the application display name "Ask".
-- Keep the active ChatGPT login when a pasted callback needs correcting, distinguish missing
-  state from mismatched state, and exclude URL fragments when checking it. Reject unrelated
-  browser callbacks. Redraw pasted input once per chunk to reduce SSH terminal flicker.
-- Show callback URL input on its own line with a character count and Enter hint, so ChatGPT
-  login pastes remain visible on narrow SSH terminals.
 - Bundle static, non-setuid bubblewrap 0.13.1 on Linux, with libcap 2.78, source archives,
-  licenses and an offline rebuild script. Prefer the bundle and probe system alternatives when
-  host policy blocks it; retain default-on confinement and fail closed when none work.
+  licenses and an offline rebuild script, so Linux installs no longer need a system bubblewrap.
+  ask prefers the bundle and probes system copies when host policy blocks it; confinement stays
+  on by default and fails closed when none work.
 - Expand sandbox regressions for racing path replacement, runtime Git hard links, fresh metadata
   discovery and failed-setup cleanup; add policy/tool and extraction measurement runners.
+- Redesign human-facing output in monochrome: compact help, word-based status, tables that
+  become labeled records on phone-width terminals, result-first session details and a quiet
+  progress line instead of a spinner. TSV and JSON output are unchanged.
+- Make `ask settings` a hub that stays open until Done, with Esc to return from an action and
+  each action saved as it completes. Single choices show a narrow focus bar, model lists use
+  checkboxes with the provider beside each model, and only lists longer than seven options
+  filter as you type. Setup copy names credential sources, readable default models and
+  timeouts, and tells enabling an integration apart from installing its app.
+- Make `ask -h` and `ask COMMAND -h` the documented help forms; the older forms still work.
+  Mistyped commands and flags get a close spelling or the command a flag belongs to, never an
+  automatic correction, and settings and doctor reject extra arguments instead of ignoring them.
+- Limit pasted-key setup to ask's curated providers, and add custom OpenAI
+  Chat-Completions-compatible endpoints with manual model IDs, an optional key, and a connection
+  test before saving. A key goes over plain HTTP only to a loopback address. Other providers
+  still work through their own key variable.
+- While pasting, a key of twelve or more characters shows its first four, then a fixed mask
+  that hides the rest and its length; a shorter secret shows nothing of itself.
+- Make the ChatGPT sign-in workable over SSH. ask prints the `ssh -L` command that forwards the
+  sign-in port from the computer with the browser, so the sign-in finishes by itself, and the
+  docs cover copying a sign-in to a server. A pasted return address gets its own line with a
+  character count; one copied across wrapped lines is joined instead of submitted in halves; a
+  wrong, incomplete or still-unfinished address (one of OpenAI's own pages) is refused with the
+  reason while the login link stays valid; and unrelated browser callbacks are rejected. New
+  registrations ask for the display name "Ask".
+- Stop mouse reports, paste markers and Alt-keys from cancelling a prompt as if Esc had been
+  pressed, and redraw pasted input once per chunk to cut flicker over SSH.
+- Honor a provider's Retry-After in full instead of retrying after at most 30 seconds, which
+  only failed again; a wait longer than the retry budget ends the retries at once.
+- An empty `NO_COLOR` no longer turns emphasis off, as the convention says.
 - Add read-only `ask legacy` access to Go-era session records and native transcripts. Retain
   old worktrees/extensions and reject retired safety-related settings until explicitly migrated.
   Automatic cleanup remains removed: main's #82 live/unlanded-work protection is preserved by

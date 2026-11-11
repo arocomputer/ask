@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, test } from "node:test"
 import { chat } from "../../src/providers/chat.ts"
-import { withRetries } from "../../src/providers/stream.ts"
+import { ProviderError, withRetries } from "../../src/providers/stream.ts"
 import { serve } from "../fake.ts"
 
 const req = { model: "m", instructions: "", messages: [{ role: "user" as const, text: "hi" }], tools: [] }
@@ -18,6 +18,13 @@ describe("retries", () => {
     } finally {
       await fake.close()
     }
+  })
+
+  test("a provider asking to wait longer than the retry budget is not retried early", async () => {
+    let calls = 0
+    const limited = { complete: async () => { calls++; throw new ProviderError("limited", 429, "", 3600) } }
+    await assert.rejects(withRetries(limited, undefined, { budget: 10_000, slow: 5_000 }).complete(req), /limited/)
+    assert.equal(calls, 1)
   })
 
   test("a slow failure is not retried", async () => {

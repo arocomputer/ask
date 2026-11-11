@@ -8,8 +8,8 @@ custom OpenAI-compatible endpoints. You can edit two small files or use a provid
 
 Choose **Connect a provider**, then a supported provider. API keys stay hidden as you paste, with a short
 acknowledgement when input arrives. Ask checks the key with one tiny request before saving it,
-then asks for models and a default. While pasting a key, its first four characters are visible
-followed by a fixed mask; the rest and the key length stay hidden. Each completed action saves immediately; settings stays open
+then asks for models and a default. While pasting a key of twelve or more characters, its first four are visible
+followed by a fixed mask; the rest and the key length stay hidden, and a shorter secret shows nothing. Each completed action saves immediately; settings stays open
 until you choose **Done** or press Esc at the main menu.
 
 ```text
@@ -88,8 +88,9 @@ Connect a provider  ChatGPT
 ask / connect ChatGPT
 Open this link in your browser:
 https://auth.openai.com/api/accounts/authorize?...
-After signing in, your browser may show a page that cannot load.
-Copy its full address and paste it below.
+
+After signing in, your browser lands on a 127.0.0.1 page that cannot load.
+Copy that page's full address and paste it below.
 Sign-in return URL
 
 ❙ http://127.0.0.1:1455/auth/callback?...
@@ -100,14 +101,26 @@ Connected to ChatGPT as you@example.com
 Usage settings  https://chatgpt.com/settings/usage
 ```
 
-It works wherever ask runs. When ask runs at your screen, it opens your browser, and the sign-in
-finishes by itself when the browser comes back. Over SSH, or anywhere without a screen, open
-the link on any device, your phone included; after you approve, paste the address the browser
-lands on, then press Enter. The prompt shows the pasted address separately and reports its
-character count, including on narrow phone terminals. SSH is detected automatically; there is
-no `--remote` flag. Both ways are always open, so nothing needs choosing.
-If a pasted URL is incomplete or belongs to another attempt, ask keeps the current login link
-active and lets you paste again. It does not silently start a new sign-in. Ctrl-C cancels it.
+When ask runs at your screen, it opens your browser, and the sign-in finishes by itself when the
+browser comes back. OpenAI always sends the browser back to `http://127.0.0.1:1455` on the
+computer the browser runs on, so over SSH that return doesn't reach ask by itself. SSH is
+detected automatically (there is no `--remote` flag), and there are three ways through:
+
+- **Forward the port.** ask prints the command, like `ssh -N -L 1455:127.0.0.1:1455 you@server`.
+  Run it in a terminal on the computer with the browser, then open the link there: the sign-in
+  finishes by itself. If the address in the command isn't how you reach the server (a jump host,
+  a port forward), use the name you normally give `ssh`.
+- **Paste the address.** Without the forward, the browser ends on a `127.0.0.1` page that cannot
+  load. Copy that page's full address from the address bar, paste it and press Enter. An address
+  copied across wrapped lines is joined, and one that is incomplete, from another attempt, or
+  still one of OpenAI's own pages (the sign-in isn't finished there) is refused with the
+  reason; the login link stays valid, so paste again. This is the only way from a phone, and it
+  depends on the browser showing that address.
+- **Copy the sign-in.** As [OpenAI describes for remote machines](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms),
+  sign in with ask on a computer that has a browser, then copy the `chatgpt` entry of its
+  `~/.ask/auth.json` into the server's over SSH. Leave the server's `host.json` alone.
+
+Esc or Ctrl-C cancels a sign-in.
 
 The models are your account's own, named `chatgpt/MODEL`. The sign-in renews itself; removing
 ChatGPT in `ask settings` signs out, ending the session with OpenAI too. One ChatGPT account at a

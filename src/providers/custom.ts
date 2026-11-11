@@ -32,7 +32,7 @@ export function baseURL(value: string, hasKey: boolean): string {
   try { url = new URL(value) } catch { throw new Error("Enter a full endpoint URL, such as https://api.example.com/v1") }
   if (!(["http:", "https:"].includes(url.protocol)) || !url.hostname || url.username || url.password || url.search || url.hash)
     throw new Error("Use an HTTP(S) endpoint URL without credentials, query or fragment")
-  const local = url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname === "[::1]" || /^127\./.test(url.hostname)
+  const local = url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname === "[::1]" || /^127(\.\d{1,3}){3}$/.test(url.hostname)
   if (hasKey && url.protocol !== "https:" && !local) throw new Error("Use HTTPS when sending an API key; HTTP is allowed only for localhost")
   return url.toString().replace(/\/+$/, "")
 }
