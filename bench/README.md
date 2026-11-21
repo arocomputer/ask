@@ -62,10 +62,9 @@ bun bench/callers.ts --ask . --label mine [--arms ...] [--drivers ...] [--reps N
 bun bench/callers.ts --compare mine
 ```
 
-Checked: each agent lists no ask skill in `none` and the arm's skill otherwise. Not yet checked
-on a real run: Codex taking `hooks.PreToolUse` from `-c`; OpenCode running the legacy
-`tool.execute.before` plugin shape and naming its subagent tool `subagent` or `task`. Read the
-first run's answers before trusting its routes.
+Checked: each agent lists no ask skill in `none` and the arm's skill otherwise; the hook hands
+Claude Code's and OpenCode's subagent calls to ask. Codex's hook hasn't fired yet, as Codex
+rarely starts subagents in `exec`. Read the first run's answers before trusting its routes.
 
 ## Results, November 2026
 

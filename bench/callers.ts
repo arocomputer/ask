@@ -104,7 +104,8 @@ function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; 
   if (arm === "hook") {
     const command = `${JSON.stringify(process.execPath)} ${JSON.stringify(hook)}`
     put(join(plugin, "hooks", "hooks.json"), JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Agent|Task", hooks: [{ type: "command", command, timeout: 600 }] }] } }))
-    put(join(dir, ".opencode", "plugins", "ask.js"), `import { route } from ${JSON.stringify(hook)}\nexport default { async server() { return { "tool.execute.before": async (input, output) => { if (/^(subagent|task)$/.test(input.tool)) throw new Error(await route(output.args ?? {})) } } } }\n`)
+    // OpenCode 2's plugin API: a throw from execute.before refuses the call, and its message is the result.
+    put(join(dir, ".opencode", "plugins", "ask", "index.ts"), `import { Plugin } from "@opencode/plugin"\nimport { route } from ${JSON.stringify(hook)}\nexport default Plugin.define({ id: "ask", async setup(ctx) { await ctx.tool.hook("execute.before", async (event: any) => { if (event.tool === "subagent") throw new Error(await route(event.input ?? {})) }) } })\n`)
   }
   const real = process.env.ASK_HOME || join(homedir(), ".ask")
   cpSync(join(real, "cache", "models.json"), join(home, "cache", "models.json"))
