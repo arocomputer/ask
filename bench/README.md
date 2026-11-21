@@ -46,7 +46,7 @@ ask: three ask for a subagent, one asks for nothing. Each arm changes one thing:
 | `none` | ask on `PATH`, nothing else: the control |
 | `skill` | ask's skill as a project skill, so only its description is in context until loaded |
 | `deny` | the skill, with built-in subagents turned off |
-| `hook` | the skill, with built-in subagent calls handed to ask by `bench/hook.ts`, a prototype |
+| `hook` | no skill: built-in subagent calls are handed to ask by `bench/hook.ts`, a prototype |
 
 The agents run on your own sign-ins, with three changes: an ask skill you installed is hidden
 (Claude Code's `skillOverrides`, Codex's `skills.config`, OpenCode's project skill and

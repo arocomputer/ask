@@ -5,7 +5,7 @@
 //   none    ask is on PATH, nothing tells the agent about it
 //   skill   ask's skill, installed as a project skill (only its description sits in context)
 //   deny    the skill, with the agent's built-in subagents turned off
-//   hook    the skill, with built-in subagent calls handed to ask (bench/hook.ts)
+//   hook    no skill; built-in subagent calls are handed to ask (bench/hook.ts)
 //
 // The agents run as the user set them up, signed in and with their own instructions, except
 // that any ask skill the user installed is hidden, so only the arm decides what they know about
@@ -92,14 +92,14 @@ function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; 
   writeFileSync(join(dir, ".git", "info", "exclude"), ".agents/\n.opencode/\n")
   const put = (path: string, text: string) => (mkdirSync(join(path, ".."), { recursive: true }), writeFileSync(path, text))
   put(join(plugin, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "ask" }))
-  if (arm !== "none") {
+  if (arm === "skill" || arm === "deny") {
     put(join(plugin, "skills", "ask", "SKILL.md"), skill)
     put(join(dir, ".agents", "skills", "ask", "SKILL.md"), skill)
     put(join(dir, ".opencode", "skills", "ask", "SKILL.md"), skill)
   }
   // Project rules come after the user's, so they win: built-in subagents are on unless the arm
   // denies them, even where the user's own config turns them off.
-  const rules = [{ action: "subagent", resource: "*", effect: arm === "deny" ? "deny" : "allow" }, ...(arm === "none" ? [{ action: "skill", resource: "ask", effect: "deny" }] : [])]
+  const rules = [{ action: "subagent", resource: "*", effect: arm === "deny" ? "deny" : "allow" }, ...(arm === "none" || arm === "hook" ? [{ action: "skill", resource: "ask", effect: "deny" }] : [])]
   put(join(dir, ".opencode", "opencode.json"), JSON.stringify({ permissions: rules }))
   if (arm === "hook") {
     const command = `${JSON.stringify(process.execPath)} ${JSON.stringify(hook)}`
