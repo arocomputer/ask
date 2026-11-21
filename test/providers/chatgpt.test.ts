@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, describe, test } from "node:test"
-import { access, begin, remote, signedIn, signOut } from "../../src/providers/chatgpt.ts"
+import { access, begin, remote, signedIn, signOut, tunnel } from "../../src/providers/chatgpt.ts"
 import { home, readJSON, type Auth } from "../../src/base/home.ts"
 import { catalog, credential } from "../../src/sessions/models.ts"
 import { connect, find } from "../../src/providers/catalog.ts"
@@ -123,13 +123,14 @@ describe("chatgpt", () => {
     const attempt = await begin(h)
     try {
       const q = o.authorize(attempt.url)
-      assert.deepEqual([q.get("client_id"), q.get("agent_name_hint"), q.get("code_challenge_method"), q.get("resource")], ["dynamic_agent_client", "ask", "S256", "https://api.openai.com/v1"])
+      assert.deepEqual([q.get("client_id"), q.get("agent_name_hint"), q.get("code_challenge_method"), q.get("resource")], ["dynamic_agent_client", "Ask", "S256", "https://api.openai.com/v1"])
       assert.equal(q.get("scope"), "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct")
       assert.match(q.get("redirect_uri")!, /^http:\/\/127\.0\.0\.1:\d+\/auth\/callback$/)
       const host = JSON.parse(readFileSync(join(h.root, "host.json"), "utf8")).id
       assert.match(host, /^urn:uuid:[0-9a-f-]{36}$/)
       assert.equal(q.get("ext_agent_host_id"), host)
-      await attempt.finish(`${q.get("redirect_uri")}?code=c1&state=${q.get("state")}&client_id=oaiapp_1`)
+      // As a phone hands it over: copied across a wrapped line, with a fragment on the end.
+      await attempt.finish(`${q.get("redirect_uri")}?code=c1&client_id=oaiapp_1\n &state=${q.get("state")}#_=_`)
     } finally {
       attempt.close()
     }
@@ -138,13 +139,15 @@ describe("chatgpt", () => {
     assert.ok(signedIn(h))
   })
 
-  test("the browser's return to ask's callback finishes the sign-in by itself", async () => {
+  test("the callback listener rejects unrelated returns before accepting the active sign-in", async () => {
     const o = await openai()
     servers.push(o)
     const h = fresh()
     const attempt = await begin(h)
     try {
       const q = o.authorize(attempt.url)
+      const unrelated = await fetch(`${q.get("redirect_uri")}?code=old&state=old`)
+      assert.equal(unrelated.status, 400)
       const page = await fetch(`${q.get("redirect_uri")}?code=c1&state=${q.get("state")}&client_id=oaiapp_1`)
       assert.match(await page.text(), /You can close this tab/)
       await attempt.finish(await attempt.callback)
@@ -182,13 +185,31 @@ describe("chatgpt", () => {
     assert.ok(!signedIn(h))
   })
 
-  test("an address from another sign-in is refused", async () => {
+  test("a pasted OpenAI page is named as unfinished, with the address to look for", async () => {
+    const o = await openai()
+    servers.push(o)
+    const attempt = await begin(fresh())
+    try {
+      await assert.rejects(attempt.finish("https://auth.openai.com/sign-in-with-chatgpt/consent"), new RegExp(`isn't finished yet.*http://127\\.0\\.0\\.1:${attempt.port}/auth/callback`))
+    } finally {
+      attempt.close()
+    }
+  })
+
+  test("over SSH, the port-forward command targets the address the client reached", () => {
+    assert.equal(tunnel(1455, { SSH_CONNECTION: "203.0.113.9 50000 198.51.100.7 22" }, "me"), "ssh -N -L 1455:127.0.0.1:1455 me@198.51.100.7")
+    assert.equal(tunnel(40123, { SSH_CONNECTION: "203.0.113.9 50000 198.51.100.7 2222" }, "me"), "ssh -N -L 40123:127.0.0.1:40123 -p 2222 me@198.51.100.7")
+    assert.equal(tunnel(1455, {}, "me"), undefined)
+  })
+
+  test("an address from another sign-in is refused without invalidating the active attempt", async () => {
     const o = await openai()
     servers.push(o)
     const attempt = await begin(fresh())
     try {
       const q = o.authorize(attempt.url)
-      await assert.rejects(attempt.finish(`${q.get("redirect_uri")}?code=c1&state=forged&client_id=oaiapp_1`), /another sign-in/)
+      await assert.rejects(attempt.finish(`${q.get("redirect_uri")}?code=c1&state=forged&client_id=oaiapp_1`), /does not match this login/)
+      await attempt.finish(`${q.get("redirect_uri")}?code=c1&state=${q.get("state")}&client_id=oaiapp_1`)
     } finally {
       attempt.close()
     }

@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+- Bundle static, non-setuid bubblewrap 0.13.1 on Linux, with libcap 2.78, source archives,
+  licenses and an offline rebuild script, so Linux installs no longer need a system bubblewrap.
+  ask prefers the bundle and probes system copies when host policy blocks it; confinement stays
+  on by default and fails closed when none work.
+- Expand sandbox regressions for racing path replacement, runtime Git hard links, fresh metadata
+  discovery and failed-setup cleanup; add policy/tool and extraction measurement runners.
+- Redesign human-facing output in monochrome: compact help, word-based status, tables that
+  become labeled records on phone-width terminals, result-first session details and a quiet
+  progress line instead of a spinner. TSV and JSON output are unchanged.
+- Make `ask settings` a hub that stays open until Done, with Esc to return from an action and
+  each action saved as it completes. Single choices show a narrow focus bar, model lists use
+  checkboxes with the provider beside each model, and only lists longer than seven options
+  filter as you type. Setup copy names credential sources, readable default models and
+  timeouts, and tells enabling an integration apart from installing its app.
+- Make `ask -h` and `ask COMMAND -h` the documented help forms; the older forms still work.
+  Mistyped commands and flags get a close spelling or the command a flag belongs to, never an
+  automatic correction, and settings and doctor reject extra arguments instead of ignoring them.
+- Limit pasted-key setup to ask's curated providers, and add custom OpenAI
+  Chat-Completions-compatible endpoints with manual model IDs, an optional key, and a connection
+  test before saving. A key goes over plain HTTP only to a loopback address. Other providers
+  still work through their own key variable.
+- While pasting, a key of twelve or more characters shows its first four, then a fixed mask
+  that hides the rest and its length; a shorter secret shows nothing of itself.
+- Make the ChatGPT sign-in workable over SSH. ask prints the `ssh -L` command that forwards the
+  sign-in port from the computer with the browser, so the sign-in finishes by itself, and the
+  docs cover copying a sign-in to a server. A pasted return address gets its own line with a
+  character count; one copied across wrapped lines is joined instead of submitted in halves; a
+  wrong, incomplete or still-unfinished address (one of OpenAI's own pages) is refused with the
+  reason while the login link stays valid; and unrelated browser callbacks are rejected. New
+  registrations ask for the display name "Ask".
+- Stop mouse reports, paste markers and Alt-keys from cancelling a prompt as if Esc had been
+  pressed, and redraw pasted input once per chunk to cut flicker over SSH.
+- Honor a provider's Retry-After in full instead of retrying after at most 30 seconds, which
+  only failed again; a wait longer than the retry budget ends the retries at once.
+- An empty `NO_COLOR` no longer turns emphasis off, as the convention says.
 - Add read-only `ask legacy` access to Go-era session records and native transcripts. Retain
   old worktrees/extensions and reject retired safety-related settings until explicitly migrated.
   Automatic cleanup remains removed: main's #82 live/unlanded-work protection is preserved by

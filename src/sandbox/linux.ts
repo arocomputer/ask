@@ -1,6 +1,7 @@
 // The Linux sandbox: bubblewrap makes Git metadata read-only; ask.sandbox applies Landlock
-// and seccomp inside those mounts. ask.sandbox ships next to the release binary, and in the npm package for each
-// architecture; a checkout of ask compiles it from source with the system's C compiler.
+// and seccomp inside those mounts. Both helpers ship beside release binaries and in the npm
+// package for each architecture. A checkout can compile ask.sandbox with the system C compiler
+// and use system bubblewrap when no bundle has been built.
 
 import { spawnSync } from "node:child_process"
 import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync } from "node:fs"
@@ -51,15 +52,23 @@ export function helper(): string | undefined {
 let version: number | undefined
 let bubblewrap: string | undefined
 
-/** Bubblewrap must actually run: an installed binary alone does not prove namespaces work. */
+/** Prefer the bundled helper; host policy may require a system copy. Probe the exact policy. */
 export function mounts(): boolean {
-  const path = (process.env.PATH ?? "").split(delimiter).map((dir) => resolve(dir, "bwrap")).find(runnable)
-  if (!path) return false
-  const candidate = realpathSync(path)
-  const ok = spawnSync(candidate, ["--unshare-user", "--unshare-net", "--ro-bind", "/", "/", "--", "/bin/true"], { timeout: 5000, stdio: "ignore" }).status === 0
-  if (ok) bubblewrap = candidate
-  return ok
+  const candidates = [join(dirname(process.execPath), "ask.bwrap"), fileURLToPath(new URL(`../../native/build/ask.bwrap-${process.arch}`, import.meta.url)),
+    ...(process.env.PATH ?? "").split(delimiter).map((dir) => resolve(dir, "bwrap"))]
+  bubblewrap = undefined
+  for (const path of [...new Set(candidates)]) {
+    if (!runnable(path)) continue
+    const candidate = realpathSync(path)
+    if (spawnSync(candidate, [...mountArgs, "--proc", "/proc", "--dev", "/dev", "--", "/bin/true"], { timeout: 5000, stdio: "ignore" }).status !== 0) continue
+    bubblewrap = candidate
+    return true
+  }
+  return false
 }
+
+/** Namespace/root setup shared by discovery and every tool launch. */
+const mountArgs = ["--die-with-parent", "--new-session", "--unshare-user", "--unshare-pid", "--unshare-net", "--ro-bind", "/", "/"]
 
 /** The kernel's Landlock ABI version, as ask.sandbox reports it; 0 without Landlock or the helper. */
 export function abi(): number {
@@ -76,7 +85,7 @@ export function wrap(p: Policy, argv: string[]): string[] {
   for (const w of p.write) args.push("-w", w)
   args.push("--", ...argv)
   if (!bubblewrap) throw new Error("bubblewrap has not passed its namespace probe")
-  const mounted = [bubblewrap, "--die-with-parent", "--new-session", "--unshare-user", "--unshare-pid", "--unshare-net", "--ro-bind", "/", "/"]
+  const mounted = [bubblewrap, ...mountArgs]
   for (const w of [p.dir, p.tmp].filter((x) => p.write.includes(x))) mounted.push("--bind", w, w)
   for (const r of p.protected) mounted.push("--ro-bind", r, r)
   mounted.push("--proc", "/proc", "--dev", "/dev", "--", ...args)

@@ -13,7 +13,7 @@ description: Your subagent tool. MUST use it instead of a built-in subagent when
 ---
 
 ask runs subagents in the background, each in a fresh context of its own. Send one JSON request
-on stdin, read one JSON response on stdout. \`ask help requests\` is the full reference; \`ask
+on stdin, read one JSON response on stdout. \`ask -h requests\` is the full reference; \`ask
 models\` lists the models.
 
 ## When to hand work off

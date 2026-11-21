@@ -1,5 +1,33 @@
 # The sandbox
 
+## Linux distribution and platform checks
+
+Linux releases carry separate static `ask.sandbox` and `ask.bwrap` executables. The latter is
+bubblewrap 0.13.1 with libcap 2.78 (BSD-3-Clause licensing option), without setuid or optional
+SELinux integration. `.github/release/bubblewrap.sh` verifies pinned source digests and builds
+x64/arm64 using Zig. `ask.sandbox.sources.tar.gz` ships upstream archives, license notices and
+`build.sh`; extract it and run `sh build.sh OUTPUT .` on Linux with Zig, make, cc and Python 3
+installed to rebuild without downloading upstream sources. Homebrew stores this archive in
+the formula's shared-data directory; the shell installer keeps it beside the binaries.
+
+Discovery tries bundled helpers before system `bwrap` candidates, probes the same namespace/root
+setup used by commands, and pins the successful executable. Bundling cannot supply missing kernel
+Landlock support or override namespace restrictions imposed by the host.
+
+The follow-up suite passed under Node and Bun on Debian 13 / Linux 6.12 x64 and macOS 27.2 arm64.
+Tests cover concurrent directory/symlink replacement, runtime Git hard-link creation, discovering
+repositories created after a turn starts, and scratch cleanup after failed preparation. Release
+archives built for all four targets; Linux x64 binary and npm confined reads were exercised.
+Cross-compilation alone does not validate execution on Linux arm64 or macOS x64.
+
+Hosted CI run `42188894263` passed Ubuntu 22.04, macOS 15 and Windows Server 2025's WSL2 with Ubuntu,
+alongside the required Linux/macOS jobs. WSL tests run as an ordinary Linux user on the distro
+filesystem and require working confinement before tests start. These results cover the hosted
+images, not every WSL kernel or Windows-mounted filesystem. Performance methodology and measurements are
+in [bench/README.md](../../bench/README.md).
+
+## Boundary
+
 The following boundary is enabled by default. Config-only `"sandbox": false` disables OS
 confinement for new turns; the choice is persisted per turn, and older turns default to enabled.
 Disabled execution retains child processes, credential environment filtering, cancellation and
@@ -13,7 +41,7 @@ write grant. Fetch and search run in the parent with public-address checks.
 
 ## Enforcement
 
-- **Linux:** system bubblewrap creates a read-only root, writable task/scratch mounts, read-only
+- **Linux:** bundled bubblewrap (or a working system copy) creates a read-only root, writable task/scratch mounts, read-only
   mounts over existing Git metadata, private PID/network namespaces and a private `/dev`.
   Inside that view, the bundled `ask.sandbox` applies Landlock read/write grants and seccomp.
   An actual namespace probe must succeed; installation alone is insufficient. No privileged

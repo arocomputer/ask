@@ -129,7 +129,7 @@ real models, and a change to them ships when it does at least as well.
 ```sh
 ask sessions          # newest first, from this repository: status, task, id and age
 ask sessions --all    # from everywhere
-ask show k3f9a2       # each prompt, its steps, the files it changed and the answer
+ask show k3f9a2       # each prompt and answer, followed by activity and changed files
 ```
 
 Piped, `ask sessions` prints one tab-separated line per session: state, task, id and the time

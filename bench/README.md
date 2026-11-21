@@ -31,8 +31,7 @@ number: a grader can be wrong too.
 an overflow and checks the continuation for the objective, constraint, decision and reason,
 next file, blocker and interrupted action. It prints the answer, usage and elapsed time; inspect
 the answer as well as the simple checks. This spends quota and is not run by `npm test`.
-One isolated run on `opencode-go/glm-5.3`. The callers are Claude Code on Sonnet, Codex on its default model,
-and OpenCode on `opencode-go/deepseek-v4.1-flash`.passed all six checks in 22.9 seconds (1,969 input,
+One isolated run on `opencode-go/glm-5.3` passed all six checks in 22.9 seconds (1,969 input,
 2,049 output tokens, including 20 cached input). The answer also stated that the interrupted
 write's outcome was unknown and should be checked. This single synthetic run is not a comparison
 against uncompacted context or evidence of reliability across models and tasks.
@@ -84,3 +83,41 @@ jobs × 2 runs: with the new skill Claude Code passed 6 of 6 (4 with the old, wh
 fix to a worktree and left the user's files broken) and wrote fuller task prompts (271 → 390
 characters); Codex passed 6 of 6 with both. Those caller runs predate the arms: the jobs named
 ask, the skill sat in the system prompt, and Claude Code had no Agent tool to choose instead.
+
+## Sandbox and extraction follow-up
+
+`bun bench/sandbox.ts --files 10000 --reps 10` creates disposable repositories with five nested
+repositories and measures fresh policy discovery, environment preparation, a confined process,
+and actual read/write tools. Each operation warms once, then reports p50/p95 in milliseconds.
+It makes no model calls and does not cache metadata discovery.
+
+November 6, 2026, Bun 1.4.4, 10,000 files / 1,000 directories, ten samples:
+
+| Host | Write policy p50 | Read tool p50 | Write tool p50 |
+| --- | ---: | ---: | ---: |
+| Debian 13, Linux 6.12, x64 | 20.560 ms | 30.152 ms | 54.050 ms |
+| macOS 27.2, arm64 | 85.291 ms | 40.583 ms | 126.563 ms |
+
+These are two different machines, not an OS comparison or a statistical performance guarantee.
+Keep fresh write-policy discovery: metadata created during a turn must be protected by the next
+file tool. No caching optimization is justified by these small measurements alone.
+
+`bun bench/extract.ts --model provider/model --helper provider/model --reps 3` spends model quota.
+Four synthetic documents cover late facts, conflicting versions, missing values and embedded
+instructions. It uses production text conversion and extraction, exact factual grading, and
+reports latency and token usage including helper calls. `raw-paged` supplies all pages together:
+it is a direct-text baseline, not a simulation of iterative fetching or network latency. Extraction
+variants pass the extracted evidence to the main model. Variants run concurrently per fixture;
+provider scheduling and the 700-token final-answer budget can affect results.
+
+One run with `opencode-go/glm-5.3` and helper `opencode-go/glm-5.3-flash`, three repetitions:
+
+| Variant | Correct | Median seconds | Total input + output tokens |
+| --- | ---: | ---: | ---: |
+| Direct text (all pages) | 12/12 | 1.594 | 39,779 |
+| Same-model extraction | 9/12 | 4.186 | 45,101 |
+| Smaller-helper extraction | 7/12 | 7.179 | 46,154 |
+
+Failed answers reported incomplete extraction/generation. This run does not establish general
+model quality or a benefit from helpers; keep raw fetching available. Tokens are cost proxies,
+not billed dollars. This benchmark does not compare ask against native subagents.

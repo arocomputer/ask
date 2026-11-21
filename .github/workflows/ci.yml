@@ -28,6 +28,10 @@ jobs:
             name: Linux
           - os: macos-latest
             name: macOS
+          - os: ubuntu-22.04
+            name: Linux 22.04
+          - os: macos-15
+            name: macOS 15
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -43,6 +47,8 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: npm run check
+      - name: Require working confinement
+        run: node --input-type=module -e 'import { support } from "./src/sandbox/confine.ts"; const s = support(); console.log(s); if (!s.ok) process.exit(1)'
       # The same tests under both runtimes ask supports.
       - run: node --test 'test/**/*.test.ts'
       - run: bun test ./test/
@@ -53,14 +59,14 @@ jobs:
           "$RUNNER_TEMP/ask-npm/node_modules/.bin/ask" --version
       - name: Check the shell scripts
         if: runner.os == 'Linux'
-        run: shellcheck install.sh .github/release/*.sh
+        run: shellcheck install.sh .github/release/*.sh .github/ci/*.sh
       - name: Check the workflows
         if: runner.os == 'Linux'
         run: |
           bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP"
           "$RUNNER_TEMP/actionlint"
       - name: Build and verify the release archives, and the formula they make
-        if: runner.os == 'Linux'
+        if: matrix.name == 'Linux'
         run: |
           pip install --quiet ziglang==0.13.0
           .github/release/package.sh v0.0.0 "$RUNNER_TEMP/ask-release"
@@ -68,3 +74,27 @@ jobs:
           ruby -c "$RUNNER_TEMP/ask.rb"
       # The installer people run, against the latest release.
       - run: sh install.sh --dir "$RUNNER_TEMP/ask" && "$RUNNER_TEMP/ask/ask" --version
+
+  wsl:
+    name: WSL2
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Preserve Linux line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Ubuntu under WSL2
+        shell: pwsh
+        run: |
+          wsl --set-default-version 2
+          if ($LASTEXITCODE -ne 0) { throw "WSL2 is unavailable" }
+          wsl --install Ubuntu --no-launch --web-download
+          if ($LASTEXITCODE -ne 0) { throw "Ubuntu installation failed" }
+          wsl --list --verbose
+      - name: Test confinement on the WSL Linux filesystem
+        shell: pwsh
+        run: |
+          wsl --distribution Ubuntu --user root --cd "$env:GITHUB_WORKSPACE" -- bash .github/ci/wsl.sh
+          if ($LASTEXITCODE -ne 0) { throw "WSL sandbox tests failed" }
