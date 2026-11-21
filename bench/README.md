@@ -83,10 +83,15 @@ not predictions for other models or more difficult tasks:
 | Codex `exec` | Self 6/6 | Ask 6/6 | Ask 6/6 | No native call to intercept |
 
 Claude Code and Codex passed all four fixture jobs in those runs, including the
-non-delegation job. OpenCode successfully redirected native calls in the pilot, but the
-initial run hit a quota error when the caller was not pinned to Go. The Go rerun also used
-a different caller model, so don't combine those results. Shared-provider rate limiting
-caused retries and extra calls in several arms; don't use that run to rank latency or cost.
+non-delegation job. In the pinned Go rerun, OpenCode chose native subagents in 6/6 control
+delegation runs, ask in 4/6 with the current skill, and ask in 6/6 with the skill and native
+subagents denied. The softened skill wasn't rerun on the pinned model. Some hook traces
+straddled a benchmark edit, so use the final-version smoke test instead: all three native
+calls were redirected to ask and all three questions were answered correctly.
+
+Don't pool the original metered OpenCode runs (which hit quota) with the pinned Go rerun,
+which used a different model. Shared-provider rate limiting caused retries and extra calls
+in several arms; don't use the pilot to rank latency or cost.
 
 Keep the skill as the portable default: the stronger description changed Claude Code's
 routing, and a hook cannot help when the caller never tries a native subagent. The Claude
