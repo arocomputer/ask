@@ -12,6 +12,7 @@ import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "no
 import { mkdirSync, rmSync, statSync } from "node:fs"
 import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
+import { userInfo } from "node:os"
 import { join } from "node:path"
 import { readJSON, writeJSON, type Auth, type Home } from "../base/home.ts"
 
@@ -74,17 +75,33 @@ export function remote(env = process.env, platform = process.platform): boolean 
   return platform === "linux" && !env.DISPLAY && !env.WAYLAND_DISPLAY
 }
 
+/**
+ * The command that forwards the sign-in port from the computer with the browser to this one,
+ * when ask runs over SSH: with it running there, the browser's return to 127.0.0.1 reaches
+ * ask's listener and nothing needs pasting. The host is the address the SSH client reached.
+ */
+export function tunnel(port: number, env = process.env, user = userInfo().username): string | undefined {
+  const [, , host, sshPort] = (env.SSH_CONNECTION ?? "").split(" ")
+  if (!host) return undefined
+  return `ssh -N -L ${port}:127.0.0.1:${port} ${sshPort && sshPort !== "22" ? `-p ${sshPort} ` : ""}${user}@${host}`
+}
+
 const b64 = (b: Buffer) => b.toString("base64url")
 
 /** A sign-in in progress: the address to open, and how to finish it. */
 export type Attempt = {
   url: string
+  /** The 127.0.0.1 port the browser returns to. */
+  port: number
   /** Resolves when the browser comes back to the 127.0.0.1 callback. */
   callback: Promise<string>
   /** Finishes with the address the browser landed on, from the callback or pasted. */
   finish(address: string): Promise<Account>
   close(): void
 }
+
+/** A pasted callback can be corrected without replacing the active OAuth attempt. */
+export class CallbackError extends Error {}
 
 /** Starts a sign-in: listens on a loopback port and builds the authorization address. */
 export async function begin(h: Home): Promise<Attempt> {
@@ -94,11 +111,17 @@ export async function begin(h: Home): Promise<Attempt> {
   const verifier = b64(randomBytes(48))
   let landed: (address: string) => void = () => {}
   const callback = new Promise<string>((ok) => (landed = ok))
-  const server = await listen((path) => landed(`http://127.0.0.1${path}`))
-  const redirect = `http://127.0.0.1:${(server.address() as AddressInfo).port}/auth/callback`
+  const server = await listen((path) => {
+    const q = parse(path)
+    if (q.get("state") !== state || (!q.get("code") && !q.get("error"))) return false
+    landed(`http://127.0.0.1${path}`)
+    return true
+  })
+  const port = (server.address() as AddressInfo).port
+  const redirect = `http://127.0.0.1:${port}/auth/callback`
   const params = new URLSearchParams({
     client_id: previous?.client_id ?? "dynamic_agent_client",
-    ...(previous ? {} : { agent_name_hint: "ask" }),
+    ...(previous ? {} : { agent_name_hint: "Ask" }),
     ext_agent_host_id: hostId(h),
     ...(previous?.id_token ? { id_token_hint: previous.id_token } : {}),
     ...(previous?.email ? { login_hint: previous.email } : {}),
@@ -113,15 +136,19 @@ export async function begin(h: Home): Promise<Attempt> {
   })
   return {
     url: `${origins().auth}/api/accounts/authorize?${params}`,
+    port,
     callback,
     close: () => server.close(),
     async finish(address) {
       const q = parse(address)
-      if (q.get("state") !== state) throw new Error("that address belongs to another sign-in; open the newest link and try again")
+      if (!q.get("state") && /^(https:\/\/)?[\w.-]*(openai|chatgpt)\.com\//i.test(address.trim()))
+        throw new CallbackError(`that is OpenAI's own page, where the sign-in isn't finished yet; approve there first. The address to paste starts with ${redirect}`)
+      if (!q.get("state")) throw new CallbackError("that address has no sign-in state; copy the full callback URL from the browser's address bar")
+      if (q.get("state") !== state) throw new CallbackError("that callback does not match this login; this login is still active, so use its link above and paste the complete callback URL")
       if (q.get("error") === "access_denied") throw new Error("the sign-in was declined, so ask can't use your ChatGPT plan")
       if (q.get("error")) throw new Error(`the sign-in failed: ${q.get("error_description") ?? q.get("error")}`)
       const code = q.get("code")
-      if (!code) throw new Error("that address has no sign-in code; paste the whole address the browser landed on")
+      if (!code) throw new CallbackError("that address has no sign-in code; paste the whole address the browser landed on")
       const client = previous?.client_id ?? q.get("client_id")
       if (!client || client === "dynamic_agent_client") throw new Error("OpenAI didn't register ask; try signing in again")
       if (previous && q.get("client_id") && q.get("client_id") !== previous.client_id) throw new Error("the sign-in came back for a different registration; try again")
@@ -144,9 +171,12 @@ export async function begin(h: Home): Promise<Attempt> {
   }
 }
 
-/** Reads a callback address, or just its query, into parameters. */
+/**
+ * Reads a callback address, or just its query, into parameters. An address holds no spaces, so
+ * any are dropped: one copied across wrapped lines arrives with them.
+ */
 function parse(address: string): URLSearchParams {
-  const text = address.trim()
+  const text = address.replace(/\s+/g, "").split("#", 1)[0]
   const at = text.indexOf("?")
   return new URLSearchParams(at >= 0 ? text.slice(at + 1) : text)
 }
@@ -155,14 +185,17 @@ function parse(address: string): URLSearchParams {
  * Listens on 127.0.0.1, port 1455 if free, answering /auth/callback with a page to close. The
  * listener never keeps ask running by itself, so an abandoned sign-in can't hold it open.
  */
-function listen(onCallback: (path: string) => void): Promise<Server> {
+function listen(onCallback: (path: string) => boolean): Promise<Server> {
   const server = createServer((req, res) => {
     if (!req.url?.startsWith("/auth/callback")) {
       res.writeHead(404).end()
       return
     }
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end("<p>Signed in. You can close this tab and return to ask.</p>")
-    onCallback(req.url)
+    if (!onCallback(req.url)) {
+      res.writeHead(400).end("This callback does not match the active login. Return to ask and use its login link.")
+      return
+    }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end("<p>Callback received. You can close this tab and return to ask to check the sign-in result.</p>")
   })
   return new Promise<Server>((ok, fail) => {
     server.once("error", () => {

@@ -39,6 +39,15 @@ async function setup(replies: Reply[], catalog: unknown = defaultCatalog) {
 }
 
 describe("cli", () => {
+  test("empty model lists distinguish missing connections from unavailable selections", async () => {
+    const { home, run } = await setup([])
+    writeFileSync(join(home, "config.json"), JSON.stringify({ models: ["fake/missing"] }))
+    assert.match((await run(["models"])).stderr, /None of your selected models are available/)
+    writeFileSync(join(home, "auth.json"), "{}")
+    assert.match((await run(["models"])).stderr, /No providers connected/)
+    writeFileSync(join(home, "cache", "models.json"), JSON.stringify({ fake: { id: "fake", name: "Fake", env: [], models: {} } }))
+    assert.match((await run(["models", "fake"])).stderr, /No supported models found for the requested providers/)
+  })
   test("legacy records and transcripts are readable without conversion or cleanup", async () => {
     const { home, run } = await setup([])
     const folder = join(home, "agent", "sessions", "20260101-abc123")
@@ -77,6 +86,9 @@ describe("cli", () => {
     assert.equal(result.tasks[0].state, "failed")
     assert.match(result.tasks[0].error.message, /symlink/i)
     const folder = join(home, "sessions", result.tasks[0].id)
+    // The finished record is visible just before the worker removes its lock.
+    for (const end = Date.now() + 2000; existsSync(join(folder, "lock")) && Date.now() < end;)
+      await new Promise((done) => setTimeout(done, 10))
     assert.equal(existsSync(join(folder, "lock")), false)
     const record = JSON.parse(readFileSync(join(folder, "session.json"), "utf8"))
     assert.equal(record.turns[0].state, "failed")
@@ -312,8 +324,57 @@ describe("cli", () => {
     const { run, home } = await setup([{ text: "unused" }])
     const r = await run(["settings-typo"])
     assert.equal(r.code, 2)
-    assert.match(r.stderr, /^unknown command "settings-typo" for "ask"/)
+    assert.match(r.stderr, /^error  unknown command "settings-typo"/)
     assert.throws(() => readdirSync(join(home, "sessions")))
+  })
+
+  test("short help is canonical and old help forms remain equivalent aliases", async () => {
+    const { run } = await setup([])
+    const root = await run(["-h"])
+    assert.equal(root.code, 0)
+    assert.match(root.stdout, /ask <command> -h/)
+    assert.doesNotMatch(root.stdout, /ask help|--help/)
+    for (const args of [["help"], ["--help"]]) assert.equal((await run(args)).stdout, root.stdout)
+    const command = await run(["sessions", "-h"])
+    for (const args of [["-h", "sessions"], ["help", "sessions"], ["sessions", "--help"]])
+      assert.equal((await run(args)).stdout, command.stdout)
+    assert.equal((await run(["-h", "requests"])).stdout, (await run(["help", "requests"])).stdout)
+  })
+
+  test("close command and flag typos get suggestions without executing them", async () => {
+    const { run, home, fake } = await setup([])
+    for (const [args, suggestion] of [
+      [["sessiosn"], "Did you mean ask sessions?"],
+      [["sessions", "--limt", "5"], "Did you mean ask sessions --limit?"],
+      [["--hepl"], "Did you mean ask -h?"],
+      [["-h", "reqeusts"], "Did you mean ask -h requests?"],
+    ] as [string[], string][]) {
+      const r = await run(args)
+      assert.equal(r.code, 2)
+      assert.ok(r.stderr.includes(suggestion), r.stderr)
+    }
+    assert.doesNotMatch((await run(["unrelated-gibberish"])).stderr, /Did you mean/)
+    assert.match((await run(["constructor"])).stderr, /unknown command "constructor"/)
+    assert.equal(fake.requests.length, 0)
+    assert.equal(existsSync(join(home, "sessions")), false)
+  })
+
+  test("misplaced flags and topics explain where to use them", async () => {
+    const { run, fake } = await setup([])
+    for (const [args, hint] of [
+      [["--all"], "ask sessions --all"],
+      [["models", "--all"], "ask sessions --all"],
+      [["doctor", "-L"], "ask sessions -L"],
+      [["show", "--version"], "Use ask --version by itself"],
+      [["requests"], "ask -h requests"],
+      [["settings", "help"], "Did you mean ask settings -h?"],
+      [["doctor", "settings"], "Use ask settings as a separate command"],
+    ] as [string[], string][]) {
+      const r = await run(args)
+      assert.equal(r.code, 2)
+      assert.ok(r.stderr.includes(hint), r.stderr)
+    }
+    assert.equal(fake.requests.length, 0)
   })
 
   test("one bad task in a start request starts none of them", async () => {
@@ -336,7 +397,7 @@ describe("cli", () => {
     writeFileSync(join(home, "config.json"), "{}")
     const r = await run(["doctor"])
     assert.equal(r.code, 1)
-    assert.match(r.stdout, /^X Model     no default model\n\s+ask settings$/m)
+    assert.match(r.stdout, /^fail\s+Model\s+no default model\n\s+ask settings$/m)
   })
 
   test("a worktree task works on its own branch and leaves the caller's files alone", async () => {

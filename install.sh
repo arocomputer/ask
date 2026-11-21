@@ -97,6 +97,7 @@ if [ "$os" = linux ]; then
   if grep -qx 'ask.sandbox' "$work/members"; then members="ask ask.sandbox"
   elif grep -qx 'sandybox' "$work/members"; then members="ask sandybox"
   fi
+  if grep -qx 'ask.bwrap' "$work/members"; then members="$members ask.bwrap ask.sandbox.sources.tar.gz"; fi
 fi
 # shellcheck disable=SC2086 # members is a word list on purpose
 tar -xzf "$work/$archive" -C "$work" $members
@@ -115,7 +116,7 @@ fi
 mkdir -p "$dir"
 for m in $members; do
   cp "$work/$m" "$dir/.$m.next"
-  chmod 755 "$dir/.$m.next"
+  case $m in *.tar.gz) chmod 644 "$dir/.$m.next" ;; *) chmod 755 "$dir/.$m.next" ;; esac
   mv -f "$dir/.$m.next" "$dir/$m"
 done
 echo "Installed $dir/ask"

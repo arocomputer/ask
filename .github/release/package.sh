@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build and verify the same four archives in CI and before publication: ask compiled by Bun
-# into one file for each system, with the license; the Linux ones also hold ask.sandbox, the
-# sandbox helper, compiled statically by zig for each architecture into native/build, where the
+# into one file for each system, with the license; Linux bundles also hold ask.sandbox, ask.bwrap
+# and upstream sources/licenses. Helpers compile statically into native/build, where the
 # npm package picks it up too. The version comes from the tag, set in package.json for the
 # build and restored after. Only the host's binaries run, to check them; the others are checked
 # by file type.
@@ -36,6 +36,7 @@ host_os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case $(uname -m) in x86_64 | amd64) host_arch=amd64 ;; aarch64 | arm64) host_arch=arm64 ;; *) host_arch=other ;; esac
 
 mkdir -p native/build
+sh .github/release/bubblewrap.sh native/build
 for cpu in x64 arm64; do
     case $cpu in x64) triple=x86_64-linux-musl ;; arm64) triple=aarch64-linux-musl ;; esac
     zigcc -target "$triple" -static -s -std=c11 -O2 -Wall -Werror -o "native/build/ask.sandbox-$cpu" native/sandbox.c
@@ -54,7 +55,9 @@ for os in linux darwin; do
         members="ask LICENSE"
         if [ "$os" = linux ]; then
             cp "native/build/ask.sandbox-$cpu" "$stage/ask.sandbox"
-            members="ask ask.sandbox LICENSE"
+            cp "native/build/ask.bwrap-$cpu" "$stage/ask.bwrap"
+            cp native/build/ask.sandbox.sources.tar.gz "$stage/"
+            members="ask ask.sandbox ask.bwrap ask.sandbox.sources.tar.gz LICENSE"
         fi
         # shellcheck disable=SC2086 # members is a word list on purpose
         tar -C "$stage" -czf "$archive" $members
@@ -75,11 +78,14 @@ for os in linux darwin; do
         file "$unpack/ask" | grep -Eq "$kind" || fail "$target is not a $os/$arch binary: $(file -b "$unpack/ask")"
         if [ "$os" = linux ]; then
             file "$unpack/ask.sandbox" | grep -Eq "$kind.*statically linked" || fail "$target's ask.sandbox is not a static $os/$arch binary: $(file -b "$unpack/ask.sandbox")"
+            file "$unpack/ask.bwrap" | grep -Eq "$kind.*statically linked" || fail "$target's ask.bwrap is not static $os/$arch"
+            tar -tzf "$unpack/ask.sandbox.sources.tar.gz" | grep -q './bubblewrap.LICENSE' || fail 'missing bundled source/license material'
         fi
         if [ "$os/$arch" = "$host_os/$host_arch" ]; then
             got=$("$unpack/ask" --version)
             [ "$got" = "ask version $version" ] || fail "$target says \"$got\", not ask version $version"
             if [ "$os" = linux ]; then "$unpack/ask.sandbox" --abi >/dev/null || fail "$target's ask.sandbox doesn't run"; fi
+            if [ "$os" = linux ]; then "$unpack/ask.bwrap" --version | grep -qx 'bubblewrap 0.13.1' || fail 'wrong bundled bubblewrap'; fi
         fi
     done
 done

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
+import { once } from "node:events"
 import { existsSync, linkSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -8,6 +9,7 @@ import { fetch, text } from "../../src/agent/fetch.ts"
 import { lite, mwmbl, results, search, wikipedia } from "../../src/agent/search.ts"
 import { git } from "../../src/agent/git.ts"
 import { tools } from "../../src/agent/tools.ts"
+import { open } from "../../src/sandbox/confine.ts"
 
 const all = Object.fromEntries(tools(true).map((t) => [t.name, t]))
 
@@ -21,6 +23,45 @@ function dir(): string {
 }
 
 describe("tools", () => {
+  test("directory/symlink replacement cannot send reads or writes outside the OS grants", { timeout: 20_000 }, async () => {
+    const d = dir(), outside = mkdtempSync(join(tmpdir(), "ask-race-secret-"))
+    mkdirSync(join(d, "target"))
+    writeFileSync(join(d, "target/file"), "inside")
+    writeFileSync(join(outside, "file"), "outside-race-canary")
+    const actor = spawn(process.execPath, ["-e", `
+      const fs = require('node:fs'), path = require('node:path');
+      const [root, outside] = process.argv.slice(1);
+      const target = path.join(root, 'target'), parked = path.join(root, 'parked');
+      const end = Date.now() + 15000;
+      let ready = false;
+      while (Date.now() < end) {
+        fs.renameSync(target, parked); fs.symlinkSync(outside, target);
+        fs.unlinkSync(target); fs.renameSync(parked, target);
+        if (!ready) { console.log('ready'); ready = true; }
+      }
+    `, d, outside], { stdio: ["ignore", "pipe", "pipe"] })
+    const ended = once(actor, "exit")
+    try {
+      await once(actor.stdout!, "data")
+      for (let i = 0; i < 12; i++) {
+        const value = await all.read.run({ path: "target/file" }, { dir: d }).catch((e: Error) => e.message)
+        assert.doesNotMatch(value, /outside-race-canary/)
+        await all.write.run({ path: "target/file", content: "inside change" }, { dir: d }).catch(() => {})
+      }
+      assert.equal(readFileSync(join(outside, "file"), "utf8"), "outside-race-canary")
+    } finally { actor.kill("SIGKILL"); await ended }
+  })
+
+  test("a later file tool discovers newly created repository metadata in the same turn", async () => {
+    const d = dir()
+    const sandbox = await open(d)
+    try {
+      execFileSync("git", ["init", "-q", join(d, "new-repository")])
+      await assert.rejects(all.write.run({ path: "new-repository/.git/config", content: "poison" }, { dir: d, sandbox }), /EACCES|EPERM|EROFS/)
+      assert.doesNotMatch(readFileSync(join(d, "new-repository/.git/config"), "utf8"), /poison/)
+    } finally { await sandbox.close() }
+  })
+
   test("hard-link aliases cannot expose environment secrets through read or grep", async () => {
     const d = dir()
     writeFileSync(join(d, ".env"), "hardlink-secret-canary")

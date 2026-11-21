@@ -16,7 +16,7 @@ bun src/cli.ts doctor                    # run this checkout (node src/cli.ts wo
 .github/release/release.sh vX.Y.Z        # prepare a changelog PR, then dispatch the checked main commit
 ```
 
-`ask help`, `ask help COMMAND` and `ask help requests` are the contract for commands and requests.
+`ask -h`, `ask COMMAND -h` and `ask -h requests` are the contract for commands and requests.
 
 ## Where things live
 

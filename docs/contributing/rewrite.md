@@ -1,7 +1,7 @@
 # TypeScript rewrite: decisions and merge evidence
 
 This replaces the implementation plan. Historical experiments and the Go implementation remain
-in Git history. The current interfaces are `ask help`, `ask help requests` and the user docs.
+in Git history. The current interfaces are `ask -h`, `ask -h requests` and the user docs.
 
 ## Decisions
 

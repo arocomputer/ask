@@ -1,8 +1,12 @@
 # ask docs
 
 ask hands tasks to subagents. Agents send it JSON requests; people use a few commands to set it
-up and look at what the subagents did. `ask help` is the reference for every command, and
-`ask help requests` for every request field.
+up and look at what the subagents did. `ask -h` lists commands, `ask COMMAND -h` explains one,
+and `ask -h requests` documents every request field. `ask -h environment` lists environment settings.
+
+Close command and flag typos get a “Did you mean…?” suggestion. A flag in the wrong place names
+the command it belongs to. Suggestions never execute anything; correct the command and run it
+again. The older `ask help` and `--help` forms remain accepted aliases.
 
 | Page | What it covers |
 | --- | --- |

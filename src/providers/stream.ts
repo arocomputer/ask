@@ -84,7 +84,7 @@ export type Endpoint = { baseURL: string; key: Key; headers?: Record<string, str
 export async function send(endpoint: Endpoint, path: string, auth: (key: string) => Record<string, string>, req: Request, body: object): Promise<globalThis.Response> {
   const headers = async (renew: boolean) => {
     const key = typeof endpoint.key === "string" ? endpoint.key : await endpoint.key(renew)
-    return { ...auth(key), ...identity(req), ...endpoint.headers }
+    return { ...(key ? auth(key) : {}), ...identity(req), ...endpoint.headers }
   }
   const url = `${endpoint.baseURL}${path}`
   try {
@@ -184,9 +184,10 @@ const defaultPolicy: RetryPolicy = { budget: 60_000, slow: 20_000 }
 
 /**
  * Wraps a provider so transient failures (no response, 408, 429, 5xx, 529) are retried with
- * backoff. Retries stop once the total budget is spent, and a failure that itself took longer
- * than `slow` is not retried, so one slow outage can't multiply into minutes. `onRetry` hears
- * each retry before its wait.
+ * backoff, or after the wait the provider asked for. Retries stop once the total budget is
+ * spent (a provider asking for longer than that isn't retried at all), and a failure that
+ * itself took longer than `slow` is not retried, so one slow outage can't multiply into
+ * minutes. `onRetry` hears each retry before its wait.
  */
 export function withRetries(p: Provider, onRetry?: (attempt: number, err: ProviderError) => void, policy = defaultPolicy): Provider {
   return {
@@ -198,7 +199,9 @@ export function withRetries(p: Provider, onRetry?: (attempt: number, err: Provid
           return await p.complete(req)
         } catch (err) {
           if (!(err instanceof ProviderError) || !transient(err) || req.signal?.aborted) throw err
-          const wait = Math.min((err.retryAfter ?? 2 ** (attempt - 1)) * 1000, 30_000)
+          // The provider's own wait is kept whole: retrying sooner only fails again, so one
+          // longer than the budget ends the retries here instead.
+          const wait = err.retryAfter !== undefined ? err.retryAfter * 1000 : Math.min(2 ** (attempt - 1) * 1000, 30_000)
           if (Date.now() - began > policy.slow || Date.now() - start + wait > policy.budget) throw err
           onRetry?.(attempt, err)
           await sleep(wait, req.signal)

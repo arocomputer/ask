@@ -31,7 +31,7 @@ import { activity, steps } from "../agent/steps.ts"
 import { present, slug, top, worktree } from "../base/git.ts"
 import { launch } from "./worker.ts"
 
-/** The protocol as `ask help requests` prints it. */
+/** The protocol as `ask -h requests` prints it. */
 export const guide = `Agents use ask by sending one JSON request on stdin and reading one JSON response on stdout.
 Subagents work in the background; a request returns as soon as they start, or once one has
 finished if it says how long to wait.

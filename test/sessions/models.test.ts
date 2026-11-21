@@ -49,3 +49,24 @@ test("an incomplete helper response is not presented as an answer", async () => 
     await fake.close()
   }
 })
+
+test("a custom OpenAI-compatible endpoint resolves from its saved URL, model IDs and optional key", async () => {
+  const fake = await serve("chat", [{ text: "custom works" }])
+  try {
+    const h = home(mkdtempSync(join(tmpdir(), "ask-custom-model-")))
+    mkdirSync(join(h.root, "cache"))
+    writeFileSync(h.catalog, "{}")
+    writeFileSync(h.auth, JSON.stringify({ "custom-local": {
+      base_url: fake.url,
+      custom: { name: "Local", models: ["qwen3"] },
+    } }))
+    const target = await resolve(h, "custom-local/qwen3")
+    assert.equal(target.model.name, "qwen3")
+    assert.equal(target.model.baseURL, fake.url)
+    assert.equal(target.key, "")
+    const bound = await readModels(h, target)
+    assert.equal((await bound!.small("instructions", "question", 100)).text, "custom works")
+    assert.equal(fake.requests[0].model, "qwen3")
+    assert.equal(fake.headers[0].authorization, undefined)
+  } finally { await fake.close() }
+})

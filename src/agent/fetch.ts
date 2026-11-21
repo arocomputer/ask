@@ -1,6 +1,6 @@
 // The fetch tool: reads a web page for the model, in ask's own process, so read-only tasks can
 // look things up without a shell; `download` is how search reads its results page too. Only http and https to public addresses: each host, the
-// first and every redirect, is resolved and checked like the sandbox's proxy does, and the
+// first and every redirect, is resolved and checked, and the
 // connection goes to the address that was checked. HTML comes back as text; the download and
 // the text are both bounded.
 
@@ -139,8 +139,8 @@ export const fetch: Tool = {
   },
 }
 
-/** The page answered: the model's reply, or, if it fails, the start of the raw page, said so. */
-async function answer(ask: Ask, question: string, all: string, signal?: AbortSignal): Promise<string> {
+/** Question-focused extraction; failures suggest raw fetch, while cancellation always propagates. */
+export async function answer(ask: Ask, question: string, all: string, signal?: AbortSignal): Promise<string> {
   try {
     return (await ask(askInstructions, askPrompt(`Question: ${question}`, all), 2000, signal)).text.trim() || "(no answer)"
   } catch (err) {

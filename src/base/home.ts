@@ -42,10 +42,10 @@ export function checkConfig(h: Home): void {
 export type Settings = { command?: string; args?: string[]; env?: Record<string, string> }
 
 /**
- * auth.json: a pasted key per provider, and optionally an endpoint replacing the catalog's; and
- * under "chatgpt", the ChatGPT sign-in (see chatgpt.ts).
+ * auth.json: a pasted key per provider, optionally an endpoint replacing the catalog's, custom
+ * OpenAI-compatible providers with their model IDs, and under "chatgpt" the ChatGPT sign-in.
  */
-export type Auth = Record<string, { api_key?: string; base_url?: string; [field: string]: unknown }>
+export type Auth = Record<string, { api_key?: string; base_url?: string; custom?: { name: string; models: string[] }; [field: string]: unknown }>
 
 export function readJSON<T>(path: string, fallback: T): T {
   let text: string
