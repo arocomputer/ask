@@ -36,36 +36,62 @@ One isolated run on `opencode-go/glm-5.3` passed all six checks in 22.9 seconds 
 write's outcome was unknown and should be checked. This single synthetic run is not a comparison
 against uncompacted context or evidence of reliability across models and tasks.
 
-`bench/callers.ts` measures the other side: Claude Code, Codex and OpenCode given work that suits
-a subagent, graded on the outcome and on the route they took (ask, their own built-in subagents,
-both, or neither), with the caller's own input tokens, cost, tool calls and time. Jobs never name
-ask: three ask for a subagent, one asks for nothing. Each arm changes one thing:
+`bench/callers.ts` measures the other side: Claude Code, Codex and OpenCode given four fixture
+jobs, three that request delegation and one that doesn't. None names ask. It grades the
+outcome separately from the route: direct ask, via the hook, native subagents, mixed, or self.
 
 | Arm | What the agent gets |
 | --- | --- |
 | `none` | ask on `PATH`, nothing else: the control |
 | `skill` | ask's skill as a project skill, so only its description is in context until loaded |
 | `deny` | the skill, with built-in subagents turned off |
-| `hook` | no skill: built-in subagent calls are handed to ask by `bench/hook.ts`, a prototype |
+| `hook` | no skill: a prototype in `bench/hook.ts` redirects native calls for Claude Code and OpenCode |
 
 The agents run on your own sign-ins, with three changes: an ask skill you installed is hidden
 (Claude Code's `skillOverrides`, Codex's `skills.config`, OpenCode's project skill and
 permissions); your Claude Code user settings and Codex config aren't loaded
 (`--setting-sources project,local`, `--ignore-user-config`); and built-in subagents are on unless
-the arm turns them off, even where your own config denies them, as an ask user's often does. Claude Code gets the arm's skill and hook as
-a plugin (`--plugin-dir`), the way an ask plugin would ship. Their sessions aren't kept. ask
-itself runs on a scratch home with your catalog and keys, on `opencode-go/glm-5.3`. The callers are Claude Code on Sonnet, Codex on its default model,
-and OpenCode on `opencode-go/deepseek-v4.1-flash`.
+the arm turns them off. Claude Code gets the arm's skill or hook as a temporary plugin
+(`--plugin-dir`). Claude Code and Codex don't save their sessions; OpenCode archives its sessions.
+Ask uses a scratch home, your cached catalog and your OpenCode Go key (`auth.json` or
+`OPENCODE_API_KEY`). The callers are Claude Code on Sonnet, Codex on its default model, and
+OpenCode on `opencode-go/deepseek-v4.1-flash`; ask defaults to `opencode-go/glm-5.3`.
 
 ```sh
-bun bench/callers.ts --ask . --label mine --reps 1 --jobs parallel-questions   # 12 runs, a smoke test
-bun bench/callers.ts --ask . --label mine [--arms ...] [--drivers ...] [--reps N] [--skill FILE]
-bun bench/callers.ts --compare mine
+bun bench/callers.ts --ask . --label smoke --reps 1 --jobs parallel-questions   # 11 runs
+bun bench/callers.ts --ask . --label must
+bun bench/callers.ts --ask . --label soft --arms skill,deny --skill bench/soft.md
+bun bench/callers.ts --compare must soft
 ```
 
-Checked: each agent lists no ask skill in `none` and the arm's skill otherwise; the hook hands
-Claude Code's and OpenCode's subagent calls to ask. Codex's hook hasn't fired yet, as Codex
-rarely starts subagents in `exec`. Read the first run's answers before trusting its routes.
+Use a fresh label for each batch. `--drivers`, `--jobs` and `--arms` select subsets; `--lanes`
+defaults to one to limit provider contention. The benchmark spends quota and runs real agents
+with access to local tools; use it on the scratch fixtures, not as a sandbox for hostile work.
+Answers and raw caller events stay in `bench/.runs/` and should not be shared without checking
+their contents. The report separates caller errors from grading failures. Its usage columns
+are caller-reported totals, including cached input where reported. They aren't peak context
+size, end-to-end tokens, or a bill. Missing cost data is shown as `-`.
+
+### Caller pilot, November 2026
+
+Two repeats of the three explicit-delegation jobs. These are routing counts from the pilot,
+not predictions for other models or more difficult tasks:
+
+| Caller | Native/control | Current skill | Soft skill | Hook only |
+| --- | --- | --- | --- | --- |
+| Claude Code | Native 6/6 | Ask 6/6 | Native 6/6 | Redirected to ask 6/6 |
+| Codex `exec` | Self 6/6 | Ask 6/6 | Ask 6/6 | No native call to intercept |
+
+Claude Code and Codex passed all four fixture jobs in those runs, including the
+non-delegation job. OpenCode successfully redirected native calls in the pilot, but the
+initial run hit a quota error when the caller was not pinned to Go. The Go rerun also used
+a different caller model, so don't combine those results. Shared-provider rate limiting
+caused retries and extra calls in several arms; don't use that run to rank latency or cost.
+
+Keep the skill as the portable default: the stronger description changed Claude Code's
+routing, and a hook cannot help when the caller never tries a native subagent. The Claude
+Code and OpenCode hooks are benchmark prototypes only. An opt-in hook or a small MCP
+interface could reduce shell round trips; MCP and Pi weren't benchmarked.
 
 ## Results, November 2026
 
