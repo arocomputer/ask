@@ -48,10 +48,11 @@ ask: three ask for a subagent, one asks for nothing. Each arm changes one thing:
 | `deny` | the skill, with built-in subagents turned off |
 | `hook` | the skill, with built-in subagent calls handed to ask by `bench/hook.ts`, a prototype |
 
-The agents run as you set them up, on your own sign-ins and instructions, with two changes: an
-ask skill you installed is hidden (Claude Code's `skillOverrides`, Codex's `skills.config`,
-OpenCode's project skill and permissions), and built-in subagents are on unless the arm turns
-them off, even if your OpenCode config denies them. Claude Code gets the arm's skill and hook as
+The agents run on your own sign-ins, with three changes: an ask skill you installed is hidden
+(Claude Code's `skillOverrides`, Codex's `skills.config`, OpenCode's project skill and
+permissions); your Claude Code user settings and Codex config aren't loaded
+(`--setting-sources project,local`, `--ignore-user-config`); and built-in subagents are on unless
+the arm turns them off, even where your own config denies them, as an ask user's often does. Claude Code gets the arm's skill and hook as
 a plugin (`--plugin-dir`), the way an ask plugin would ship. Their sessions aren't kept. ask
 itself runs on a scratch home with your catalog and keys, on `opencode-go/glm-5.3`.
 

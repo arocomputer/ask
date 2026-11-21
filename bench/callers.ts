@@ -19,7 +19,7 @@
 import { execFileSync, spawn } from "node:child_process"
 import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { tasks as subagentTasks } from "./tasks.ts"
 
@@ -38,7 +38,7 @@ const questions =
   "(1) What does page() in pages.py return for page 0? (2) Which function in parse.py could raise 'month must be in 1..12', and for what input? (3) Does total.py accept a --json flag?"
 const gradeQuestions = (answer: string) => {
   // With the planted bug, page 0 is the first page: items[0:size].
-  const ok = [/\bfirst\b|items\[0\s*:|\[0,\s*1,\s*2|0\s*\*\s*size/i.test(answer), /parse/.test(answer) && /(swap|day|month|31|13)/i.test(answer), /\b(no|doesn't|does not|not)\b[\s\S]{0,200}json|json[\s\S]{0,60}\b(no|not|isn't|doesn't)\b/i.test(answer)]
+  const ok = [/\bfirst\b|items\[0\s*:|\[0,\s*1,\s*2|0\s*\*\s*size/i.test(answer), /parse/.test(answer) && /(swap|day|month|31|13)/i.test(answer), /\b(no|doesn't|does not|not)\b[\s\S]{0,200}json|json[\s\S]{0,60}\b(no|not|isn't|doesn't)\b|(^|\n)\W*3\W[^\n]{0,30}\bno\b/i.test(answer)]
   return { pass: ok.every(Boolean), notes: `${ok.filter(Boolean).length} of 3` }
 }
 
@@ -124,7 +124,7 @@ function command(name: string, arm: Arm, prompt: string, dir: string, plugin: st
   const hookCommand = `${JSON.stringify(process.execPath)} ${JSON.stringify(hook)}`
   if (name === "claude") {
     const tools = "Bash,Read,Grep,Glob,Edit,Write,Agent,Skill"
-    return ["claude", ["-p", "--model", "sonnet", "--output-format", "stream-json", "--verbose", "--no-session-persistence", "--tools", tools, "--allowedTools", tools, ...(arm === "deny" ? ["--disallowedTools", "Agent"] : []), "--permission-mode", "dontAsk", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--settings", JSON.stringify({ skillOverrides: { ask: "off" } }), "--plugin-dir", plugin, prompt]]
+    return ["claude", ["-p", "--model", "sonnet", "--output-format", "stream-json", "--verbose", "--no-session-persistence", "--tools", tools, "--allowedTools", tools, ...(arm === "deny" ? ["--disallowedTools", "Agent"] : []), "--permission-mode", "dontAsk", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "project,local", "--settings", JSON.stringify({ skillOverrides: { ask: "off" } }), "--plugin-dir", plugin, "--", prompt]]
   }
   if (name === "codex") {
     const off = `skills.config=[${installed.map((p) => `{path=${JSON.stringify(p)}, enabled=false}`).join(", ")}]`
@@ -177,12 +177,14 @@ function observe(name: string, e: Record<string, any>, t: Trace) {
   }
 }
 
-function drive(name: string, arm: Arm, prompt: string, dir: string, plugin: string, env: NodeJS.ProcessEnv): Promise<Trace> {
+/** Runs a caller to its end, keeping its raw events in `trace` to read when a route surprises. */
+function drive(name: string, arm: Arm, prompt: string, dir: string, plugin: string, env: NodeJS.ProcessEnv, trace: string): Promise<Trace> {
   const [cmd, args] = command(name, arm, prompt, dir, plugin)
   const t: Trace = { answer: "", seconds: 0, native: 0, skill: false, calls: 0, tokens: 0, cost: 0 }
   const began = Date.now()
   return new Promise((done) => {
-    const child = spawn(cmd, args, { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] })
+    // OpenCode takes its directory from PWD, not the process's working directory.
+    const child = spawn(cmd, args, { cwd: dir, env: { ...env, PWD: dir }, stdio: ["ignore", "pipe", "pipe"] })
     let buffer = ""
     const take = (line: string) => {
       try {
@@ -190,6 +192,7 @@ function drive(name: string, arm: Arm, prompt: string, dir: string, plugin: stri
       } catch {}
     }
     child.stdout.setEncoding("utf8").on("data", (d: string) => {
+      appendFileSync(trace, d)
       buffer += d
       for (let nl = buffer.indexOf("\n"); nl >= 0; nl = buffer.indexOf("\n")) take(buffer.slice(0, nl)), (buffer = buffer.slice(nl + 1))
     })
@@ -254,9 +257,10 @@ if (v.compare) {
   }
 } else {
   if (!v.ask || !v.label) throw new Error("usage: bun bench/callers.ts --ask PATH --label NAME [--arms ...] [--drivers ...] [--jobs ...] [--reps N] [--skill FILE]")
+  const ask = resolve(v.ask)
   const drivers = (v.drivers ?? "claude,codex,opencode").split(",")
   const arms = (v.arms ?? "none,skill,deny,hook").split(",") as Arm[]
-  const skill = v.skill ? readFileSync(v.skill, "utf8") : ((await import(join(v.ask, "src", "harnesses", "skill.ts"))).text as string)
+  const skill = v.skill ? readFileSync(v.skill, "utf8") : ((await import(join(ask, "src", "harnesses", "skill.ts"))).text as string)
   const chosen = v.jobs ? jobs.filter((j) => v.jobs!.split(",").includes(j.id)) : jobs
   const file = join(runs, `callers-${v.label}.jsonl`)
   const all = arms.flatMap((arm) => drivers.flatMap((d) => chosen.flatMap((j) => Array.from({ length: Number(v.reps ?? 2) }, (_, rep) => ({ arm, d, j, rep })))))
@@ -266,9 +270,11 @@ if (v.compare) {
       for (let i = lane; i < all.length; i += 3) {
         const { arm, d, j, rep } = all[i]
         const { dir, home, bin, plugin } = prepare(j, arm, skill)
-        writeFileSync(join(bin, "ask"), `#!/bin/sh\nexec ${process.execPath} ${join(v.ask!, "src", "cli.ts")} "$@"\n`)
+        writeFileSync(join(bin, "ask"), `#!/bin/sh\nexec ${process.execPath} ${join(ask, "src", "cli.ts")} "$@"\n`)
         chmodSync(join(bin, "ask"), 0o755)
-        const t = await drive(d, arm, j.prompt, dir, plugin, environment(bin, home))
+        const traces = join(runs, `callers-${v.label}`)
+        mkdirSync(traces, { recursive: true })
+        const t = await drive(d, arm, j.prompt, dir, plugin, environment(bin, home), join(traces, `${arm}-${d}-${j.id}-${rep}.jsonl`))
         const u = usage(home)
         // In the hook arm, "both" is the native calls ask took over.
         const route = u.sessions ? (t.native ? "both" : "ask") : t.native ? "native" : "self"
