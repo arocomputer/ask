@@ -48,10 +48,12 @@ ask: three ask for a subagent, one asks for nothing. Each arm changes one thing:
 | `deny` | the skill, with built-in subagents turned off |
 | `hook` | the skill, with built-in subagent calls handed to ask by `bench/hook.ts`, a prototype |
 
-The agents run with `HOME` set to a bench profile (`~/.ask-bench`, or `--profile`), so your own
-skills, hooks and instructions never take part; a profile holding skills is refused. Sign each
-agent in there once, as the first run prints. ask itself runs on a scratch home with your
-catalog and keys, on `opencode-go/glm-5.3`.
+The agents run as you set them up, on your own sign-ins and instructions, with two changes: an
+ask skill you installed is hidden (Claude Code's `skillOverrides`, Codex's `skills.config`,
+OpenCode's project skill and permissions), and built-in subagents are on unless the arm turns
+them off, even if your OpenCode config denies them. Claude Code gets the arm's skill and hook as
+a plugin (`--plugin-dir`), the way an ask plugin would ship. Their sessions aren't kept. ask
+itself runs on a scratch home with your catalog and keys, on `opencode-go/glm-5.3`.
 
 ```sh
 bun bench/callers.ts --ask . --label mine --reps 1 --jobs parallel-questions   # 12 runs, a smoke test
@@ -59,9 +61,9 @@ bun bench/callers.ts --ask . --label mine [--arms ...] [--drivers ...] [--reps N
 bun bench/callers.ts --compare mine
 ```
 
-Not yet checked on a real run: Codex taking `hooks.PreToolUse` from `-c`, and its project
-`.agents/skills`; OpenCode running the legacy `tool.execute.before` plugin shape, naming its
-subagent tool `subagent` or `task`, and denying it with the `subagent` permission. Read the
+Checked: each agent lists no ask skill in `none` and the arm's skill otherwise. Not yet checked
+on a real run: Codex taking `hooks.PreToolUse` from `-c`; OpenCode running the legacy
+`tool.execute.before` plugin shape and naming its subagent tool `subagent` or `task`. Read the
 first run's answers before trusting its routes.
 
 ## Results, November 2026

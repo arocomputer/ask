@@ -7,12 +7,13 @@
 //   deny    the skill, with the agent's built-in subagents turned off
 //   hook    the skill, with built-in subagent calls handed to ask (bench/hook.ts)
 //
-// The agents run with HOME set to a bench profile they are signed in to, so the user's own
-// skills, hooks and instructions take no part. Jobs never name ask: two ask for subagents, one
-// asks for nothing. It spends real quota.
+// The agents run as the user set them up, signed in and with their own instructions, except
+// that any ask skill the user installed is hidden, so only the arm decides what they know about
+// ask. Their sessions aren't kept. Jobs never name ask: three ask for a subagent, one asks for
+// nothing. It spends real quota.
 //
 //   bun bench/callers.ts --ask PATH --label NAME [--arms none,skill,deny,hook]
-//       [--drivers claude,codex,opencode] [--jobs ID,...] [--reps N] [--skill FILE] [--profile DIR]
+//       [--drivers claude,codex,opencode] [--jobs ID,...] [--reps N] [--skill FILE]
 //   bun bench/callers.ts --compare NAME...
 
 import { execFileSync, spawn } from "node:child_process"
@@ -70,53 +71,67 @@ function git(dir: string, ...args: string[]) {
 }
 
 /**
- * A scratch repository for one run, with the arm's agent configuration inside it (kept out of
- * git status), and a scratch ask home with the user's catalog and keys.
+ * A scratch repository for one run, with the arm's agent configuration beside it or inside it
+ * (kept out of git status), and a scratch ask home with the user's catalog and keys. Claude Code
+ * gets the arm's skill and hook as a plugin, the way an ask plugin would ship; Codex reads the
+ * skill from .agents/skills; OpenCode from .opencode, whose skill replaces a global one of the
+ * same name.
  */
-function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; bin: string } {
+function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; bin: string; plugin: string } {
   const root = mkdtempSync(join(tmpdir(), `callers-${j.id}-`))
   const dir = join(root, "work")
   const home = join(root, "home")
   const bin = join(root, "bin")
-  for (const d of [dir, join(home, "cache"), bin]) mkdirSync(d, { recursive: true })
+  const plugin = join(root, "plugin")
+  for (const d of [dir, join(home, "cache"), bin, plugin]) mkdirSync(d, { recursive: true })
   for (const [name, text] of Object.entries(j.files)) writeFileSync(join(dir, name), text)
   git(dir, "init", "-q")
   git(dir, "add", ".")
   git(dir, "commit", "-qm", "start")
   for (const [name, text] of Object.entries(j.after ?? {})) writeFileSync(join(dir, name), text)
-  writeFileSync(join(dir, ".git", "info", "exclude"), ".claude/\n.agents/\n.opencode/\n")
-  const put = (path: string, text: string) => (mkdirSync(join(dir, path, ".."), { recursive: true }), writeFileSync(join(dir, path), text))
+  writeFileSync(join(dir, ".git", "info", "exclude"), ".agents/\n.opencode/\n")
+  const put = (path: string, text: string) => (mkdirSync(join(path, ".."), { recursive: true }), writeFileSync(path, text))
+  put(join(plugin, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "ask" }))
   if (arm !== "none") {
-    // Claude Code reads .claude/skills; Codex and OpenCode read .agents/skills.
-    put(".claude/skills/ask/SKILL.md", skill)
-    put(".agents/skills/ask/SKILL.md", skill)
+    put(join(plugin, "skills", "ask", "SKILL.md"), skill)
+    put(join(dir, ".agents", "skills", "ask", "SKILL.md"), skill)
+    put(join(dir, ".opencode", "skills", "ask", "SKILL.md"), skill)
   }
-  if (arm === "deny") put(".opencode/opencode.json", JSON.stringify({ permissions: [{ action: "subagent", resource: "*", effect: "deny" }] }))
-  if (arm === "hook")
-    put(".opencode/plugins/ask.js", `import { route } from ${JSON.stringify(hook)}\nexport default { async server() { return { "tool.execute.before": async (input, output) => { if (/^(subagent|task)$/.test(input.tool)) throw new Error(await route(output.args ?? {})) } } } }\n`)
+  // Project rules come after the user's, so they win: built-in subagents are on unless the arm
+  // denies them, even where the user's own config turns them off.
+  const rules = [{ action: "subagent", resource: "*", effect: arm === "deny" ? "deny" : "allow" }, ...(arm === "none" ? [{ action: "skill", resource: "ask", effect: "deny" }] : [])]
+  put(join(dir, ".opencode", "opencode.json"), JSON.stringify({ permissions: rules }))
+  if (arm === "hook") {
+    const command = `${JSON.stringify(process.execPath)} ${JSON.stringify(hook)}`
+    put(join(plugin, "hooks", "hooks.json"), JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Agent|Task", hooks: [{ type: "command", command, timeout: 600 }] }] } }))
+    put(join(dir, ".opencode", "plugins", "ask.js"), `import { route } from ${JSON.stringify(hook)}\nexport default { async server() { return { "tool.execute.before": async (input, output) => { if (/^(subagent|task)$/.test(input.tool)) throw new Error(await route(output.args ?? {})) } } } }\n`)
+  }
   const real = process.env.ASK_HOME || join(homedir(), ".ask")
   cpSync(join(real, "cache", "models.json"), join(home, "cache", "models.json"))
   cpSync(join(real, "auth.json"), join(home, "auth.json"))
   writeFileSync(join(home, "config.json"), JSON.stringify({ model: "opencode-go/glm-5.3" }))
-  return { dir, home, bin }
+  return { dir, home, bin, plugin }
 }
 
 /** What one caller run did: its answer, and how it got there. */
 type Trace = { answer: string; seconds: number; native: number; skill: boolean; calls: number; tokens: number; cost: number }
 
+/** The ask skills the user installed for Codex, which a run turns off by path. */
+const installed = [".codex/skills/ask", ".agents/skills/ask", ".claude/skills/ask"].map((d) => join(homedir(), d, "SKILL.md")).filter((p) => existsSync(p))
+
 /** The command line for a driver in an arm. */
-function command(name: string, arm: Arm, prompt: string, dir: string): [string, string[]] {
+function command(name: string, arm: Arm, prompt: string, dir: string, plugin: string): [string, string[]] {
   const hookCommand = `${JSON.stringify(process.execPath)} ${JSON.stringify(hook)}`
   if (name === "claude") {
     const tools = "Bash,Read,Grep,Glob,Edit,Write,Agent,Skill"
-    const settings = arm === "hook" ? { hooks: { PreToolUse: [{ matcher: "Agent|Task", hooks: [{ type: "command", command: hookCommand, timeout: 600 }] }] } } : { disableAllHooks: true }
-    return ["claude", ["-p", "--model", "sonnet", "--output-format", "stream-json", "--verbose", "--tools", tools, "--allowedTools", tools, ...(arm === "deny" ? ["--disallowedTools", "Agent"] : []), "--permission-mode", "dontAsk", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--settings", JSON.stringify(settings), prompt]]
+    return ["claude", ["-p", "--model", "sonnet", "--output-format", "stream-json", "--verbose", "--no-session-persistence", "--tools", tools, "--allowedTools", tools, ...(arm === "deny" ? ["--disallowedTools", "Agent"] : []), "--permission-mode", "dontAsk", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--settings", JSON.stringify({ skillOverrides: { ask: "off" } }), "--plugin-dir", plugin, prompt]]
   }
   if (name === "codex") {
+    const off = `skills.config=[${installed.map((p) => `{path=${JSON.stringify(p)}, enabled=false}`).join(", ")}]`
     const extra = arm === "deny" ? ["-c", "agents.enabled=false"] : arm === "hook" ? ["--dangerously-bypass-hook-trust", "-c", `hooks.PreToolUse=[{matcher="^spawn_agent$", hooks=[{type="command", command=${JSON.stringify(hookCommand)}, timeout=600}]}]`] : []
-    return ["codex", ["exec", "--json", "--skip-git-repo-check", "--ignore-user-config", "-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "-c", 'approval_policy="never"', ...extra, "-C", dir, prompt]]
+    return ["codex", ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "-c", 'approval_policy="never"', "-c", off, ...extra, "-C", dir, prompt]]
   }
-  if (name === "opencode") return ["opencode", ["run", "--format", "json", "--standalone", "--auto", "--title", "ask-bench", prompt]]
+  if (name === "opencode") return ["opencode", ["run", "--format", "json", "--standalone", "--auto", "--archived", "--title", "callers benchmark", prompt]]
   throw new Error(`no driver ${name}`)
 }
 
@@ -162,8 +177,8 @@ function observe(name: string, e: Record<string, any>, t: Trace) {
   }
 }
 
-function drive(name: string, arm: Arm, prompt: string, dir: string, env: NodeJS.ProcessEnv): Promise<Trace> {
-  const [cmd, args] = command(name, arm, prompt, dir)
+function drive(name: string, arm: Arm, prompt: string, dir: string, plugin: string, env: NodeJS.ProcessEnv): Promise<Trace> {
+  const [cmd, args] = command(name, arm, prompt, dir, plugin)
   const t: Trace = { answer: "", seconds: 0, native: 0, skill: false, calls: 0, tokens: 0, cost: 0 }
   const began = Date.now()
   return new Promise((done) => {
@@ -205,26 +220,21 @@ function usage(home: string) {
 }
 
 /**
- * The environment of a caller: the profile as HOME, without the variables that would point it
- * back at the user's own configuration or mark it as part of a running agent session.
+ * The environment of a caller: the user's, with the scratch ask first on PATH, and without the
+ * markers that would make it take itself for part of the agent session running the benchmark.
+ * Inside OpenCode that is every OPENCODE_ variable: with them, \`opencode run\` ignores the
+ * scratch repository's configuration.
  */
-function environment(profile: string, bin: string, home: string): NodeJS.ProcessEnv {
+const markers = /^(CLAUDECODE|CLAUDE_CODE_(SESSION_ID|CHILD_SESSION|ENTRYPOINT|EXECPATH|SESSION_ATTENDED)|CLAUDE_PID|CODEX_(THREAD_ID|SESSION_ID|TOOL_CALL_ID|SANDBOX\w*)|OPENCODE\w*|ASK_\w+)$/
+function environment(bin: string, home: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
-  for (const [k, v] of Object.entries(process.env)) if (!/^(XDG_|CLAUDE|CODEX_|OPENCODE_|ASK_)/.test(k)) env[k] = v
-  return { ...env, HOME: profile, PATH: `${bin}:${process.env.PATH}`, ASK_HOME: home, NO_COLOR: "1" }
-}
-
-/** Refuses a profile that would let a skill in by the back door, and says how to make one. */
-function checkProfile(profile: string, drivers: string[]) {
-  if (!existsSync(profile))
-    throw new Error(`no bench profile at ${profile}. Make one and sign each agent in, once:\n  mkdir -p ${profile}\n` + drivers.map((d) => `  HOME=${profile} ${d === "claude" ? "claude   # then /login" : d === "codex" ? "codex login" : "opencode # then connect a provider and choose a default model"}`).join("\n"))
-  for (const d of [".claude/skills", ".codex/skills", ".agents/skills", ".config/opencode/skills"])
-    if (existsSync(join(profile, d)) && readdirSync(join(profile, d)).length) throw new Error(`${join(profile, d)} holds skills; empty it so only the arm decides what the agent knows`)
+  for (const [k, v] of Object.entries(process.env)) if (!markers.test(k)) env[k] = v
+  return { ...env, PATH: `${bin}:${process.env.PATH}`, ASK_HOME: home, NO_COLOR: "1" }
 }
 
 const { values: v, positionals } = parseArgs({
   allowPositionals: true,
-  options: { ask: { type: "string" }, skill: { type: "string" }, label: { type: "string" }, arms: { type: "string" }, drivers: { type: "string" }, jobs: { type: "string" }, reps: { type: "string" }, profile: { type: "string" }, compare: { type: "boolean" } },
+  options: { ask: { type: "string" }, skill: { type: "string" }, label: { type: "string" }, arms: { type: "string" }, drivers: { type: "string" }, jobs: { type: "string" }, reps: { type: "string" }, compare: { type: "boolean" } },
 })
 mkdirSync(runs, { recursive: true })
 if (v.compare) {
@@ -243,11 +253,9 @@ if (v.compare) {
       }
   }
 } else {
-  if (!v.ask || !v.label) throw new Error("usage: bun bench/callers.ts --ask PATH --label NAME [--arms ...] [--drivers ...] [--jobs ...] [--reps N] [--skill FILE] [--profile DIR]")
+  if (!v.ask || !v.label) throw new Error("usage: bun bench/callers.ts --ask PATH --label NAME [--arms ...] [--drivers ...] [--jobs ...] [--reps N] [--skill FILE]")
   const drivers = (v.drivers ?? "claude,codex,opencode").split(",")
   const arms = (v.arms ?? "none,skill,deny,hook").split(",") as Arm[]
-  const profile = v.profile ?? join(homedir(), ".ask-bench")
-  checkProfile(profile, drivers)
   const skill = v.skill ? readFileSync(v.skill, "utf8") : ((await import(join(v.ask, "src", "harnesses", "skill.ts"))).text as string)
   const chosen = v.jobs ? jobs.filter((j) => v.jobs!.split(",").includes(j.id)) : jobs
   const file = join(runs, `callers-${v.label}.jsonl`)
@@ -257,10 +265,10 @@ if (v.compare) {
     [0, 1, 2].map(async (lane) => {
       for (let i = lane; i < all.length; i += 3) {
         const { arm, d, j, rep } = all[i]
-        const { dir, home, bin } = prepare(j, arm, skill)
+        const { dir, home, bin, plugin } = prepare(j, arm, skill)
         writeFileSync(join(bin, "ask"), `#!/bin/sh\nexec ${process.execPath} ${join(v.ask!, "src", "cli.ts")} "$@"\n`)
         chmodSync(join(bin, "ask"), 0o755)
-        const t = await drive(d, arm, j.prompt, dir, environment(profile, bin, home))
+        const t = await drive(d, arm, j.prompt, dir, plugin, environment(bin, home))
         const u = usage(home)
         // In the hook arm, "both" is the native calls ask took over.
         const route = u.sessions ? (t.native ? "both" : "ask") : t.native ? "native" : "self"
