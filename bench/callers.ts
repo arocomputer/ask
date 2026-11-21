@@ -132,7 +132,8 @@ function command(name: string, arm: Arm, prompt: string, dir: string, plugin: st
     const extra = arm === "deny" ? ["-c", "agents.enabled=false"] : arm === "hook" ? ["--dangerously-bypass-hook-trust", "-c", `hooks.PreToolUse=[{matcher="^spawn_agent$", hooks=[{type="command", command=${JSON.stringify(hookCommand)}, timeout=600}]}]`] : []
     return ["codex", ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "-c", 'approval_policy="never"', "-c", off, ...extra, "-C", dir, prompt]]
   }
-  if (name === "opencode") return ["opencode", ["run", "--format", "json", "--standalone", "--auto", "--archived", "--title", "callers benchmark", prompt]]
+  // Named, as a standalone run left to choose billed pay-as-you-go credits instead of OpenCode Go.
+  if (name === "opencode") return ["opencode", ["run", "--format", "json", "--standalone", "--auto", "--archived", "-m", "opencode-go/deepseek-v4.1-flash", "--title", "callers benchmark", prompt]]
   throw new Error(`no driver ${name}`)
 }
 

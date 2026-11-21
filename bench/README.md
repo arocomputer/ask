@@ -31,7 +31,8 @@ number: a grader can be wrong too.
 an overflow and checks the continuation for the objective, constraint, decision and reason,
 next file, blocker and interrupted action. It prints the answer, usage and elapsed time; inspect
 the answer as well as the simple checks. This spends quota and is not run by `npm test`.
-One isolated run on `opencode-go/glm-5.3` passed all six checks in 22.9 seconds (1,969 input,
+One isolated run on `opencode-go/glm-5.3`. The callers are Claude Code on Sonnet, Codex on its default model,
+and OpenCode on `opencode-go/deepseek-v4.1-flash`.passed all six checks in 22.9 seconds (1,969 input,
 2,049 output tokens, including 20 cached input). The answer also stated that the interrupted
 write's outcome was unknown and should be checked. This single synthetic run is not a comparison
 against uncompacted context or evidence of reliability across models and tasks.
@@ -54,7 +55,8 @@ permissions); your Claude Code user settings and Codex config aren't loaded
 (`--setting-sources project,local`, `--ignore-user-config`); and built-in subagents are on unless
 the arm turns them off, even where your own config denies them, as an ask user's often does. Claude Code gets the arm's skill and hook as
 a plugin (`--plugin-dir`), the way an ask plugin would ship. Their sessions aren't kept. ask
-itself runs on a scratch home with your catalog and keys, on `opencode-go/glm-5.3`.
+itself runs on a scratch home with your catalog and keys, on `opencode-go/glm-5.3`. The callers are Claude Code on Sonnet, Codex on its default model,
+and OpenCode on `opencode-go/deepseek-v4.1-flash`.
 
 ```sh
 bun bench/callers.ts --ask . --label mine --reps 1 --jobs parallel-questions   # 12 runs, a smoke test
