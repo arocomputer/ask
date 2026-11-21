@@ -13,7 +13,7 @@
 // nothing. It spends real quota.
 //
 //   bun bench/callers.ts --ask PATH --label NAME [--arms none,skill,deny,hook]
-//       [--drivers claude,codex,opencode] [--jobs ID,...] [--reps N] [--skill FILE]
+//       [--drivers claude,codex,opencode] [--jobs ID,...] [--reps N] [--lanes N] [--skill FILE]
 //   bun bench/callers.ts --compare NAME...
 
 import { execFileSync, spawn } from "node:child_process"
@@ -239,7 +239,7 @@ function environment(bin: string, home: string): NodeJS.ProcessEnv {
 
 const { values: v, positionals } = parseArgs({
   allowPositionals: true,
-  options: { ask: { type: "string" }, skill: { type: "string" }, label: { type: "string" }, arms: { type: "string" }, drivers: { type: "string" }, jobs: { type: "string" }, reps: { type: "string" }, compare: { type: "boolean" } },
+  options: { ask: { type: "string" }, skill: { type: "string" }, label: { type: "string" }, arms: { type: "string" }, drivers: { type: "string" }, jobs: { type: "string" }, reps: { type: "string" }, lanes: { type: "string" }, compare: { type: "boolean" } },
 })
 mkdirSync(runs, { recursive: true })
 if (v.compare) {
@@ -266,10 +266,13 @@ if (v.compare) {
   const chosen = v.jobs ? jobs.filter((j) => v.jobs!.split(",").includes(j.id)) : jobs
   const file = join(runs, `callers-${v.label}.jsonl`)
   const all = arms.flatMap((arm) => drivers.flatMap((d) => chosen.flatMap((j) => Array.from({ length: Number(v.reps ?? 2) }, (_, rep) => ({ arm, d, j, rep })))))
+  const lanes = Number(v.lanes ?? 3)
   console.error(`${all.length} runs`)
   await Promise.all(
-    [0, 1, 2].map(async (lane) => {
-      for (let i = lane; i < all.length; i += 3) {
+    // Lanes share ask's subagent model; too many at once and its provider rate-limits, which
+    // shows up as slow, retried tasks the caller has to wait out.
+    Array.from({ length: lanes }, async (_, lane) => {
+      for (let i = lane; i < all.length; i += lanes) {
         const { arm, d, j, rep } = all[i]
         const { dir, home, bin, plugin } = prepare(j, arm, skill)
         writeFileSync(join(bin, "ask"), `#!/bin/sh\nexec ${process.execPath} ${join(ask, "src", "cli.ts")} "$@"\n`)
