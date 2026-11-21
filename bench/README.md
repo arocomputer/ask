@@ -36,15 +36,33 @@ One isolated run on `opencode-go/glm-5.3` passed all six checks in 22.9 seconds 
 write's outcome was unknown and should be checked. This single synthetic run is not a comparison
 against uncompacted context or evidence of reliability across models and tasks.
 
-`bench/callers.ts` measures the other side: Claude Code and Codex, given work to hand off,
-with a version of ask's skill in their instructions (never installed), graded on the outcome
-and on how they delegated: sessions, whether they started together, how much their task
-prompts said.
+`bench/callers.ts` measures the other side: Claude Code, Codex and OpenCode given work that suits
+a subagent, graded on the outcome and on the route they took (ask, their own built-in subagents,
+both, or neither), with the caller's own input tokens, cost, tool calls and time. Jobs never name
+ask: three ask for a subagent, one asks for nothing. Each arm changes one thing:
+
+| Arm | What the agent gets |
+| --- | --- |
+| `none` | ask on `PATH`, nothing else: the control |
+| `skill` | ask's skill as a project skill, so only its description is in context until loaded |
+| `deny` | the skill, with built-in subagents turned off |
+| `hook` | the skill, with built-in subagent calls handed to ask by `bench/hook.ts`, a prototype |
+
+The agents run with `HOME` set to a bench profile (`~/.ask-bench`, or `--profile`), so your own
+skills, hooks and instructions never take part; a profile holding skills is refused. Sign each
+agent in there once, as the first run prints. ask itself runs on a scratch home with your
+catalog and keys, on `opencode-go/glm-5.3`.
 
 ```sh
-bun bench/callers.ts --ask . --skill SKILL.md --label mine [--drivers claude,codex] [--reps N]
-bun bench/callers.ts --compare old mine
+bun bench/callers.ts --ask . --label mine --reps 1 --jobs parallel-questions   # 12 runs, a smoke test
+bun bench/callers.ts --ask . --label mine [--arms ...] [--drivers ...] [--reps N] [--skill FILE]
+bun bench/callers.ts --compare mine
 ```
+
+Not yet checked on a real run: Codex taking `hooks.PreToolUse` from `-c`, and its project
+`.agents/skills`; OpenCode running the legacy `tool.execute.before` plugin shape, naming its
+subagent tool `subagent` or `task`, and denying it with the `subagent` permission. Read the
+first run's answers before trusting its routes.
 
 ## Results, November 2026
 
@@ -60,4 +78,5 @@ Reviews failed before because read-only tasks couldn't see the diff at all. Clau
 pieces brought web tasks from 269k input tokens to about 140k, at one more step. Callers, 3
 jobs × 2 runs: with the new skill Claude Code passed 6 of 6 (4 with the old, which sent a
 fix to a worktree and left the user's files broken) and wrote fuller task prompts (271 → 390
-characters); Codex passed 6 of 6 with both.
+characters); Codex passed 6 of 6 with both. Those caller runs predate the arms: the jobs named
+ask, the skill sat in the system prompt, and Claude Code had no Agent tool to choose instead.
