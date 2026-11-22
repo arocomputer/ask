@@ -1,162 +1,226 @@
-// The benchmark runner: runs bench/tasks.ts through a given ask checkout, on real models, and
-// grades every answer. Each run gets a fresh copy of its repository and its own session; the
-// results go to bench/.runs/LABEL.jsonl, and a summary to stdout. It spends real quota.
-//
-//   bun bench/run.ts --ask PATH --label NAME [--models a,b] [--reps N] [--tasks id,...] [--parallel N]
-//   bun bench/run.ts --compare LABEL LABEL...
+// Benchmark entry point. List, plan and compare are local reads; run owns all mutable state.
 
-import { execFileSync, spawn } from "node:child_process"
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { homedir, tmpdir } from "node:os"
-import { join } from "node:path"
+import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { arch, homedir, platform, release, tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 import { parseArgs } from "node:util"
-import { tasks, type Task } from "./tasks.ts"
+import type { Row, Suite } from "./suite.ts"
+import { suite as callers } from "./suites/callers.ts"
+import { suite as subagents } from "./suites/subagents.ts"
+import { suite as compaction } from "./suites/compaction.ts"
+import { suite as extraction } from "./suites/extraction.ts"
+import { suite as sandbox } from "./suites/sandbox.ts"
 
-const here = import.meta.dirname
-const self = join(here, "..")
-const runs = join(here, ".runs")
-/** The commit of ask that "ask" tasks study, so every variant studies the same code. */
-const askCommit = "d3cd456"
-const requestsTag = "v2.32.3"
+const directory = import.meta.dirname
+const suites = new Map<string, Suite>(Object.entries({ subagents, callers, compaction, extraction, sandbox }))
+const runs = join(directory, ".runs")
+const help = `bun bench/run.ts list
+bun bench/run.ts plan SUITE [--reps N] [--parallel N] [suite options]
+bun bench/run.ts run SUITE --label NAME [--live] [--ask CHECKOUT] [--traces] [plan options]
+bun bench/run.ts compare SUITE LABEL [LABEL ...]`
 
-type Row = { label: string; model: string; task: string; kind: string; rep: number; state: string; pass: boolean; score: number; notes: string; steps: number; input: number; output: number; seconds: number; chars: number; answer: string }
-
-function git(dir: string, ...args: string[]) {
-  return execFileSync("git", args, { cwd: dir, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GIT_AUTHOR_NAME: "bench", GIT_AUTHOR_EMAIL: "bench@ask", GIT_COMMITTER_NAME: "bench", GIT_COMMITTER_EMAIL: "bench@ask" } }).toString()
+type Manifest = {
+  schema: 1
+  suite: string
+  label: string
+  revision: string
+  suiteHash: string
+  inputs: Record<string, unknown>
+  variant?: Record<string, string>
+  reps: number
+  parallel: number
+  count: number
+  host: { platform: string; arch: string; release: string; runtime: string }
+  started: string
+  completed?: string
 }
 
-/** A fresh copy of the task's repository. */
-function prepare(t: Task): string {
-  const dir = mkdtempSync(join(tmpdir(), `bench-${t.id}-`))
-  if (t.repo.kind === "ask") {
-    git(dir, "clone", "--quiet", "--shared", "--no-checkout", self, ".")
-    git(dir, "checkout", "--quiet", askCommit)
-  } else if (t.repo.kind === "requests") {
-    const cache = join(here, ".cache", "requests")
-    if (!existsSync(cache)) git(here, "clone", "--quiet", "--depth", "1", "--branch", requestsTag, "https://github.com/psf/requests", cache)
-    git(dir, "clone", "--quiet", "--shared", cache, ".")
-  } else {
-    for (const [name, text] of Object.entries(t.repo.files)) writeFileSync(join(dir, name), text)
-    git(dir, "init", "--quiet")
-    git(dir, "add", ".")
-    git(dir, "commit", "--quiet", "-m", "start")
-    for (const [name, text] of Object.entries(t.repo.after ?? {})) writeFileSync(join(dir, name), text)
-  }
-  return dir
+/** Prevent labels from escaping the result directory or shadowing suite names. */
+function label(name: string) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name)) throw new Error("use a label with letters, numbers, dashes or underscores")
+  return name
 }
 
-/** A scratch ask home with the user's keys and catalog, and both harnesses on. */
-function scratch(): string {
-  const home = mkdtempSync(join(tmpdir(), "bench-home-"))
-  const real = process.env.ASK_HOME || join(homedir(), ".ask")
-  mkdirSync(join(home, "cache"))
-  cpSync(join(real, "cache", "models.json"), join(home, "cache", "models.json"))
-  if (existsSync(join(real, "auth.json"))) cpSync(join(real, "auth.json"), join(home, "auth.json"))
-  writeFileSync(join(home, "config.json"), JSON.stringify({ extensions: ["claude", "codex"], timeout: 900 }))
-  return home
+/** Validate run sizes before expanding a suite's cases. */
+function positive(input: string | undefined, fallback: number, flag: string) {
+  const n = Number(input ?? fallback)
+  if (!Number.isSafeInteger(n) || n < 1 || n > 100) throw new Error(`${flag} must be an integer in 1..100`)
+  return n
 }
 
-function ask(checkout: string, home: string, dir: string, request: object): Promise<any> {
-  return new Promise((done) => {
-    const child = spawn(process.execPath, [join(checkout, "src", "cli.ts")], { cwd: dir, env: { ...process.env, ASK_HOME: home, NO_COLOR: "1", ASK_PARENT: "bench" } })
-    let out = ""
-    child.stdout.on("data", (d) => (out += d))
-    child.on("close", () => {
+/** Hash suite code and fixture/grader inputs apart from the ask revision under test. */
+function hash(files: string[]) {
+  const digest = createHash("sha256")
+  for (const file of files) digest.update(readFileSync(file)).update("\0")
+  return digest.digest("hex")
+}
+
+/** Use a committed snapshot so builds and toolchain probes never write to the tested checkout. */
+function checkout(source: string, target: string): string {
+  const git = (...args: string[]) => execFileSync("git", args, {
+    cwd: source, env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), GIT_OPTIONAL_LOCKS: "0" },
+  })
+  const revision = git("rev-parse", "--verify", "HEAD").toString().trim()
+  if (git("status", "--porcelain", "--", "src", "native", "package.json").length)
+    throw new Error("commit changes to src/, native/ and package.json before benchmarking them")
+  const archive = git("archive", revision, "--", "src", "native", "package.json")
+  mkdirSync(target)
+  execFileSync("tar", ["-xf", "-", "-C", target], { input: archive })
+  return revision
+}
+
+/** Seed scratch profiles with credentials only, leaving the user's configs and state alone. */
+function environment(scratch: string, live: boolean): NodeJS.ProcessEnv {
+  const real = homedir()
+  const user = join(scratch, "user"), home = join(scratch, "ask"), tmp = join(scratch, "tmp")
+  const claude = join(user, ".claude"), codex = join(user, ".codex")
+  for (const dir of [join(home, "cache"), claude, codex, tmp]) mkdirSync(dir, { recursive: true, mode: 0o700 })
+  const copy = (from: string, to: string, auth = false) => {
+    if (!existsSync(from)) return
+    const text = readFileSync(from, "utf8")
+    // Reusing a rotating refresh token in the scratch profile can sign out the real profile.
+    // Keep the current access credential; require it to be fresh enough for the whole run.
+    let bytes = text
+    if (auth) {
       try {
-        done(JSON.parse(out))
-      } catch {
-        done({ error: { message: out.slice(0, 300) || "no output" } })
-      }
-    })
-    child.stdin.end(JSON.stringify(request))
-  })
-}
-
-async function one(checkout: string, home: string, label: string, model: string, t: Task, rep: number): Promise<Row> {
-  const dir = prepare(t)
-  const began = Date.now()
-  try {
-    const r = await ask(checkout, home, dir, { start: [{ prompt: t.prompt, model, write: t.write ?? false }], wait: 900 })
-    const result = r.tasks?.[0] ?? { state: "failed", error: r.error }
-    const answer: string = result.answer ?? ""
-    const seconds = (Date.now() - began) / 1000
-    let steps = 0, input = 0, output = 0
-    try {
-      const turn = JSON.parse(readFileSync(join(home, "sessions", result.id, "session.json"), "utf8")).turns[0]
-      steps = turn.steps ?? 0
-      input = turn.usage?.input ?? 0
-      output = turn.usage?.output ?? 0
-    } catch {}
-    const g = result.state === "succeeded" ? t.grade(answer, dir) : { pass: false, score: 0, notes: `${result.state}: ${result.error?.message ?? ""}`.slice(0, 200) }
-    return { label, model, task: t.id, kind: t.kind, rep, state: result.state, ...g, steps, input, output, seconds, chars: answer.length, answer }
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-}
-
-/** Runs `jobs` with at most `n` at a time. */
-async function pool<T>(jobs: (() => Promise<T>)[], n: number, each: (r: T) => void) {
-  let next = 0
-  await Promise.all(Array.from({ length: n }, async () => {
-    while (next < jobs.length) each(await jobs[next++]())
-  }))
-}
-
-const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
-
-function summary(rows: Row[]) {
-  const groups = new Map<string, Row[]>()
-  for (const r of rows) {
-    const k = `${r.label}\t${r.model}`
-    groups.set(k, [...(groups.get(k) ?? []), r])
-  }
-  const kinds = ["locate", "discipline", "fix", "review", "web"]
-  console.log(["label", "model", "pass", ...kinds, "steps", "in k", "out k", "secs", "chars"].join("\t"))
-  for (const [k, rs] of groups) {
-    const by = (kind: string) => {
-      const x = rs.filter((r) => r.kind === kind)
-      return x.length ? `${x.filter((r) => r.pass).length}/${x.length}` : "-"
+        bytes = JSON.stringify(JSON.parse(text, (key, value) =>
+          (key === "refreshToken" || key === "refresh_token") && value ? "benchmark-no-refresh" : value))
+      } catch { throw new Error(`cannot read benchmark credentials at ${from}: invalid JSON`) }
     }
-    const ok = rs.filter((r) => r.state === "succeeded")
-    console.log([k, `${rs.filter((r) => r.pass).length}/${rs.length}`, ...kinds.map(by), mean(ok.map((r) => r.steps)).toFixed(1), (mean(ok.map((r) => r.input)) / 1000).toFixed(0), (mean(ok.map((r) => r.output)) / 1000).toFixed(1), mean(ok.map((r) => r.seconds)).toFixed(0), mean(ok.map((r) => r.chars)).toFixed(0)].join("\t"))
+    writeFileSync(to, bytes, { mode: 0o600, flag: "wx" })
+  }
+  if (live) {
+    const ask = process.env.ASK_HOME || join(real, ".ask")
+    copy(join(ask, "cache", "models.json"), join(home, "cache", "models.json"))
+    copy(join(ask, "auth.json"), join(home, "auth.json"), true)
+    copy(join(process.env.CLAUDE_CONFIG_DIR || join(real, ".claude"), ".credentials.json"), join(claude, ".credentials.json"), true)
+    copy(join(process.env.CODEX_HOME || join(real, ".codex"), "auth.json"), join(codex, "auth.json"), true)
+  }
+  writeFileSync(join(home, "config.json"), JSON.stringify({ extensions: ["claude", "codex"], timeout: 900 }))
+  const inherited = /^(ASK_|OPENCODE|CLAUDECODE$|CLAUDE_CODE_(SESSION_ID|CHILD_SESSION|ENTRYPOINT|EXECPATH|SESSION_ATTENDED)$|CLAUDE_PID$|CODEX_(THREAD_ID|SESSION_ID|TOOL_CALL_ID|SANDBOX)|XDG_|GIT_)/
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !inherited.test(name)))
+  return { ...env, HOME: user, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, ASK_HOME: home, TMPDIR: tmp, TMP: tmp, TEMP: tmp,
+    XDG_CONFIG_HOME: join(user, ".config"), XDG_DATA_HOME: join(user, ".local", "share"),
+    XDG_CACHE_HOME: join(user, ".cache"), XDG_STATE_HOME: join(user, ".local", "state"),
+    OPENCODE_API_KEY: live ? process.env.OPENCODE_API_KEY : undefined, NO_COLOR: "1" }
+}
+
+/** Report saved outcomes without regrading, including runs interrupted partway through. */
+function summary(name: string, rows: Row[]) {
+  const groups = Map.groupBy(rows, (r) => typeof r.p50 === "number" ? `${r.group}/${r.case}` : r.group)
+  const mean = (items: Row[], key: string, digits = 0) => {
+    const numbers = items.map((r) => r[key]).filter((v): v is number => typeof v === "number")
+    return numbers.length ? (numbers.reduce((a, b) => a + b, 0) / numbers.length).toFixed(digits) : "-"
+  }
+  for (const [group, items] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+    const completed = items.filter((r) => !r.error)
+    const scores = completed.filter((r) => typeof r.pass === "boolean")
+    const routes = ["ask", "native", "mixed", "self"].map((route) => completed.filter((r) => r.route === route).length).join("/")
+    console.log([name, group, scores.length ? `${scores.filter((r) => r.pass).length}/${scores.length}` : "-",
+      items.length - completed.length, routes, mean(completed, "input"), mean(completed, "output"), mean(completed, "seconds", 2),
+      mean(completed, "p50", 3), mean(completed, "p95", 3)].join("\t"))
   }
 }
 
-const { values: v, positionals } = parseArgs({
-  allowPositionals: true,
-  options: { ask: { type: "string" }, label: { type: "string" }, models: { type: "string" }, reps: { type: "string" }, tasks: { type: "string" }, parallel: { type: "string" }, compare: { type: "boolean" } },
-})
-mkdirSync(runs, { recursive: true })
-if (v.compare) {
-  const labels = positionals.length ? positionals : readdirSync(runs).map((f) => f.replace(/\.jsonl$/, ""))
-  // Answers are graded again with today's graders; a fix's grade came from its folder, which is gone.
-  const rows = labels.flatMap((l) => readFileSync(join(runs, `${l}.jsonl`), "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Row))
-  for (const r of rows) {
-    const t = tasks.find((x) => x.id === r.task)
-    if (t && t.kind !== "fix" && r.state === "succeeded") Object.assign(r, t.grade(r.answer, ""))
+const header = "label\tgroup\tpassed\terrors\task/native/mixed/self\tinput\toutput\tseconds\tp50 ms\tp95 ms"
+
+/** Warn on mismatched protocols or workloads, without treating the tested revision as a mismatch. */
+function compare(suite: string, names: string[]) {
+  if (!names.length) throw new Error("compare needs at least one run label")
+  let baseline: Manifest | undefined
+  console.log(header)
+  for (const name of names.map(label)) {
+    const dir = join(runs, suite, name)
+    const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as Manifest
+    if (m.schema !== 1 || m.suite !== suite || m.label !== name) throw new Error(`invalid manifest for ${suite}/${name}`)
+    const rows = readFileSync(join(dir, "results.jsonl"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line) as Row)
+    if (!m.completed || rows.length !== m.count) console.error(`${name}: incomplete (${rows.length}/${m.count} rows)`)
+    if (baseline) {
+      const different = (["suiteHash", "inputs", "reps", "parallel", "host"] as const)
+        .filter((key) => JSON.stringify(m[key]) !== JSON.stringify(baseline![key]))
+      if (different.length) console.error(`${name} and ${baseline.label} are not directly comparable: ${different.join(", ")}`)
+      if (JSON.stringify(m.variant) !== JSON.stringify(baseline.variant)) console.error(`${name}: experiment variant differs from ${baseline.label}`)
+    }
+    baseline ??= m
+    summary(name, rows)
   }
-  summary(rows)
-} else {
-  if (!v.ask || !v.label) throw new Error("usage: bun bench/run.ts --ask PATH --label NAME [--models a,b] [--reps N] [--tasks id,...] [--parallel N]")
-  const models = (v.models ?? "opencode-go/glm-5.3,opencode-go/minimax-m3").split(",")
-  const chosen = v.tasks ? tasks.filter((t) => v.tasks!.split(",").includes(t.id)) : tasks
-  const reps = Number(v.reps ?? 3)
-  const home = scratch()
-  const file = join(runs, `${v.label}.jsonl`)
-  const jobs = models.flatMap((m) =>
-    chosen
-      // Claude Code's write tasks need its sandbox, which this machine may not have.
-      .filter((t) => !(m.startsWith("claude/") && t.write && process.platform === "linux" && !execFileSync("sh", ["-c", "command -v socat || true"]).toString().trim()))
-      .flatMap((t) => Array.from({ length: reps }, (_, rep) => () => one(v.ask!, home, v.label!, m, t, rep))),
-  )
-  console.error(`${jobs.length} runs`)
-  const rows: Row[] = []
-  let done = 0
-  await pool(jobs, Number(v.parallel ?? 4), (r) => {
-    rows.push(r)
-    appendFileSync(file, JSON.stringify(r) + "\n")
-    console.error(`${++done}/${jobs.length} ${r.model} ${r.task} ${r.pass ? "pass" : "FAIL"} ${r.notes}`.slice(0, 200))
-  })
-  rmSync(home, { recursive: true, force: true })
-  summary(rows)
+}
+
+/** Claim a run directory once and save its manifest before executing any suite cases. */
+async function main([action, suiteName, ...args]: string[]) {
+  if (!action || action === "--help" || action === "-h") return console.log(help)
+  if (action === "list" && !suiteName) {
+    for (const [name, suite] of suites) console.log(`${name}\t${suite.live ? "live" : "local"}`)
+    return
+  }
+  const suite = suites.get(suiteName)
+  if (!suite) throw new Error(`unknown suite: ${suiteName ?? "(none)"}\n${help}`)
+  if (action === "compare") return compare(suiteName, args)
+  if (action !== "plan" && action !== "run") throw new Error(help)
+  const common = parseArgs({ args, strict: false, tokens: true, options: {
+    ask: { type: "string" }, label: { type: "string" }, reps: { type: "string" }, parallel: { type: "string" },
+    live: { type: "boolean" }, traces: { type: "boolean" },
+  } })
+  const { values } = common
+  const consumed = new Set<number>()
+  for (const token of common.tokens) {
+    if (token.kind === "option" && ["ask", "label", "reps", "parallel", "live", "traces"].includes(token.name)) {
+      if (["live", "traces"].includes(token.name) && token.value !== undefined)
+        throw new Error(`--${token.name} does not take a value`)
+      consumed.add(token.index)
+      if (!token.inlineValue && token.value !== undefined) consumed.add(token.index + 1)
+    }
+  }
+  const reps = positive(values.reps as string | undefined, suite.repetitions, "--reps")
+  const parallel = positive(values.parallel as string | undefined, 1, "--parallel")
+  for (const key of ["ask", "label", "reps", "parallel"] as const)
+    if (values[key] === true) throw new Error(`--${key} needs a value`)
+  const plan = suite.select(args.filter((_, index) => !consumed.has(index)), reps)
+  if (action === "plan") return console.log(JSON.stringify({ suite: suiteName, live: suite.live, reps, parallel, count: plan.count, inputs: plan.inputs, variant: plan.variant }, null, 2))
+  if (suite.live && values.live !== true) throw new Error(`${suiteName} calls real models; pass --live to run it`)
+  if (typeof values.label !== "string") throw new Error("run needs --label NAME")
+  const name = label(values.label)
+  const scratch = mkdtempSync(join(tmpdir(), "ask-benchmark-"))
+  try {
+    const copy = join(scratch, "checkout"), revision = checkout(resolve((values.ask as string | undefined) ?? join(directory, "..")), copy)
+    const result = join(runs, suiteName, name)
+    for (const parent of [runs, join(runs, suiteName)]) {
+      const stat = lstatSync(parent, { throwIfNoEntry: false })
+      if (!stat) mkdirSync(parent, { mode: 0o700 })
+      else if (!stat.isDirectory()) throw new Error("benchmark results must be in regular directories under bench/.runs")
+    }
+    mkdirSync(result, { mode: 0o700 })
+    const manifest = join(result, "manifest.json"), file = join(result, "results.jsonl"), traces = values.traces ? join(result, "traces") : undefined
+    const m: Manifest = {
+      schema: 1, suite: suiteName, label: name, revision,
+      suiteHash: hash([import.meta.filename, join(directory, "suite.ts"), ...suite.compareFiles]),
+      inputs: plan.inputs, variant: plan.variant, reps, parallel, count: plan.count,
+      host: { platform: platform(), arch: arch(), release: release(), runtime: process.versions.bun ?? process.version },
+      started: new Date().toISOString(),
+    }
+    const save = () => writeFileSync(manifest, JSON.stringify(m, null, 2) + "\n", { mode: 0o600 })
+    save()
+    writeFileSync(file, "", { mode: 0o600 })
+    if (traces) mkdirSync(traces, { mode: 0o700 })
+    const rows: Row[] = []
+    await plan.run({ checkout: copy, scratch, env: environment(scratch, suite.live), parallel, traces, record(row) {
+      rows.push(row)
+      appendFileSync(file, JSON.stringify(row) + "\n")
+      console.error(`${rows.length}/${plan.count} ${row.group} ${row.case} ${row.error ? "error" : row.pass === false ? "fail" : "ok"}`)
+    } })
+    if (rows.length !== plan.count) throw new Error(`suite emitted ${rows.length}/${plan.count} rows`)
+    m.completed = new Date().toISOString()
+    save()
+    console.log(header)
+    summary(name, rows)
+    if (rows.some((r) => r.error || r.pass === false)) process.exitCode = 1
+  } finally { rmSync(scratch, { recursive: true, force: true }) }
+}
+
+try { await main(process.argv.slice(2)) }
+catch (error) {
+  console.error((error as Error).message)
+  process.exitCode = 1
 }

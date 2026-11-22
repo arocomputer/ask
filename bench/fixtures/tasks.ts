@@ -1,4 +1,4 @@
-// The benchmark's tasks: what a subagent is asked, in which repository, and how its answer is
+// Shared benchmark tasks: what a subagent is asked, in which repository, and how its answer is
 // graded. Graders are deterministic: facts the answer must state, tests a fix must pass, files
 // it must leave alone. Repositories are pinned, so results compare across runs.
 
