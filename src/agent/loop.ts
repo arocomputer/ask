@@ -182,7 +182,7 @@ export async function run(o: RunOptions): Promise<RunResult> {
     const at = messages.length - 1
     const script = (c: (typeof calls)[number], n: number) => c.name === execute.name
       ? runCode(c.arguments, tools, { dir: o.dir, signal: o.signal, sandbox: o.sandbox, models }, (notice) => o.onAction?.({ ...notice, at, script: n }))
-      : Promise.resolve(`error: ${c.name} is not callable directly; use execute with the Code Mode catalog`)
+      : Promise.resolve(direct(c.name, c.arguments, tools))
     // Scripts sent together run together only when nothing they can reach writes.
     const together = calls.length > 1 && tools.every((t) => t.readonly) ? await Promise.all(calls.map(script)) : undefined
     for (const [n, c] of calls.entries()) {
@@ -195,6 +195,16 @@ export async function run(o: RunOptions): Promise<RunResult> {
     }
   }
   return end({ error: { message: `hit the ${maxSteps}-step limit without answering`, hint: "continue the session to let it go on, or split the task" } }, maxSteps)
+}
+
+/** What a model hears when it calls a tool by name: only execute is callable, and how to make this call through it. */
+function direct(name: string, args: string, tools: Tool[]): string {
+  const tool = tools.find((t) => t.name === name.replace(/^tools\./, ""))
+  let given: unknown
+  try { given = JSON.parse(args.trim() || "{}") } catch {}
+  if (!tool || !given || typeof given !== "object") return `error: ${name.slice(0, 80)} is not callable directly; use execute with the Code Mode catalog`
+  const code = `return await tools[${JSON.stringify(tool.name)}](${JSON.stringify(given)})`
+  return `error: ${tool.name} is not callable directly. Call execute with this code instead: ${code.length > 2000 ? code.slice(0, 2000) + "…" : code}`
 }
 
 const cut = "error: this call was interrupted before it finished, so its result is unknown. If it could have changed something, check whether it took effect before running it again."

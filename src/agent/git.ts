@@ -39,7 +39,7 @@ export const git: Tool = {
   run(input, { dir, signal }) {
     const args = Array.isArray(input.args) ? input.args.map(String) : []
     const [command, ...rest] = args
-    if (!commands.includes(command)) return Promise.reject(new Error(`git takes one of ${commands.join(", ")}`))
+    if (!commands.includes(command)) return Promise.reject(new Error(`git takes one of ${commands.join(", ")}; search file contents with grep and find files with list`))
     const bad = rest.find((a) => refused.test(a))
     if (bad) return Promise.reject(new Error(`${bad} isn't allowed here`))
     return new Promise((done) =>

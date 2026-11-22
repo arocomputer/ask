@@ -30,7 +30,7 @@ test("scripts have no ambient process, imports, filesystem, network or timers", 
 test("console output is kept, and a script that returns nothing shows what its calls returned", async () => {
   const list = tool("list", true, async () => "a.txt")
   const write = tool("write", false, async () => "wrote b.txt")
-  assert.equal(await execute(`console.log("found", { n: 1 }); console.log(await tools.list()); return 2`, [list]), 'found {"n":1}\na.txt\n2')
+  assert.equal(await execute(`console.log("found", { n: 1 }); print(await tools.list()); return 2`, [list]), 'found {"n":1}\na.txt\n2')
   const silent = await execute(`await tools.list(); await tools.write({ path: "b.txt" })`, [list, write])
   assert.match(silent, /^\(nothing returned[^\n]*\n=== list ===\na\.txt\n=== write b\.txt ===\nwrote b\.txt$/)
 })
@@ -48,6 +48,11 @@ test("returned text comes out as labeled blocks, not escaped inside JSON", async
   const read = tool("read", true, async ({ path }) => `1\tin "${path}"\n2\tend\n`)
   const output = await execute(`const [a, b] = await Promise.all([tools.read({ path: "a" }), tools.read({ path: "b" })]); return { a, b, count: 2 }`, [read])
   assert.equal(output, '=== a ===\n1\tin "a"\n2\tend\n\n=== b ===\n1\tin "b"\n2\tend\n\ncount: 2')
+})
+
+test("a script wrapped in a code fence or trailed by tool-call markup still runs", async () => {
+  assert.equal(await execute("```js\nreturn 1 + 1\n```"), "2")
+  assert.equal(await execute("return 1 + 2;\n</function></tool_call>"), "3")
 })
 
 test("a script error names its line, the calls that completed and the output so far", async () => {

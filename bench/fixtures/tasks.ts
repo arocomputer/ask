@@ -177,7 +177,8 @@ def compute(amount):
       // Compare the requested result, not whether the subagent's evidence followed it.
       for (const [cell] of answer.matchAll(/\{[^{}]*\}/g)) try {
         const data = JSON.parse(cell)
-        if (data?.passed === 150 && data.failed === 18 && data.highestFailureService === "f")
+        // "F" names the same service as "f"; the task is the join, not the letter's case.
+        if (data?.passed === 150 && data.failed === 18 && String(data.highestFailureService).toLowerCase() === "f")
           return { pass: true, score: 1, notes: answer.trim() === cell ? "JSON only" : "correct result with explanation or markup" }
       } catch {}
       return { pass: false, score: 0, notes: "active-revision totals or highest-failure service differed" }

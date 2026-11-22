@@ -50,7 +50,7 @@ return whole); `grep` has `matches` (`{ path, line, text }` each) and `truncated
 `shell` have `stdout`, `stderr` and `exitCode`; `search` has `results`.
 
 The runtime is forgiving where a mistake would otherwise cost the model a turn. `console.log`
-output is returned with the script's value. A script that returns nothing shows what each of its
+output is returned with the script's value, as is `print` or `text`, which some models write. A script that returns nothing shows what each of its
 calls returned. An object or array holding results or multi-line text comes back as labeled
 blocks rather than text escaped inside JSON. A call with a wrong argument name or type fails
 with the tool's signature; an unknown tool with the list of tools; a script error with its line,

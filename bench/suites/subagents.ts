@@ -56,21 +56,22 @@ function ask(checkout: string, env: NodeJS.ProcessEnv, dir: string, request: obj
   })
 }
 
-/** Trace call shape and repeated targets without copying scripts or tool output. */
+/**
+ * What a turn did, for reading afterwards: each script as the model wrote it, its nested
+ * actions, and the start of what came back. Whether a script was wasted (an error, nothing
+ * returned, a field that wasn't there) shows only in its text and its result, so both are kept.
+ */
 export function trace(messages: Message[], actions: Action[]) {
   return messages.flatMap((message, at): object[] => {
     if (message.role === "tool")
-      return [{ result: message.name, chars: message.output.length, error: message.output.startsWith("error:") }]
+      return [{ result: message.name, chars: message.output.length, error: message.output.startsWith("error:"), head: message.output.slice(0, 300) }]
     if (message.role === "assistant") return message.calls.map((call, script) => {
-      let target: string | undefined
-      try {
-        const args = JSON.parse(call.arguments)
-        if (["read", "list", "grep", "edit", "write"].includes(call.name) && typeof args.path === "string") target = args.path
-        if (call.name === "git" && ["status", "diff", "log", "show", "blame"].includes(args.args?.[0])) target = args.args[0]
-      } catch {}
+      let args: Record<string, unknown> = {}
+      try { args = JSON.parse(call.arguments) } catch {}
+      if (call.name !== "execute") return { call: call.name, arguments: call.arguments.slice(0, 300), chars: call.arguments.length }
       return {
-        call: call.name, target, chars: call.arguments.length,
-        ...(call.name === "execute" ? { actions: actions.filter((a) => a.at === at && a.script === script).map(({ label, state }) => ({ label, state })) } : {}),
+        call: call.name, chars: call.arguments.length, code: typeof args.code === "string" ? args.code : call.arguments,
+        actions: actions.filter((a) => a.at === at && a.script === script).map(({ label, state }) => ({ label, state })),
       }
     })
     return []

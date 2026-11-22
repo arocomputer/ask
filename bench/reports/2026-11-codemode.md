@@ -1,6 +1,90 @@
 # Code Mode evaluation — November 2026
 
-## PR comparison
+## Where it stands
+
+Seven tasks (two lookups, a symbol that doesn't exist, two fixes, a diff review and an
+eight-file JSON join), three times each on two models, OpenCode Go's DeepSeek V4.1 Flash and
+GLM-5.3-Flash: 42 runs an arm. Linux x64, Bun 1.4.5, 150 seconds a task, four tasks at a time,
+one arm after another.
+
+| Arm | Runs | Passed | Turns, mean · median | Input tokens, mean · median | Seconds, mean · median |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Direct tools (`45eeae9`) | 42 | 38 | 10.6 · 7.0 | 89,783 · 19,676 | 39.0 · 23.4 |
+| Code Mode, first version (`9d26897`) | 42 | 40 | 7.6 · 5.5 | 39,530 · 16,739 | 26.0 · 18.6 |
+| Code Mode, forgiving runtime, first run | 42 | 42 | 5.3 · 4.5 | 21,707 · 14,205 | 18.3 · 12.7 |
+| Code Mode, forgiving runtime, second run | 42 | 42 | 6.5 · 5.0 | 35,983 · 14,966 | 24.0 · 13.4 |
+
+**What holds:** the forgiving runtime passed 84 of 84, used fewer turns and tokens than the
+first version in both runs, and against direct tools took fewer tokens on all seven tasks and
+fewer turns on six.
+**What doesn't:** the size of the saving. The two forgiving-runtime runs are the same runtime
+(the second adds only error-path changes) and their means differ by 1.2 turns and 14k tokens,
+because two tasks have long tails: DeepSeek hunting for the symbol that doesn't exist took
+30 turns in one run and 6 in another. Medians barely move. Read the means as "lower", not as
+a percentage.
+
+By task, mean turns and mean input tokens, the two forgiving runs pooled:
+
+| Task | Direct tools | First version | Forgiving runtime (12 runs) |
+| --- | ---: | ---: | ---: |
+| compose-rollout | 28.2 · 294k (2 of 6 passed) | 5.2 · 27k | 4.0 · 18k |
+| discipline-missing | 12.3 · 125k | 15.0 · 101k (5 of 6) | 10.0 · 64k |
+| locate-retries | 9.7 · 114k | 11.7 · 86k | 7.2 · 53k |
+| locate-resume | 5.2 · 51k | 5.2 · 27k (5 of 6) | 5.9 · 38k |
+| fix-tests | 8.0 · 20k | 6.2 · 13k | 4.9 · 10k |
+| fix-feature | 6.7 · 16k | 6.5 · 15k | 5.8 · 13k |
+| review-diff | 4.2 · 8k | 3.7 · 7k | 3.5 · 6k |
+
+### What the transcripts showed
+
+The steadier measure is what each script was spent on. In the first version, about one script
+in six (50 of 284) went to something the runtime could have absorbed or explained:
+
+| In 284 scripts | Count | Example |
+| --- | ---: | --- |
+| A field read from a result that was plain text | 20 | `return a.text`, `g.matches.map(...)`, `{ diff: d.stdout }` → `undefined`, `{}` or a TypeError |
+| Nothing returned | 13 | `await tools.edit({ ... })` → `(no output)` |
+| A tool refused the call | 13 | `git ls-files`; a RegExp passed as `pattern` |
+| `console.log` | 3 | `ReferenceError: 'console' is not defined` |
+| Other script error | 1 | |
+
+Results were text unless a call passed `format: "json"`, and the catalog described the JSON
+shape, so models read fields that weren't there. In a preliminary run, one lookup spent six
+of its sixteen turns on that. The runtime now takes the script as the model writes it: every
+result reads as text and carries the fields, `console.log` works, a script that returns
+nothing shows what its calls returned, and errors name the line or the signature. The same
+count in the two forgiving runs was 11 of 181 and 19 of 229 (6% and 8%), most of them git
+subcommands the tool doesn't run: `git grep`, `ls-files`, `branch`, `ls-tree`, `tag`.
+Once the catalog said console.log works, two scripts in three used it.
+
+A third forgiving run tried catalog wording that steers models to return results whole
+rather than their fields. It passed 41 of 42 at 6.8 turns and 32,542 tokens, inside the spread
+of the two runs above, and answers cited `path:line` just as often either way, so the wording
+stayed as first written.
+
+HOLDOUT
+
+### How to read this
+
+- The runs came from a copy of the `subagents` runner that keeps whole transcripts. The suite's
+  `--traces` now records each script and the start of its result, which is what this needed.
+- The suite pins its "ask" tasks to commit `d3cd456`, which is on no branch, so those tasks
+  only prepare from a clone that still has the object. That predates this work and needs a
+  pin that a fresh clone can reach.
+- compose-rollout's grader took `"F"` for service `f` as wrong. It now compares the letter
+  without case, and every arm above was regraded from its saved answers the same way.
+- Most input tokens were served from the provider's cache. Seconds depend on the provider's
+  load and on timeouts (three direct-tool runs hit the 150-second limit).
+- Two inexpensive models, three repetitions, seven tasks, no web tasks. The problems were found
+  on these two models; the holdout above is the check that the fix isn't particular to them.
+  This is not a comparison with any other harness's Code Mode.
+
+## Earlier runs
+
+These were one or two runs a case. Their reading that routine tasks cost more in Code Mode
+(69% more input tokens over six cases) did not hold at 42 runs an arm, above.
+
+### First comparison
 
 Linux x64, Bun 1.4.5, same fixtures and graders for each arm. Direct tools ran from
 `45eeae9`. The Code Mode arms used structured reads, then added compact tool signatures,
@@ -41,7 +125,7 @@ bun bench/run.ts run subagents --label NAME --ask CHECKOUT \
 bun bench/run.ts compare subagents BASELINE CANDIDATE
 ```
 
-## Traced review rerun
+### Traced review rerun
 
 Two review repetitions per model using the same fixture (four reviews per arm). Both arms
 passed all four. The earlier large review slowdown did not reproduce:
@@ -74,7 +158,7 @@ the recipe. The candidate therefore includes the recipe only for likely diff rev
 with Git enabled. This keeps the exact evaluated recipe for reviews and the original prompt
 for those two other tasks.
 
-## Earlier pilot
+### First pilot
 
 One `subagents` run per arm on Linux x64 with Bun 1.4.5 and
 `opencode-go/deepseek-v4.1-flash`. The baseline was `45eeae9`; the candidate used
@@ -96,7 +180,7 @@ one run, only locating tasks in the overlap, completion bias from the deadline, 
 runs that could contend for the provider. It says nothing about write or web-task performance.
 Before release, rerun both arms independently with enough time to finish and more than one model.
 
-## Discovery footprint
+### Discovery footprint
 
 A separate local check with 50 synthetic extension tools and the eight built-in write-task tools
 reduced the initial catalog from 50,082 bytes with every definition inline to 7,872 bytes with

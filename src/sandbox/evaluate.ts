@@ -93,6 +93,8 @@ const bootstrap = String.raw`(bridge, names, source) => {
   }
   const print = (...args) => { logs.push(args.length === 1 ? render(args[0]) : args.map(show).join(" ")) }
   Object.defineProperty(globalThis, "console", { value: Object.freeze({ log: print, info: print, warn: print, error: print, debug: print }) })
+  // Output functions models carry over from other runtimes; a script's own names shadow them.
+  for (const name of ["print", "text"]) Object.defineProperty(globalThis, name, hidden(print))
 
   const clip = (text, max) => text.length > max ? text.slice(0, max) + "\n[" + (text.length - max) + " more characters]" : text
   const finish = (value) => {

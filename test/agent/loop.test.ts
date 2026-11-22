@@ -351,7 +351,7 @@ describe("loop", () => {
     try {
       const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Go" })
       assert.equal(r.answer, "ok")
-      assert.match(fake.requests[1].messages.at(-1).content, /^error: read is not callable directly/)
+      assert.equal(fake.requests[1].messages.at(-1).content, 'error: read is not callable directly. Call execute with this code instead: return await tools["read"]({"path":"port.txt"})')
     } finally {
       await fake.close()
     }

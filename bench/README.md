@@ -38,8 +38,9 @@ runner. Commit the code under test before running: the runner copies the committ
   instance with scratch state. Its Go caller and ask worker use the Go key available to ask.
 - Results include answers and should be kept private. For caller diagnostics, opt into
   raw events with `--traces`; don't share raw events without checking their contents.
-  For `subagents`, `--traces` records call names, local action summaries, payload sizes, and
-  error flags, not scripts or tool results. Action summaries can still include paths.
+  For `subagents`, `--traces` records each script the model wrote, its nested actions, and
+  the first 300 characters of what came back. Read them to see why a turn was spent: an
+  error, nothing returned, a field that wasn't there. They hold file contents from the task.
 
 ## Reading results
 

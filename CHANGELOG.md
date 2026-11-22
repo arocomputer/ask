@@ -7,10 +7,12 @@
   also carries fields like `matches`, `content`, `stdout` and `exitCode`, replacing the
   `format: "json"` switch; returned text comes back as labeled blocks instead of escaped JSON;
   and errors name the line, the tool's signature or the available tools, and the calls that had
-  already completed. Scripts sent together in a read-only task run together.
+  already completed. `print` and `text` work like `console.log`. Scripts sent together in a
+  read-only task run together.
 
 - Give likely diff reviews a short Code Mode recipe for inspecting the requested change without
-  gathering unrelated evidence. Benchmark traces now record action summaries and payload sizes.
+  gathering unrelated evidence. Benchmark traces now record each script, its nested actions and
+  the start of what it returned.
 
 - Add per-task capability allowlists for the built-in loop, paged discovery for large tool
   catalogs, and structured Code Mode results for file reads, `grep`, `git`, and web search.

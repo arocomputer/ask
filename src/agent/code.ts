@@ -150,8 +150,8 @@ export async function runCode(text: string, tools: Tool[], ctx: Context, notice:
   if (!object(request) || typeof request.code !== "string" || !request.code.trim() || Object.keys(request).length !== 1)
     return "error: execute expects only a nonempty code string"
   if (Buffer.byteLength(request.code) > maxCode) return "error: Code Mode source exceeds 128 KiB"
-  // A fenced script is the same script.
-  const code = request.code.replace(/^\s*```[a-z]*\n([\s\S]*?)\n?```\s*$/i, "$1")
+  // A fenced script is the same script, and so is one with its tool-call markup still attached.
+  const code = request.code.replace(/(?:\s*<\/[\w:|-]+>)+\s*$/, "").replace(/^\s*```[a-z]*\n([\s\S]*?)\n?```\s*$/i, "$1")
   if (ctx.signal?.aborted) return "error: stopped"
   try {
     const ext = import.meta.url.endsWith(".ts") ? "ts" : "js"

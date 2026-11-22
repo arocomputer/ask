@@ -39,14 +39,15 @@ test("a subagent run pins the same per-task deadline in both arms", (t) => {
   assert.ok(!existsSync(runs))
 })
 
-test("subagent traces show nested actions without capturing scripts or raw results", () => {
+test("subagent traces keep each script, its nested actions and the start of its result", () => {
+  const output = "error: " + "x".repeat(400)
   const result = trace([
-    { role: "assistant", text: "", calls: [{ id: "one", name: "execute", arguments: '{"code":"not-saved"}' }] },
-    { role: "tool", id: "one", name: "execute", output: "error: not-saved" },
+    { role: "assistant", text: "", calls: [{ id: "one", name: "execute", arguments: '{"code":"return r.text"}' }] },
+    { role: "tool", id: "one", name: "execute", output },
   ], [{ at: 0, script: 0, id: 1, label: "git diff", state: "finished" }])
   assert.deepEqual(result, [
-    { call: "execute", target: undefined, chars: '{"code":"not-saved"}'.length, actions: [{ label: "git diff", state: "finished" }] },
-    { result: "execute", chars: "error: not-saved".length, error: true },
+    { call: "execute", chars: '{"code":"return r.text"}'.length, code: "return r.text", actions: [{ label: "git diff", state: "finished" }] },
+    { result: "execute", chars: output.length, error: true, head: output.slice(0, 300) },
   ])
 })
 
