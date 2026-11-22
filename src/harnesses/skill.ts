@@ -98,25 +98,34 @@ export function install(h: Home, preferAsk: boolean): { path: string; disabled: 
 }
 
 /** Restore owned preferences and earlier skills; never overwrite an edited skill. */
-export function remove(h: Home): { path: string; restored: boolean; kind: "skill" | "settings" }[] {
-  const out: ReturnType<typeof remove> = []
+export function remove(h: Home) {
+  const paths: { path: string; restored: boolean; kind: "skill" | "settings" }[] = []
+  const errors: string[] = []
   for (const { caller, path } of targets()) {
-    const config = restore(receipt(h, caller))
-    if (config) out.push({ path: config, restored: true, kind: "settings" })
-    const old = read(path)
-    // Earlier installs didn't record their location; the known skill text establishes ownership.
-    if (old === undefined || !ours(old)) continue
-    const saved = read(`${path}.bak`)
-    if (saved !== undefined && !ours(saved)) {
-      renameSync(`${path}.bak`, path)
-    } else {
-      rmSync(path)
-      if (saved !== undefined) rmSync(`${path}.bak`)
-      try { rmdirSync(dirname(path)) } catch {}
+    try {
+      const config = restore(receipt(h, caller))
+      if (config) paths.push({ path: config, restored: true, kind: "settings" })
+      const skills = config ? new Set([path, join(dirname(config), "skills", "ask", "SKILL.md")]) : [path]
+      for (const file of skills) {
+        const old = read(file)
+        // Earlier installs didn't record their location; the known skill text establishes ownership.
+        if (old === undefined || !ours(old)) continue
+        const saved = read(`${file}.bak`)
+        const restored = saved !== undefined && !ours(saved)
+        if (restored) {
+          renameSync(`${file}.bak`, file)
+        } else {
+          rmSync(file)
+          if (saved !== undefined) rmSync(`${file}.bak`)
+          try { rmdirSync(dirname(file)) } catch {}
+        }
+        paths.push({ path: file, restored, kind: "skill" })
+      }
+    } catch (error) {
+      errors.push(`${caller}: ${(error as Error).message}`)
     }
-    out.push({ path, restored: saved !== undefined && !ours(saved), kind: "skill" })
   }
-  return out
+  return { paths, errors }
 }
 
 /** True when every agent found has ask's current skill. */

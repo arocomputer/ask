@@ -2,8 +2,8 @@
 // that span, not the rest of the config. Undo only a patch we can still identify.
 
 import { createHash, randomUUID } from "node:crypto"
-import { lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
-import { readJSON, writeJSON } from "../base/home.ts"
+import { chmodSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { writeJSON } from "../base/home.ts"
 
 type Edit = { at: number; before: string; after: string }
 type Receipt = { caller: Caller; file: string; original?: string; installed: string; edit: Edit }
@@ -21,6 +21,7 @@ function save(file: string, text: string, original: ReturnType<typeof config>) {
   const tmp = `${file}.${randomUUID()}.tmp`
   try {
     writeFileSync(tmp, text, { mode: original?.mode ?? 0o600, flag: "wx" })
+    if (original) chmodSync(tmp, original.mode)
     if (config(file)?.text !== original?.text) throw new Error(`${file} changed during setup; try again`)
     renameSync(tmp, file)
   } finally { rmSync(tmp, { force: true }) }
@@ -40,7 +41,9 @@ function containers(source: string, jsonc: boolean): Container {
     tokens.push({ text: m[0], at: m.index, end: m.index + m[0].length })
   }
   // JSON.parse does syntax validation before we inspect spans or write an edit.
-  JSON.parse(tokens.filter((t, i) => !jsonc || t.text !== "," || !/^[\]}]$/.test(tokens[i + 1]?.text ?? "")).map((t) => t.text).join(" "))
+  try {
+    JSON.parse(tokens.filter((t, i) => !jsonc || t.text !== "," || !/^[\]}]$/.test(tokens[i + 1]?.text ?? "")).map((t) => t.text).join(" "))
+  } catch { throw new Error("caller settings are not valid JSON") }
   let i = 0
   function read(): Container | undefined {
     const open = tokens[i++]
@@ -126,11 +129,14 @@ function drop(source: string, target: Container, item: Entry) {
 function undoJSON(source: string, caller: "claude" | "opencode", patch: Edit): string | undefined {
   const root = containers(source, caller === "opencode")
   const permissions = root.fields.get("permissions")
-  if (!permissions?.value) return
+  if (!permissions) return source
+  if (!permissions.value) return
   const deny = caller === "claude" ? permissions.value.fields.get("deny") : permissions
+  if (!deny && permissions.value.open.text === "{") return source
   const array = deny?.value
   if (!array || array.open.text !== "[") return
   const items = array.entries.filter(caller === "claude" ? (item) => item.first.text === '"Agent"' : denyRule)
+  if (!items.length) return source
   if (items.length !== 1) return
   if (array.entries.length === 1 && patch.after.includes('"permissions"') &&
       (caller === "opencode" || permissions.value.fields.size === 1)) return drop(source, root, permissions)
@@ -139,15 +145,39 @@ function undoJSON(source: string, caller: "claude" | "opencode", patch: Edit): s
   return drop(source, array, items[0])
 }
 
-/** Edit Codex's ordinary [agents] table. Refuse TOML constructs we don't interpret. */
-function codexEdit(source: string): Edit | undefined {
-  if (/"""|'''|^\s*(?:(?:["']agents["']|agents)\s*[.=]|\[\[?\s*(?:["']agents["']|agents\s*\.)|multi_agent_v2\s*=\s*true)/m.test(source))
+/** Find the agents table while skipping nested arrays and inline values on earlier lines. */
+function agentsTable(source: string): { start: number; at: number; body: string } | undefined {
+  if (/"""|'''|^\s*(?:(?:["']agents["']|agents)\s*[.=]|\[\[\s*agents\s*\]|(?:["']multi_agent_v2["']|multi_agent_v2)\s*=\s*true)/m.test(source))
     throw new Error("Codex config layout is not supported; set agents.enabled = false manually")
-  const table = /^[ \t]*\[agents\][ \t]*(?:#[^\r\n]*)?$/m.exec(source)
+  let agents: { start: number; at: number; end: number } | undefined
+  let depth = 0
+  for (const line of source.matchAll(/[^\r\n]+/g)) {
+    const raw = line[0].replace(/"(?:\\.|[^"\\])*"|'[^']*'|#.*$/g, (m) => m.startsWith("#") ? "" : "@").trim()
+    if (!depth && /^\[\[?.*\]\]?$/.test(raw)) {
+      const exact = /^[ \t]*\[[ \t]*(?:agents|"agents"|'agents')[ \t]*\][ \t]*(?:#.*)?$/.test(line[0])
+      if (agents && agents.end === source.length) agents.end = line.index
+      if (exact) {
+        if (agents) throw new Error("Codex config has multiple agents tables")
+        agents = { start: line.index, at: line.index + line[0].length, end: source.length }
+      }
+      continue
+    }
+    if (agents && agents.end === source.length && depth && /^(?:enabled|["']enabled["'])\s*=/.test(line[0].trim()))
+      throw new Error("set agents.enabled = false manually")
+    for (const m of raw.matchAll(/[[\]{}]/g)) depth += m[0] === "[" || m[0] === "{" ? 1 : -1
+    if (depth < 0) throw new Error("Codex config contains an unbalanced value")
+  }
+  if (depth) throw new Error("Codex config contains an unbalanced value")
+  if (agents) return { ...agents, body: source.slice(agents.at, agents.end) }
+}
+
+/** Edit Codex's ordinary [agents] table. Refuse ambiguous or unsupported assignments. */
+function codexEdit(source: string): Edit | undefined {
+  const table = agentsTable(source)
   const nl = source.includes("\r\n") ? "\r\n" : "\n"
   if (!table) return { at: source.length, before: "", after: `${source ? nl : ""}[agents]${nl}enabled = false${nl}` }
-  const at = table.index + table[0].length
-  const body = source.slice(at).split(/^[ \t]*\[/m, 1)[0]
+  const { at, body } = table
+  if ([...body.matchAll(/^[ \t]*(?:enabled|["']enabled["'])\s*=/gm)].length > 1) throw new Error("Codex config has multiple agents.enabled values")
   const enabled = /^[ \t]*enabled[ \t]*=[ \t]*(true|false)[ \t]*(?:#[^\r\n]*)?$/m.exec(body)
   if (enabled?.[1] === "false") return
   if (enabled) return { at: at + enabled.index + enabled[0].indexOf("true"), before: "true", after: "false" }
@@ -157,11 +187,13 @@ function codexEdit(source: string): Edit | undefined {
 
 /** Undo only the Codex setting, preserving any other entries added to the agents table. */
 function undoCodex(source: string, patch: Edit): string | undefined {
-  codexEdit(source) // Refuse unsupported layouts before matching a line to remove.
-  const table = /^[ \t]*\[agents\][ \t]*(?:#[^\r\n]*)?$/m.exec(source)
-  if (!table) return
-  const at = table.index + table[0].length
-  const body = source.slice(at).split(/^[ \t]*\[/m, 1)[0]
+  const table = agentsTable(source)
+  if (!table) return source
+  const { at, body } = table
+  const entries = [...body.matchAll(/^[ \t]*(?:enabled|["']enabled["'])\s*=/gm)]
+  if (!entries.length) return source
+  if (entries.length !== 1) return
+  if (/^[ \t]*(?:enabled|["']enabled["'])[ \t]*=[ \t]*true[ \t]*(?:#[^\r\n]*)?$/m.test(body)) return source
   const line = /^([ \t]*enabled[ \t]*=[ \t]*)false[ \t]*(?:#[^\r\n]*)?$/m.exec(body)
   if (!line) return
   const start = at + line.index
@@ -173,13 +205,30 @@ function undoCodex(source: string, patch: Edit): string | undefined {
   const end = start + line[0].length
   const nextLine = /^\r?\n/.exec(source.slice(end))?.[0].length ?? 0
   if (patch.after.includes("[agents]") && body.trim() === line[0])
-    return source.slice(0, table.index) + source.slice(end + nextLine)
+    return source.slice(0, table.start) + source.slice(end + nextLine)
   return source.slice(0, start) + source.slice(end + nextLine)
+}
+
+/** Read a receipt without treating permission errors or invalid data as a missing receipt. */
+function readReceipt(receipt: string) {
+  const old = config(receipt)
+  if (!old) return
+  try {
+    const saved = JSON.parse(old.text) as Receipt
+    if (!["claude", "codex", "opencode"].includes(saved.caller) || typeof saved.file !== "string" ||
+        typeof saved.installed !== "string" || !Number.isSafeInteger(saved.edit?.at) || saved.edit.at < 0 ||
+        typeof saved.edit.before !== "string" || typeof saved.edit.after !== "string") throw new Error()
+    return saved
+  } catch { throw new Error(`cannot read the delegation receipt at ${receipt}; restore caller settings manually before removing it`) }
 }
 
 /** Disable native delegation if needed and record only the change ask made. */
 export function prefer(caller: Caller, file: string, receipt: string): boolean {
-  if (readJSON<Receipt | undefined>(receipt, undefined)) return false
+  const owned = readReceipt(receipt)
+  if (owned) {
+    if (owned.file !== file) throw new Error(`ask already manages delegation in ${owned.file}; run ask remove skill before changing profiles`)
+    return false
+  }
   const original = config(file)
   const source = original?.text ?? (caller === "codex" ? "" : "{}\n")
   const patch = caller === "codex" ? codexEdit(source) : jsonEdit(source, caller)
@@ -196,7 +245,7 @@ export function prefer(caller: Caller, file: string, receipt: string): boolean {
 
 /** Undo an owned edit; stop rather than guessing when the edited span has changed. */
 export function restore(receipt: string): string | undefined {
-  const saved = readJSON<Receipt | undefined>(receipt, undefined)
+  const saved = readReceipt(receipt)
   if (!saved) return
   const { caller, file, installed, edit: patch } = saved
   const original = config(file)
@@ -206,10 +255,10 @@ export function restore(receipt: string): string | undefined {
       : caller === "codex" ? undoCodex(original.text, patch) : undoJSON(original.text, caller, patch)
     if (next === undefined)
       throw new Error(`${file} was edited; remove only ask's native delegation setting manually (receipt: ${receipt})`)
-    if (!saved.original && (!next.trim() || next.trim() === "{}")) {
+    if (next !== original.text && !saved.original && (!next.trim() || next.trim() === "{}")) {
       if (config(file)?.text !== original.text) throw new Error(`${file} changed during removal; try again`)
       rmSync(file)
-    } else save(file, next, original)
+    } else if (next !== original.text) save(file, next, original)
   }
   rmSync(receipt)
   return file

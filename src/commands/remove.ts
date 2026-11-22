@@ -29,10 +29,11 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   if (!argv.length) throw new Usage("name what to remove")
   const name = argv[0]
   if (name === "skill") {
-    const paths = skill.remove(h)
-    if (!paths.length) say("Ask's skill isn't installed")
+    const { paths, errors } = skill.remove(h)
+    if (!paths.length && !errors.length) say("Ask's skill isn't installed")
     for (const p of paths) say(`${p.kind === "settings" ? "Restored native delegation settings in" : p.restored ? "Restored your earlier skill at" : "Removed"} ${p.path}`)
-    return 0
+    for (const error of errors) say(`${st.bold("error")}  ${error}`)
+    return errors.length ? 1 : 0
   }
   if (!/^[a-z][a-z0-9-]{0,30}$/.test(name)) {
     say(`${st.bold("error")}  ${name} isn't installed; ask install lists what is`)

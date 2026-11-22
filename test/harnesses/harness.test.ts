@@ -342,7 +342,8 @@ describe("install", () => {
     for (const dir of [claude, codex, opencode]) mkdirSync(dir, { recursive: true })
     const c = join(claude, "settings.json"), d = join(codex, "config.toml"), o = join(opencode, "opencode.jsonc")
     writeFileSync(c, '{"permissions":{"deny":["WebFetch"]}}\n')
-    writeFileSync(d, '[agents]\nenabled = true # my setting\n')
+    const nested = 'example = [\n  [true]\n]\n'
+    writeFileSync(d, `[ agents ]\n${nested}enabled = true # my setting\n`)
     writeFileSync(o, '{\n  // Keep comments.\n  "permissions": [],\n}\n')
     const { run } = setup("ok", {}, { HOME: user, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, XDG_CONFIG_HOME: xdg })
     for (let i = 0; i < 2; i++) assert.equal((await run(["install", "skill", "--prefer-ask"])).code, 0)
@@ -351,13 +352,30 @@ describe("install", () => {
     assert.match(readFileSync(o, "utf8"), /"action":"subagent","resource":"\*","effect":"deny"/)
     assert.ok(existsSync(join(opencode, "skills", "ask", "SKILL.md")))
     writeFileSync(c, '{"permissions":{"deny":["WebFetch","Agent","WebSearch"]},"model":"opus"}\n')
-    writeFileSync(d, '[agents]\nenabled = false # my setting\nmax_depth = 2\n')
+    writeFileSync(d, `[ agents ]\n${nested}enabled = false # my setting\nmax_depth = 2\n`)
     writeFileSync(o, readFileSync(o, "utf8").replace('  "permissions"', '  "snapshots": false,\n  "permissions"'))
     assert.equal((await run(["remove", "skill"])).code, 0)
     assert.deepEqual(JSON.parse(readFileSync(c, "utf8")), { permissions: { deny: ["WebFetch", "WebSearch"] }, model: "opus" })
-    assert.equal(readFileSync(d, "utf8"), '[agents]\nenabled = true # my setting\nmax_depth = 2\n')
+    assert.equal(readFileSync(d, "utf8"), `[ agents ]\n${nested}enabled = true # my setting\nmax_depth = 2\n`)
     assert.equal(readFileSync(o, "utf8"), '{\n  // Keep comments.\n  "snapshots": false,\n  "permissions": [],\n}\n')
     assert.ok(!existsSync(join(opencode, "skills", "ask", "SKILL.md")))
+  })
+
+  test("an ambiguous settings edit does not prevent removing the skill from other callers", async () => {
+    const user = mkdtempSync(join(tmpdir(), "ask-delegation-"))
+    const claude = join(user, "claude"), codex = join(user, "codex"), xdg = join(user, "xdg")
+    for (const dir of [claude, codex]) mkdirSync(dir, { recursive: true })
+    const { run } = setup("ok", {}, { HOME: user, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, XDG_CONFIG_HOME: xdg })
+    assert.equal((await run(["install", "skill", "--prefer-ask"])).code, 0)
+    const c = join(claude, "settings.json"), edited = '{"permissions":{"deny":["Agent","Agent"]}}'
+    writeFileSync(c, edited)
+    const removal = await run(["remove", "skill"])
+    assert.equal(removal.code, 1)
+    assert.match(removal.stderr, /claude:.*was edited/)
+    assert.equal(readFileSync(c, "utf8"), edited)
+    assert.ok(existsSync(join(claude, "skills", "ask", "SKILL.md")))
+    assert.ok(!existsSync(join(codex, "config.toml")))
+    assert.ok(!existsSync(join(codex, "skills", "ask", "SKILL.md")))
   })
 
   test("skill removal leaves a pre-existing native delegation deny alone", async () => {

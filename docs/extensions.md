@@ -128,8 +128,9 @@ change native delegation settings.
 
 Run `ask remove skill` with the same `ASK_HOME` before uninstalling ask. It restores the
 setting ask changed, keeps a native deny that was already there, and puts back a previous
-skill if ask's own copy is still unchanged. It preserves unrelated edits and stops if it
-can't identify the settings change to undo. Open a new caller session to pick up the change.
+skill if ask's own copy is still unchanged. It preserves unrelated edits. If it can't
+identify a caller's settings change, it reports the conflict and leaves that caller alone
+while still cleaning up the others. Open a new caller session to pick up the change.
 
 ## Turning tools off, and replacing them
 
