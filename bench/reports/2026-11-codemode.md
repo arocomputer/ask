@@ -14,14 +14,14 @@ one arm after another.
 | Code Mode, forgiving runtime, first run | 42 | 42 | 5.3 · 4.5 | 21,707 · 14,205 | 18.3 · 12.7 |
 | Code Mode, forgiving runtime, second run | 42 | 42 | 6.5 · 5.0 | 35,983 · 14,966 | 24.0 · 13.4 |
 
-**What holds:** the forgiving runtime passed 84 of 84, used fewer turns and tokens than the
+**What holds:** on these two models the forgiving runtime passed 84 of 84, used fewer turns and tokens than the
 first version in both runs, and against direct tools took fewer tokens on all seven tasks and
 fewer turns on six.
 **What doesn't:** the size of the saving. The two forgiving-runtime runs are the same runtime
 (the second adds only error-path changes) and their means differ by 1.2 turns and 14k tokens,
 because two tasks have long tails: DeepSeek hunting for the symbol that doesn't exist took
 30 turns in one run and 6 in another. Medians barely move. Read the means as "lower", not as
-a percentage.
+a percentage. On two other models there was no gain to see; that section is below.
 
 By task, mean turns and mean input tokens, the two forgiving runs pooled:
 
@@ -62,6 +62,31 @@ rather than their fields. It passed 41 of 42 at 6.8 turns and 32,542 tokens, ins
 of the two runs above, and answers cited `path:line` just as often either way, so the wording
 stayed as first written.
 
+### Two other models: no gain
+
+The runtime was fixed against transcripts from DeepSeek and GLM, so the same seven tasks ran
+twice each on two models it had not seen, OpenCode Go's MiniMax M3.1 Flash and MiMo V2.6 Flash,
+28 runs an arm:
+
+| Arm | Passed | Turns, mean · median | Input tokens, mean · median | Scripts spent on runtime mistakes |
+| --- | ---: | ---: | ---: | ---: |
+| Code Mode, first version | 21 | 10.4 · 8.5 | 116,895 · 37,993 | 65 of 356 (18%) |
+| Code Mode, forgiving runtime | 21 | 11.3 · 8.0 | 125,119 · 33,424 | 34 of 412 (8%) |
+
+The mistakes the runtime absorbs fell by half here too, and three provider errors went away
+(MiMo had sent scripts with tool-call markup still attached, which the runtime now strips).
+Neither showed up as passes or turns. Every failure in the forgiving arm was the 150-second
+limit: MiMo timed out on lookups after 5 to 11 turns, which is the provider's speed, and MiniMax
+kept gathering evidence it didn't need (twenty turns of blame, history and Python's sqlite3
+documentation to review a two-file diff). On these models the turns go to wandering, not to
+script errors, and a forgiving runtime doesn't change that.
+
+MiniMax's diff review was the one cell that looked worse with the forgiving runtime (two
+timeouts in two runs, against none before), so it ran six more times on each arm: the first
+version passed 4 of 6 at 13.7 turns, the forgiving runtime 6 of 6 at 9.3. The two-run cell was
+noise, which is also the caution for everything else in this section: 28 runs an arm on models
+this slow against a 150-second limit can't separate a small effect from none.
+
 ### How to read this
 
 - The runs came from a copy of the `subagents` runner that keeps whole transcripts. The suite's
@@ -73,8 +98,8 @@ stayed as first written.
   without case, and every arm above was regraded from its saved answers the same way.
 - Most input tokens were served from the provider's cache. Seconds depend on the provider's
   load and on timeouts (three direct-tool runs hit the 150-second limit).
-- Two inexpensive models, three repetitions, seven tasks, no web tasks, and the problems were
-  found on these same two models. This is not a comparison with any other harness's Code Mode.
+- Seven tasks, no web tasks, four inexpensive models. The gain is on the two models the
+  problems were found on. This is not a comparison with any other harness's Code Mode.
 
 ## Earlier runs
 
