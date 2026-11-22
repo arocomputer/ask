@@ -1,5 +1,5 @@
 // ask install: turns on what ask can run besides its own loop. `claude` and `codex` are the
-// harnesses ask ships; `skill` teaches Claude Code and Codex to use ask; a folder or git
+// harnesses ask ships; `skill` teaches supported callers to use ask; a folder or git
 // address is an extension someone wrote, checked by loading it, then copied into
 // ~/.ask/extensions/NAME (made only now). A harness also gets a "harnesses" entry in
 // config.json to edit. Installing what is already installed updates it. With nothing named, it
@@ -21,23 +21,25 @@ export const about = `Connect coding agents and add extensions.
 
   claude    Enable the Claude Code integration
   codex     Enable the Codex integration
-  skill     Teach Claude Code and Codex to hand work to ask
+  skill     Teach Claude Code, Codex and OpenCode to hand work to ask
   PATH|URL  An extension: a folder or git repository that adds a harness or tools
 
 Ask uses your existing Claude Code or Codex installation and sign-in.
 Each integration gets an entry under "harnesses" in ~/.ask/config.json, to change the command,
 add arguments or set environment variables. An extension runs as part of ask, so install only
 ones you trust. Run ask install without arguments to list integrations and extensions.`
-export const usage = "ask install [claude | codex | skill | PATH | URL]"
-export const examples = ["ask install claude", "ask install skill", "ask install https://github.com/someone/ask-gemini"]
+export const usage = "ask install [claude | codex | skill [--prefer-ask] | PATH | URL]"
+export const flags: [string, string][] = [["--prefer-ask", "With skill: disable native subagents in caller user settings. Reversible with ask remove skill."]]
+export const examples = ["ask install claude", "ask install skill", "ask install skill --prefer-ask"]
 
 const say = (line: string) => text(line, process.stderr)
 
 export async function run(h: Home, argv: string[]): Promise<number> {
+  if (argv[0] === "skill" && argv.length === 2 && argv[1] === "--prefer-ask") return installSkill(h, true)
   positional(argv, 1)
   const name = argv[0]
   if (!name) return list(h)
-  if (name === "skill") return installSkill()
+  if (name === "skill") return installSkill(h, false)
   if (builtin[name]) return turnOn(h, builtin[name])
   if (remote(name) || existsSync(name)) return installExtension(h, name)
   throw new Usage(`no harness, folder or git repository called ${name}`)
@@ -50,7 +52,7 @@ async function list(h: Home): Promise<number> {
   const loaded = await active(h)
   const rows: [string, string, string][] = [
     ...Object.values(builtin).map((x): [string, string, string] => [x.name, `${x.title} integration`, enabled(h, x.name) ? "enabled" : "not enabled"]),
-    ["skill", "Agent skill for Claude Code and Codex", skill.current() ? "installed" : "not installed"],
+    ["skill", "Agent skill for Claude Code, Codex and OpenCode", skill.current() ? "installed" : "not installed"],
     ...installed(h.root).map((name): [string, string, string] => {
       const e = loaded.find((x) => x.name === name)
       if (e) return [name, describe(e), "installed"]
@@ -102,14 +104,15 @@ function ready(h: Home, x: Harness) {
   say(st.gray(`  To change how it runs, edit "harnesses" › "${x.name}" in ${h.config}`))
 }
 
-function installSkill(): number {
+/** Install the skill or opt in to making ask the only delegation path in the user's settings. */
+function installSkill(h: Home, preferAsk: boolean): number {
   const st = style(process.stderr)
-  const paths = skill.install()
+  const paths = skill.install(h, preferAsk)
   if (!paths.length) {
-    say(`${st.bold("error")}  Neither Claude Code nor Codex is set up here (no ~/.claude or ~/.codex)`)
+    say(`${st.bold("error")}  No Claude Code, Codex or OpenCode configuration directory found`)
     return 1
   }
-  for (const p of paths) say(`Installed skill  ${p}`)
+  for (const p of paths) say(`Installed skill  ${p.path}${p.disabled ? " (disabled native subagents in user settings)" : ""}`)
   return 0
 }
 

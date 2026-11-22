@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Shorten the ask skill and install it in OpenCode as well as Claude Code and Codex.
+  `ask install skill --prefer-ask` disables native delegation in their user settings;
+  `ask remove skill` undoes ask's changes without enabling a previously disabled tool.
+
 - Bundle static, non-setuid bubblewrap 0.13.1 on Linux, with libcap 2.78, source archives,
   licenses and an offline rebuild script, so Linux installs no longer need a system bubblewrap.
   ask prefers the bundle and probes system copies when host policy blocks it; confinement stays
