@@ -10,7 +10,7 @@ import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { open as confine } from "../sandbox/confine.ts"
 import type { ToolSpec } from "../providers/stream.ts"
-import type { Context } from "./context.ts"
+import { resultFormat, type Context } from "./context.ts"
 import { fetch } from "./fetch.ts"
 import { git } from "./git.ts"
 
@@ -20,9 +20,11 @@ export type ToolSource = { extension?: string; builtin?: boolean }
 /** What a tool needs to run: set by the loop, not by whoever registered it. */
 export type ToolSpace = { source?: ToolSource }
 
-/** A tool the model may call. `readonly` tools may run in parallel. Errors become "error: ..." for the model. */
+/** A capability Code Mode may call. `readonly` tools may run in parallel. Throws reject in the script. */
 export type Tool = ToolSpec & {
   readonly: boolean
+  /** Optional JSON result contract when run receives format: "json". */
+  structured?: string
   run(args: Args, ctx: Context): Promise<string>
 }
 
@@ -150,24 +152,65 @@ const patternNote = "A pattern without a slash matches file names anywhere, like
 
 const read: Tool = {
   name: "read",
-  description: `Read a text file. Each line comes numbered as N<tab>text. Returns up to ${lineLimit} lines or 64 KiB from the optional 1-based start line; call again with a later line for more.`,
+  description: `Read a text file from an optional 1-based line. Default text has numbered lines and clips long lines. For machine-readable files use format: "json": unnumbered text with a nextLine cursor, up to ${lineLimit} lines or 64 KiB.`,
   parameters: schema(
-    { path: { type: "string", description: "File path, relative to the working directory" }, line: { type: "integer", description: "1-based line to start from" } },
+    {
+      path: { type: "string", description: "File path, relative to the working directory" },
+      line: { type: "integer", description: "1-based line to start from" },
+      limit: { type: "integer", description: `Maximum lines to read (1–${lineLimit})` },
+      format: resultFormat,
+    },
     ["path"],
   ),
   readonly: true,
+  structured: "{ text: string, startLine: number, nextLine: number | null, clipped: boolean, binary: boolean }",
   async run(args, { dir }) {
     const path = await resolve(dir, str(args, "path"))
     if (secret(path)) throw new Error(`${str(args, "path")} is an environment file, which holds secrets, so read doesn't open it; its example, like .env.example, is fine`)
     const b = await contents(path)
-    if (b.subarray(0, 8192).includes(0)) return `${str(args, "path")} is a binary file of ${b.length} bytes`
-    const lines = b.toString("utf8").split("\n")
-    if (lines.at(-1) === "") lines.pop()
     const start = Math.max(1, Math.floor(num(args, "line") ?? 1))
+    const limit = Math.min(lineLimit, Math.max(1, Math.floor(num(args, "limit") ?? lineLimit)))
+    if (b.subarray(0, 8192).includes(0)) {
+      if (args.format === "json") return JSON.stringify({ text: "", startLine: start, nextLine: null, clipped: false, binary: true })
+      return `${str(args, "path")} is a binary file of ${b.length} bytes`
+    }
+    const lines = b.toString("utf8").split("\n")
+    const newline = lines.at(-1) === "" && b.length > 0
+    if (lines.at(-1) === "") lines.pop()
     if (start > Math.max(lines.length, 1)) throw new Error(`${str(args, "path")} has only ${lines.length} lines`)
+    if (args.format === "json") {
+      const page: string[] = []
+      let bytes = 0
+      let clipped = false
+      let n = start
+      for (; n <= lines.length && n < start + limit; n++) {
+        const line = lines[n - 1] + (newline || n < lines.length ? "\n" : "")
+        // Budget the serialized line too, so control characters cannot make a valid page too
+        // large for the bridge even when its raw text is within the byte limit.
+        const size = Buffer.byteLength(JSON.stringify(line))
+        if (bytes + size > readLimit - 128) {
+          if (page.length) break
+          let lo = 0
+          let hi = Math.min(line.length, readLimit)
+          while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2)
+            if (Buffer.byteLength(JSON.stringify(line.slice(0, mid))) <= readLimit - 128) lo = mid
+            else hi = mid - 1
+          }
+          if (/[\uD800-\uDBFF]/.test(line[lo - 1] ?? "")) lo--
+          page.push(line.slice(0, lo))
+          clipped = true
+          n++
+          break
+        }
+        page.push(line)
+        bytes += size
+      }
+      return JSON.stringify({ text: page.join(""), startLine: start, nextLine: n <= lines.length ? n : null, clipped, binary: false })
+    }
     let out = ""
     let n = start
-    for (; n <= lines.length && n < start + lineLimit; n++) {
+    for (; n <= lines.length && n < start + limit; n++) {
       let line = lines[n - 1]
       if (line.length > 2000) line = line.slice(0, 2000) + "…"
       const next = `${n}\t${line}\n`
@@ -213,10 +256,13 @@ const grep: Tool = {
       pattern: { type: "string", description: "Regular expression" },
       path: { type: "string", description: "File or directory to search" },
       glob: { type: "string", description: "Only files matching this pattern" },
+      limit: { type: "integer", description: `Maximum matches to return (1–${matchLimit})` },
+      format: resultFormat,
     },
     ["pattern"],
   ),
   readonly: true,
+  structured: "{ matches: { path: string, line: number, text: string }[], truncated: boolean }",
   async run(args, { dir, signal }) {
     const source = str(args, "pattern")
     if (!source) throw new Error("pattern is required")
@@ -233,8 +279,10 @@ const grep: Tool = {
     let list = isFile ? [relative(base, path)] : await files(path)
     list.sort()
     if (str(args, "glob")) list = list.filter(matcher(str(args, "glob")))
-    const out: string[] = []
-    for (const rel of list) {
+    const matches: { path: string; line: number; text: string }[] = []
+    const limit = Math.min(matchLimit, Math.max(1, Math.floor(num(args, "limit") ?? matchLimit)))
+    let truncated = false
+    scan: for (const rel of list) {
       signal?.throwIfAborted()
       if (secret(rel)) continue
       const full = await resolve(dir, join(base, rel)).catch(() => undefined)
@@ -245,12 +293,15 @@ const grep: Tool = {
       const lines = b.toString("utf8").split("\n")
       for (let i = 0; i < lines.length; i++) {
         if (!re.test(lines[i])) continue
-        if (out.length === matchLimit) return out.join("\n") + "\n[more matches not shown; narrow the pattern or path]"
+        if (matches.length === limit) { truncated = true; break scan }
         const line = lines[i].length > 300 ? lines[i].slice(0, 300) + "…" : lines[i]
-        out.push(`${shown}:${i + 1}:${line}`)
+        matches.push({ path: shown, line: i + 1, text: line })
       }
     }
-    return out.length ? out.join("\n") : "(no matches; try a shorter pattern, another spelling, or a wider path)"
+    if (args.format === "json") return JSON.stringify({ matches, truncated })
+    return matches.length
+      ? matches.map(({ path, line, text }) => `${path}:${line}:${text}`).join("\n") + (truncated ? "\n[more matches not shown; narrow the pattern or path]" : "")
+      : "(no matches; try a shorter pattern, another spelling, or a wider path)"
   },
 }
 
@@ -317,6 +368,7 @@ const shell: Tool = {
       const timer = setTimeout(() => kill(`timed out after ${seconds} seconds`), seconds * 1000)
       const abort = () => kill("stopped")
       signal?.addEventListener("abort", abort, { once: true })
+      if (signal?.aborted) abort()
       child.on("error", (err) => {
         ended ||= `cannot run sh: ${err.message}`
       })

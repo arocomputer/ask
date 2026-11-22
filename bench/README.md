@@ -10,7 +10,7 @@ bun bench/run.ts compare callers baseline candidate
 
 | Suite | What it measures | Suite options |
 | --- | --- | --- |
-| `subagents` | Ask's own loop on pinned repo tasks: locating, reviewing, fixing and finding evidence | `--models provider/model,...`, `--tasks id,...` |
+| `subagents` | Ask's own loop on pinned repo tasks: locating, reviewing, fixing and finding evidence | `--models provider/model,...`, `--tasks id,...`, `--timeout SECONDS` per task (default 900) |
 | `callers` | Whether Claude Code, Codex and OpenCode choose ask, native delegation or neither; also grades the answer | `--arms none,skill,deny`, `--drivers claude,codex,opencode`, `--jobs id,...`, `--skill FILE`, `--opencode free\|go` |
 | `compaction` | Which task-critical facts survive a forced context overflow | `--model provider/model` |
 | `extraction` | Exact answers from raw text, same-model extraction and a separate helper model | `--model provider/model`, `--helper provider/model` |
@@ -29,7 +29,8 @@ runner. Commit the code under test before running: the runner copies the committ
 - `list`, `plan`, and `compare` make no writes or network calls. `run` writes disposable
   copies, profiles and repos, and saves `manifest.json` and `results.jsonl` under
   `.runs/SUITE/LABEL/`. Use a fresh label for each run. Fix jobs write only to their
-  scratch repos. Do not use these runners as a sandbox for untrusted tasks or checkouts.
+  scratch repos. Hidden Python graders run submitted code read-only in ask's OS sandbox.
+  Do not use these runners as a sandbox for untrusted tasks or checkouts.
 - Live runs seed scratch profiles from available ask, Claude Code and Codex credential
   files, not from personal settings or sessions. Scratch profiles cannot renew your
   sign-in: start with fresh access tokens or API keys. Keychain-only sign-ins may
@@ -63,4 +64,5 @@ including delegated work. Sandbox reports warmed p50/p95 timings, not quality gr
 
 Older flat JSONL files in `.runs/` are left in place, but are not used for manifest-backed
 comparisons. See the [caller pilot](reports/2026-11-callers.md) and the
-[earlier loop and tool measurements](reports/2026-11-loop.md).
+[earlier loop and tool measurements](reports/2026-11-loop.md). The
+[Code Mode pilot](reports/2026-11-codemode.md) reports only matched cases from incomplete runs.

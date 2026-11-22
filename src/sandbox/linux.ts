@@ -81,6 +81,7 @@ export function abi(): number {
 /** The command line that runs `argv` under `p`. */
 export function wrap(p: Policy, argv: string[]): string[] {
   const args = [helper()!]
+  if (p.compute) args.push("--compute")
   for (const r of p.read) args.push("-r", r)
   for (const w of p.write) args.push("-w", w)
   args.push("--", ...argv)

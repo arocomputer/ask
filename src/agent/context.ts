@@ -5,6 +5,9 @@ import type { Sandbox } from "../sandbox/confine.ts"
 import type { ToolSpace } from "./tools.ts"
 import type { Usage } from "../providers/stream.ts"
 
+/** Common opt-in for tools with a structured output contract. */
+export const resultFormat = { type: "string", enum: ["text", "json"], description: "Return structured data with json; default text" }
+
 export type Context = ToolSpace & {
   dir: string
   signal?: AbortSignal

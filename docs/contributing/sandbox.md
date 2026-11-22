@@ -30,14 +30,25 @@ in [bench/README.md](../../bench/README.md).
 
 The following boundary is enabled by default. Config-only `"sandbox": false` disables OS
 confinement for new turns; the choice is persisted per turn, and older turns default to enabled.
-Disabled execution retains child processes, credential environment filtering, cancellation and
-output limits, but allows normal account access. Shipped harnesses honor the same choice;
+Disabled task tool execution retains child processes, credential environment filtering, cancellation
+and output limits, but allows normal account access. Shipped harnesses honor the same choice;
 extensions receive `Run.sandbox`. The bundled `ask.sandbox` is a short-lived helper, not a service.
 
 ask confines commands and built-in filesystem tools, not provider requests. The parent agent
 holds credentials and talks to providers; filesystem tools run in separate credential-free
 processes with bounded output and a two-minute timeout. Read-only tools receive no workspace
 write grant. Fetch and search run in the parent with public-address checks.
+
+Code Mode always starts a credential-free QuickJS/Wasm child, even with `"sandbox": false`. It
+has a fresh read-only scratch directory, only the runtime and loader files it needs, no task
+directory or Git grants, and no network. Source and npm launches copy just the evaluator and
+its dependencies into scratch instead of granting reads on the install tree. The compiled CLI
+uses its internal `__execute` entry point. A bounded JSON-lines bridge carries capability requests
+and replies; only the parent dispatches tools. JavaScript never receives host handles, imports,
+timers or raw network access. The child has a fresh 32 MiB guest heap and 1.5 seconds of cumulative
+guest execution time; the parent caps script wall time at 620 seconds to preserve the ten-minute
+shell limit and stops it sooner when the turn is cancelled. A pending nested action can be
+interrupted, but a completed side effect is not rolled back.
 
 ## Enforcement
 

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add per-task capability allowlists for the built-in loop, paged discovery for large tool
+  catalogs, and structured Code Mode results for file reads, `grep`, `git`, and web search.
+
+- Make Code Mode the only tool interface in ask's built-in loop. Subagents can combine reads,
+  edits, commands and extension capabilities in confined JavaScript, and send only selected
+  results back to the model. Existing tool permissions still apply. `ask show` records nested
+  actions locally and marks interrupted actions as uncertain; ask never replays a script on restart.
+
 - Shorten the ask skill and install it in OpenCode as well as Claude Code and Codex.
   `ask install skill --prefer-ask` disables native delegation in their user settings;
   `ask remove skill` undoes ask's changes without enabling a previously disabled tool.

@@ -108,6 +108,8 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
   try {
     checkConfig(h)
     const target = await resolve(h, t.model)
+    if (target.model.protocol === "harness" && t.tools !== undefined)
+      throw new Error("a tools allowlist requires a built-in ask model")
     const models = target.model.protocol === "harness" ? undefined : await readModels(h, target)
     // Pin the turn's confinement choice across restarts; older turns default to enabled.
     if (target.model.protocol !== "harness") {
@@ -163,11 +165,21 @@ export async function execute(h: Home, s: Session, signal?: AbortSignal) {
               onUpdate(messages, usage)
               writeJSON(join(s.folder, "checkpoint.json"), checkpoint)
             },
+            onAction(action) {
+              const actions = t.actions ??= []
+              if (action.state === "started") actions.push(action)
+              else {
+                const i = actions.findLastIndex((a) => a.at === action.at && a.script === action.script && a.id === action.id)
+                if (i >= 0) actions[i] = action
+              }
+              save(s)
+            },
             session: s.id,
             extra: await tools(h),
             sandbox,
             models,
             search: web,
+            allow: t.tools,
             off: Object.entries(readJSON<Config>(h.config, {}).tools ?? {}).flatMap(([name, on]) => (on === false ? [name] : [])),
           })
     saveTranscript(s, r.messages)

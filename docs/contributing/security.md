@@ -12,8 +12,12 @@ Fetch/search are separate parent capabilities with public-address checks. Extens
 configuration and the invoking user's host processes are trusted. A hostile same-user process
 can alter binaries, configuration and policy inputs before launch; this is not a multi-tenant VM.
 
-Config-only `"sandbox": false` explicitly removes this OS boundary. It is recorded per turn.
+Config-only `"sandbox": false` explicitly removes the task tools' OS boundary. It is recorded per turn.
 Environment filtering remains, but account-readable files and network access are then available.
+Code Mode has a separate, always-on boundary: a capability-only QuickJS/Wasm evaluator in a
+credential-free child under a narrower OS policy. The parent applies the turn's allowlist and
+records each dispatched action locally. Treat both the engine and the pipe parser as untrusted
+input boundaries; never execute scripts in the provider process or add unfiltered host APIs.
 
 ## Decisions
 

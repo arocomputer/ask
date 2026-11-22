@@ -1,13 +1,13 @@
 // Per-turn command confinement. OS policy protects Git metadata during execution; cleanup
 // removes only ask's private scratch directory and never restores repository files.
 
-import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs"
+import { copyFileSync, mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { abi, helper, mounts, wrap as linux } from "./linux.ts"
 import { wrap as macos } from "./macos.ts"
-import { environment, policy } from "./policy.ts"
+import { computation, environment, policy } from "./policy.ts"
 
 /** Platform enforcement availability; command networking is always disabled. */
 export type Support = { ok: true; network: "none"; sockets: "precise" | "blocked"; detail: string } | { ok: false; detail: string; fix: string }
@@ -38,6 +38,29 @@ export type Sandbox = {
   execute(argv: string[], read?: string[]): { file: string; args: string[]; env: NodeJS.ProcessEnv }
   /** Removes private scratch state. The empty list preserves the existing cleanup contract. */
   close(): Promise<string[]>
+}
+
+/** Launch an evaluator in a fresh scratch directory, regardless of the task's sandbox setting. */
+export function evaluator(argv: string[], files: { from: string; to: string }[] = []) {
+  const s = support()
+  if (!s.ok) throw new Error(`${s.detail}; ${s.fix}`)
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), "ask-code-")))
+  const close = () => rmSync(cwd, { recursive: true, force: true })
+  try {
+    // Source/npm entry points need directory reads during JS module resolution. Copy just the
+    // trusted entry and its imports instead of granting access to the install tree or workspace.
+    for (const { from, to } of files) {
+      const at = join(cwd, to)
+      mkdirSync(dirname(at), { recursive: true })
+      copyFileSync(from, at)
+    }
+    const p = computation(cwd, argv[0])
+    const [file, ...args] = (process.platform === "darwin" ? macos : linux)(p, argv)
+    return { file, args, cwd, env: { HOME: cwd, TMPDIR: cwd, OPENSSL_CONF: "/dev/null" }, close }
+  } catch (err) {
+    close()
+    throw err
+  }
 }
 
 /** Create a turn execution context, optionally unconfined; failure cleans private scratch. */

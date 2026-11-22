@@ -57,6 +57,13 @@ jobs:
           npm pack --pack-destination "$RUNNER_TEMP"
           npm install --prefix "$RUNNER_TEMP/ask-npm" "$RUNNER_TEMP"/arocomputer-ask-*.tgz
           "$RUNNER_TEMP/ask-npm/node_modules/.bin/ask" --version
+          cd "$RUNNER_TEMP/ask-npm/node_modules/@arocomputer/ask"
+          node --input-type=module <<'JS'
+          import assert from "node:assert/strict"
+          import { runCode } from "./dist/src/agent/code.js"
+          const output = await runCode('{"code":"return 42"}', [], { dir: process.cwd(), signal: AbortSignal.timeout(5000) }, () => {})
+          assert.equal(output, "42")
+          JS
       - name: Check the shell scripts
         if: runner.os == 'Linux'
         run: shellcheck install.sh .github/release/*.sh .github/ci/*.sh

@@ -2,7 +2,7 @@
 //
 //   ask.sandbox --abi
 //       Prints the kernel's Landlock ABI version (0 when Landlock is off) and exits.
-//   ask.sandbox [-r PATH]... [-w PATH]... -- COMMAND [ARG]...
+//   ask.sandbox [--compute] [-r PATH]... [-w PATH]... -- COMMAND [ARG]...
 //       Runs COMMAND so that it, and everything it starts, can:
 //       - read and run files only under the -r and -w paths, and write only under -w paths;
 //       - never create internet sockets;
@@ -12,6 +12,7 @@
 //       - not use io_uring or VM sockets, which would get around the rules above;
 //       - never gain privileges (no_new_privs: setuid programs don't elevate).
 //
+// --compute denies all sockets other than socket pairs used internally by the runtime.
 // Paths that don't exist are skipped. Setup failures print "ask.sandbox: ..." and exit 125, the
 // command's own exit status passes through. The design is docs/contributing/sandbox.md.
 
@@ -78,7 +79,7 @@ static void fail(const char *what) {
 }
 
 static void usage(void) {
-  fprintf(stderr, "usage: ask.sandbox --abi\n       ask.sandbox [-r PATH]... [-w PATH]... -- COMMAND [ARG]...\n");
+  fprintf(stderr, "usage: ask.sandbox --abi\n       ask.sandbox [--compute] [-r PATH]... [-w PATH]... -- COMMAND [ARG]...\n");
   exit(125);
 }
 
@@ -115,7 +116,7 @@ static void allow_path(int ruleset, const char *path, uint64_t rights) {
 #define DENY_IF(k) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (k), 0, 1), DENY
 
 /** Refuses io_uring and internet/VM sockets; Unix sockets need Landlock resolution support. */
-static void seccomp(int block_unix) {
+static void seccomp(int block_unix, int compute) {
   struct sock_filter f[64];
   int n = 0;
   struct sock_filter head[] = {
@@ -133,6 +134,10 @@ static void seccomp(int block_unix) {
   };
   memcpy(f, head, sizeof head);
   n = sizeof head / sizeof head[0];
+  if (compute) {
+    struct sock_filter s[] = {DENY_IF(__NR_socket)};
+    memcpy(f + n, s, sizeof s), n += 2;
+  }
   int skip = n++; // the jump over the socket checks, filled in below
   int start = n;
   f[n++] = (struct sock_filter)BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0]));
@@ -158,9 +163,13 @@ int main(int argc, char **argv) {
     return 0;
   }
   char **reads = calloc(argc, sizeof *reads), **writes = calloc(argc, sizeof *writes);
-  int nr = 0, nw = 0, i = 1;
+  int nr = 0, nw = 0, compute = 0, i = 1;
   for (; i < argc; i++) {
     if (strcmp(argv[i], "--") == 0) break;
+    if (strcmp(argv[i], "--compute") == 0) {
+      compute = 1;
+      continue;
+    }
     if (i + 1 >= argc) usage();
     if (strcmp(argv[i], "-r") == 0) reads[nr++] = argv[++i];
     else if (strcmp(argv[i], "-w") == 0) writes[nw++] = argv[++i];
@@ -197,7 +206,7 @@ int main(int argc, char **argv) {
   for (int k = 0; k < nw; k++) allow_path((int)ruleset, writes[k], attr.fs);
 
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) fail("no_new_privs");
-  seccomp(!resolve);
+  seccomp(!resolve, compute);
   if (syscall(LL_RESTRICT_SELF, ruleset, 0) != 0) fail("entering the Landlock sandbox");
   close((int)ruleset);
   execvp(command[0], command);

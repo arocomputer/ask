@@ -51,10 +51,11 @@ Your final message:
 export async function instructions(dir: string, write: boolean, schema: boolean, limits?: string, commands = write, sandbox?: Sandbox): Promise<string> {
   const work = [
     "- Scale the effort to the task: a lookup takes a few targeted searches; tracing a flow or fixing a bug means reading every part involved. Stop once you can back the answer up.",
-    "- Find before you read: grep for names and strings, list for file patterns, then read the parts that matter. Make independent calls together in one step, and don't read a file twice.",
-    "- git shows what changed and why: git diff for uncommitted work, log and blame for history.",
+    "- Read a named file directly. For unknown paths, use grep for strings and list for file patterns, then read the relevant parts.",
+    "- When available, use git diff for uncommitted work, log and blame for history.",
     "- Ground every claim in what you read or ran. Never guess a file, function, value or behavior; if something isn't there, say so.",
-    "- For what isn't in the files, like a library's documentation, an error message or a recent release, use search and fetch, and prefer official sources.",
+    "- For material outside the files, use search and fetch when available, and prefer official sources.",
+    "- Follow the caller's requested output format. Do not add prose to a machine-readable answer.",
   ]
   if (write) {
     work.push(
@@ -64,7 +65,7 @@ export async function instructions(dir: string, write: boolean, schema: boolean,
         : "- You can't run commands here, so check your change by reading it through, and say what the caller should run to prove it.",
     )
     if (limits) work.push(`- ${limits}`)
-  } else work.push("- This task is read-only: you can read, list and search the files, look at git, and search and fetch the web, but not change anything or run commands. If the task needs a change, describe it exactly instead.")
+  } else work.push("- This task is read-only: use only the capabilities in the catalog. If the task needs a change, describe it exactly instead.")
   let s = `${framing()}\n\n# Where you work\n\n${environment(dir, write)}\n\n# How to work\n\n${work.join("\n")}`
   if (schema) s += "\n\nYour final answer must be JSON matching the required schema, and nothing else."
   const project = await projectInstructions(dir, git(dir, ["rev-parse", "--show-toplevel"]) || dir, sandbox)

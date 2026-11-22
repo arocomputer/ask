@@ -38,7 +38,8 @@ tag starts the build and publication jobs:
    Maintainer-pushed tags pass the same gates.
 2. **release**: `.github/release/package.sh` compiles ask with Bun into one file for macOS and
    Linux (arm64 and amd64), in archives named `ask_vX.Y.Z_OS_ARCH.tar.gz`, with the version
-   from the tag. The Linux archives also hold `ask.sandbox`, which `zig cc` compiles statically
+   from the tag. Each binary embeds the pinned QuickJS Wasm evaluator; archive validation
+   executes a script with the host binary. The Linux archives also hold `ask.sandbox`, which `zig cc` compiles statically
    from `native/sandbox.c` for each architecture into `native/build/`, where `npm run build`
    picks it up for the npm package; the workflow installs zig with `pip install ziglang`.
    The archives and `checksums.txt` receive build provenance; the GitHub release uses the

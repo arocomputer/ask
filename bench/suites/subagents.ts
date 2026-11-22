@@ -54,12 +54,12 @@ function ask(checkout: string, env: NodeJS.ProcessEnv, dir: string, request: obj
   })
 }
 
-async function one(checkout: string, env: NodeJS.ProcessEnv, scratch: string, model: string, t: Task, rep: number) {
+async function one(checkout: string, env: NodeJS.ProcessEnv, scratch: string, model: string, t: Task, rep: number, timeout: number) {
   const dir = mkdtempSync(join(scratch, `subagent-${t.id}-`))
   const began = Date.now()
   try {
     prepare(t, dir, scratch, env)
-    const r = await ask(checkout, env, dir, { start: [{ prompt: t.prompt, model, write: t.write ?? false }], wait: 900 })
+    const r = await ask(checkout, env, dir, { start: [{ prompt: t.prompt, model, write: t.write ?? false, timeout }], wait: timeout + 10 })
     const result = r.tasks?.[0] ?? { state: "failed", error: r.error }
     const answer: string = result.answer ?? ""
     const seconds = (Date.now() - began) / 1000
@@ -75,7 +75,7 @@ async function one(checkout: string, env: NodeJS.ProcessEnv, scratch: string, mo
       if (result.id) await ask(checkout, env, dir, { stop: [result.id] })
       return { ...base, error: `${result.state}: ${result.error?.message ?? "ask did not complete"}`.slice(0, 200) }
     }
-    return { ...base, ...t.grade(answer, dir) }
+    return { ...base, ...await t.grade(answer, dir) }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -87,19 +87,21 @@ export const suite: Suite = {
   compareFiles: [import.meta.filename, join(here, "../fixtures/tasks.ts")],
   repetitions: 3,
   select(args, reps) {
-    const { values } = parseArgs({ args, options: { models: { type: "string" }, tasks: { type: "string" } } })
+    const { values } = parseArgs({ args, options: { models: { type: "string" }, tasks: { type: "string" }, timeout: { type: "string" } } })
     const models = (values.models ?? goModel).split(",")
     if (models.some((m) => !/^[^/\s]+\/\S+$/.test(m)) || new Set(models).size !== models.length)
       throw new Error("--models expects distinct provider/model IDs")
     const ids = pick(values.tasks, tasks.map((t) => t.id), "--tasks")
+    const timeout = Number(values.timeout ?? 900)
+    if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 900) throw new Error("--timeout must be seconds in 1..900")
     const chosen = tasks.filter((t) => ids.includes(t.id))
     const cases = models.flatMap((model) => chosen.flatMap((t) => Array.from({ length: reps }, (_, rep) => ({ model, t, rep }))))
     return {
-      inputs: { models, tasks: ids, repositories: { ask: askCommit, requests: requestsTag } },
+      inputs: { models, tasks: ids, timeout, repositories: { ask: askCommit, requests: requestsTag } },
       count: cases.length,
       async run(ctx) {
         await pool(cases, ctx.parallel, async ({ model, t, rep }) => {
-          try { ctx.record(await one(ctx.checkout, ctx.env, ctx.scratch, model, t, rep)) }
+          try { ctx.record(await one(ctx.checkout, ctx.env, ctx.scratch, model, t, rep, timeout)) }
           catch (err) { ctx.record({ group: model, case: t.id, rep, error: (err as Error).message }) }
         })
       },

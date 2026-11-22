@@ -59,7 +59,7 @@ are the providers listed below.
 
 ## Sandbox
 
-OS confinement is enabled by default. To disable it, add `"sandbox": false` to
+OS confinement for task tools and harnesses is enabled by default. To disable it, add `"sandbox": false` to
 `~/.ask/config.json` (or `$ASK_HOME/config.json`). Omit the field or set it to `true` to enable it.
 This is a config-only boolean, with no mode switcher or per-task override.
 
@@ -72,8 +72,9 @@ Disabled task processes have normal account-level filesystem and network access.
 credential filtering, cancellation and output limits remain, but accessible credential files
 are no longer protected by OS policy. `ask doctor` reports the disabled setting.
 
-`ask.sandbox` is a bundled, short-lived Linux helper executable, not a service or daemon.
-Disabled execution does not require it or bubblewrap.
+The Code Mode evaluator itself is always confined. On Linux it still requires working
+bubblewrap, Landlock and ask's bundled `ask.sandbox` helper even with `"sandbox": false`.
+The helper is a short-lived executable, not a service or daemon.
 
 ## ChatGPT
 

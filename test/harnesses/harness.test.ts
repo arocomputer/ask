@@ -205,6 +205,13 @@ describe("claude", () => {
     assert.match((await ask({ start: [{ prompt: "Hi", model: "claude/--bare" }] })).error.message, /isn't a model name/)
   })
 
+  test("a harness cannot silently ignore a task capability allowlist", async () => {
+    const { ask, runs } = setup()
+    const result = await ask({ start: [{ prompt: "Just read", tools: ["read"] }], wait: 10 })
+    assert.match(result.error.message, /tools allowlist requires a built-in ask model/)
+    assert.deepEqual(runs(), [])
+  })
+
   test("a harness that isn't installed says how to install it", async () => {
     const { ask } = setup("ok", { extensions: [] })
     const r = await ask({ start: [{ prompt: "Hi" }] })

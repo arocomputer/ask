@@ -33,8 +33,8 @@ EOF
 
 `start` returns once the first task finishes, or right away without `wait`. `collect` waits for
 more, `continue` gives a finished session its next prompt or resumes a stopped one, `stop` stops
-one, and `show` lists its steps. A task can `write`, and work in its own git `worktree` and
-branch. Every response is small, and an error says what to send instead. `ask -h requests` is
+one, and `show` lists its steps. A task can `write`, work in its own git `worktree`, or limit its
+capabilities with a `tools` allowlist. Every response is small, and an error says what to send instead. `ask -h requests` is
 the reference; [docs/requests.md](docs/requests.md) explains it.
 
 ## For people
@@ -54,6 +54,9 @@ catalog says how to reach each model: OpenAI's Responses API, chat completions (
 and gateways) or Anthropic's Messages API. Read-only means the subagent is given no tool that can
 write or run a command. Each turn runs in a background worker and saves its transcript after
 every step, so a worker stopped partway resumes where it left off.
+
+The built-in loop uses [Code Mode](docs/sessions.md#code-mode-and-tool-permissions): subagents
+compose calls in confined JavaScript and send only the useful results back to the model.
 
 Some ways to reach a model need no API key: sign in with ChatGPT to use your Plus or Pro plan
 (`chatgpt/MODEL`), or run your own installed Claude Code or Codex, signed in its own way, as a

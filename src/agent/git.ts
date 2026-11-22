@@ -5,6 +5,7 @@
 // writes a file (--output) or reads outside the repository (--no-index).
 
 import { execFile } from "node:child_process"
+import { resultFormat } from "./context.ts"
 import type { Tool } from "./tools.ts"
 
 const commands = ["status", "diff", "log", "show", "blame"]
@@ -29,11 +30,15 @@ export const git: Tool = {
     "Run a read-only git command in the working directory: status, diff, log, show or blame, with their usual arguments, like [\"diff\", \"--stat\"], [\"log\", \"-5\", \"--oneline\"] or [\"show\", \"HEAD~1:src/a.ts\"]. Use it to see what changed (git diff for uncommitted work) and why.",
   parameters: {
     type: "object",
-    properties: { args: { type: "array", items: { type: "string" }, description: "The command and its arguments, like [\"diff\", \"--stat\"]" } },
+    properties: {
+      args: { type: "array", items: { type: "string" }, description: "The command and its arguments, like [\"diff\", \"--stat\"]" },
+      format: resultFormat,
+    },
     required: ["args"],
     additionalProperties: false,
   },
   readonly: true,
+  structured: "{ stdout: string, stderr: string, exitCode: number, truncated: boolean }",
   run(input, { dir, signal }) {
     const args = Array.isArray(input.args) ? input.args.map(String) : []
     const [command, ...rest] = args
@@ -46,9 +51,12 @@ export const git: Tool = {
         [...safety, command, ...off[command], ...rest],
         { cwd: dir, signal, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_PAGER: "cat", GIT_EXTERNAL_DIFF: "", GIT_TERMINAL_PROMPT: "0" } },
         (err, stdout, stderr) => {
+          const exitCode = err && typeof err.code === "number" ? err.code : err ? 1 : 0
+          if (input.format === "json")
+            return done(JSON.stringify({ stdout: stdout.slice(0, limit), stderr: stderr.slice(0, 4000), exitCode, truncated: stdout.length > limit || stderr.length > 4000 }))
           let out = stdout || (err ? "" : "(no output)")
           if (out.length > limit) out = `${out.slice(0, limit)}\n[cut at ${limit / 1024} KiB of ${Math.round(stdout.length / 1024)}; narrow it with a path, --stat or -n]`
-          done(err ? `exit ${(err as { code?: number }).code ?? 1}\n${out}${stderr ? `stderr:\n${stderr.slice(0, 4000)}` : ""}` : out)
+          done(err ? `exit ${exitCode}\n${out}${stderr ? `stderr:\n${stderr.slice(0, 4000)}` : ""}` : out)
         },
       ),
     )

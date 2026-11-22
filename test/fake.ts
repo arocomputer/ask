@@ -22,6 +22,12 @@ export type Reply = {
   when?: string
 }
 
+/** Script an execute call through the same provider wire format as a live model. */
+export const code = (source: string) => ({ name: "execute", args: { code: source } })
+
+/** Script one nested call for fixtures that only need a single operation. */
+export const use = (name: string, args: object = {}) => code(`return await tools[${JSON.stringify(name)}](${JSON.stringify(args)});`)
+
 /** `requests` holds each request's body; `headers` the matching request headers. */
 export type Fake = { url: string; requests: any[]; headers: Record<string, string | string[] | undefined>[]; close(): Promise<void> }
 

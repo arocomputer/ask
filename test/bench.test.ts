@@ -29,6 +29,15 @@ test("planning does not write results or opt in to live model calls", (t) => {
   assert.ok(!existsSync(runs))
 })
 
+test("a subagent run pins the same per-task deadline in both arms", (t) => {
+  const { runs, run } = setup(t)
+  const plan = run("plan", "subagents", "--tasks", "compose-rollout", "--timeout", "90", "--reps", "1")
+  assert.equal(plan.status, 0, plan.stderr)
+  assert.equal(JSON.parse(plan.stdout).inputs.timeout, 90)
+  assert.match(run("plan", "subagents", "--timeout", "0").stderr, /seconds in 1\.\.900/)
+  assert.ok(!existsSync(runs))
+})
+
 test("comparison preserves saved grades and warns about mismatched workloads", (t) => {
   const { runs, run } = setup(t)
   const saved = '{"group":"codex/skill","case":"parallel-questions","rep":0,"pass":true,"answer":"saved grade, not regraded"}\n'

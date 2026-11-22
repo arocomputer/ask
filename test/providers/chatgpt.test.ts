@@ -68,7 +68,7 @@ async function openai(opts: { nonce?: string; refuseFirstToken?: boolean; forge?
       if (opts.refuseFirstToken && req.headers.authorization === "Bearer a0") return json(401, { error: { message: "expired" } })
       const call = seen.responses.length === 1 && !opts.refuseFirstToken
       res.writeHead(200, { "content-type": "text/event-stream" })
-      const item = call ? { type: "function_call", call_id: "c", namespace: "ask", name: "ask.list", arguments: "{}" } : { type: "message", role: "assistant", content: [{ type: "output_text", text: "done" }] }
+      const item = call ? { type: "function_call", call_id: "c", namespace: "ask", name: "ask.execute", arguments: '{"code":"return await tools.list({})"}' } : { type: "message", role: "assistant", content: [{ type: "output_text", text: "done" }] }
       res.write(`data: ${JSON.stringify({ type: "response.output_item.done", item })}\n\n`)
       return res.end(`data: ${JSON.stringify({ type: "response.completed", response: { status: "completed", usage: {} } })}\n\n`)
     }
@@ -239,16 +239,16 @@ describe("chatgpt", () => {
     assert.deepEqual(o.seen.auth, ["Bearer a0", "Bearer a1"])
   })
 
-  test("plan requests offer the tools in a namespace, and its calls come back by their own names", async () => {
+  test("plan requests offer only namespaced execute and dispatch it", async () => {
     const { h, o } = await signedInHome()
     mkdirSync(join(h.root, "work"))
     const m = find(await catalog(h), "chatgpt/gpt-plan")
     const r = await run({ provider: connect(m, credential(h, "chatgpt", [])!.key), model: m.id, dir: join(h.root, "work"), prompt: "List" })
     assert.equal(r.answer, "done")
     const tools = o.seen.responses[0].tools
-    assert.deepEqual([tools.length, tools[0].type, tools[0].name, tools[0].tools.map((t: any) => t.name)], [1, "namespace", "ask", ["read", "list", "grep", "git", "fetch"]])
+    assert.deepEqual([tools.length, tools[0].type, tools[0].name, tools[0].tools.map((t: any) => t.name)], [1, "namespace", "ask", ["execute"]])
     assert.equal(o.seen.responses[0].store, false)
-    assert.equal((r.messages[2] as { name: string }).name, "list")
+    assert.deepEqual(r.messages[2], { role: "tool", id: "c", name: "execute", output: "(empty)" })
   })
 
   test("signing out revokes the renewable session and keeps the registration", async () => {

@@ -8,6 +8,7 @@
 
 import { download, text } from "./fetch.ts"
 import type { Tool } from "./tools.ts"
+import { resultFormat } from "./context.ts"
 
 /** One search result. */
 export type Result = { title: string; url: string; snippet: string }
@@ -106,13 +107,15 @@ export function search(engine: Engine = web): Tool {
     name: "search",
     description:
       "Search the web, such as for documentation, error messages or recent releases. Returns results with their title, address and a snippet; read one in full with fetch.",
-    parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
+    parameters: { type: "object", properties: { query: { type: "string" }, format: resultFormat }, required: ["query"], additionalProperties: false },
     readonly: true,
+    structured: "{ title: string, url: string, snippet: string }[]",
     async run(args, { signal }) {
       const query = String(args.query ?? "").trim()
       if (!query) throw new Error("query is required")
       const seen = new Set<string>()
       const found = (await engine(query, signal)).filter((r) => !seen.has(r.url) && seen.add(r.url)).slice(0, most)
+      if (args.format === "json") return JSON.stringify(found)
       if (!found.length) return "No results; try other words."
       return found.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ""}`).join("\n")
     },

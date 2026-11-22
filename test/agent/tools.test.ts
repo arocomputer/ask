@@ -140,6 +140,44 @@ describe("tools", () => {
     assert.equal(await all.grep.run({ pattern: "two", glob: "*.ts" }, { dir: dir() }), "src/a.ts:2:two\nsrc/deep/b.ts:1:const two = 2")
   })
 
+  test("structured file reads preserve machine-readable long lines and the next line", async () => {
+    const d = dir()
+    const text = JSON.stringify({ message: "x".repeat(5000) }) + "\n"
+    writeFileSync(join(d, "records"), text + "{}\n")
+    const result = JSON.parse(await all.read.run({ path: "records", limit: 1, format: "json" }, { dir: d }))
+    assert.deepEqual(result, { text, startLine: 1, nextLine: 2, clipped: false, binary: false })
+  })
+
+  test("an oversized structured line is visibly clipped and the next line remains reachable", async () => {
+    const d = dir()
+    writeFileSync(join(d, "records"), "😀".repeat(20000) + "\nnext")
+    const raw = await all.read.run({ path: "records", format: "json" }, { dir: d })
+    const page = JSON.parse(raw)
+    assert.ok(Buffer.byteLength(raw) <= 64 * 1024)
+    assert.equal([...page.text].every((character) => character === "😀"), true)
+    assert.deepEqual([page.clipped, page.nextLine], [true, 2])
+    assert.equal(JSON.parse(await all.read.run({ path: "records", line: page.nextLine, format: "json" }, { dir: d })).text, "next")
+  })
+
+  test("structured grep separates paths and lines and reports truncation", async () => {
+    const d = dir()
+    writeFileSync(join(d, "notes:today"), "marker: details\n".repeat(201))
+    const result = JSON.parse(await all.grep.run({ path: "notes:today", pattern: "marker", limit: 3, format: "json" }, { dir: d }))
+    assert.deepEqual(result.matches[0], { path: "notes:today", line: 1, text: "marker: details" })
+    assert.equal(result.matches.length, 3)
+    assert.equal(result.truncated, true)
+  })
+
+  test("structured git leaves a command failure and its output separate", async () => {
+    const d = dir()
+    execFileSync("git", ["init", "-q"], { cwd: d })
+    const result = JSON.parse(await all.git.run({ args: ["show", "HEAD"], format: "json" }, { dir: d }))
+    assert.equal(result.stdout, "")
+    assert.match(result.stderr, /fatal:/)
+    assert.equal(typeof result.exitCode, "number")
+    assert.notEqual(result.exitCode, 0)
+  })
+
   test("grep skips symlinks to outside files and environment files", async () => {
     const d = dir()
     const outside = mkdtempSync(join(tmpdir(), "ask-outside-"))

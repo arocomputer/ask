@@ -9,7 +9,7 @@
 //   {"stop": [ID, ...]}
 //   {"show": ID}                                 the session with the steps of its latest turn
 //   {"sessions": {"all"?: true}}                 the caller's sessions, newest first
-// TASK is {"prompt", "model"?, "write"?, "worktree"?, "dir"?, "effort"?, "schema"?, "timeout"?}.
+// TASK is {"prompt", "model"?, "write"?, "worktree"?, "dir"?, "effort"?, "schema"?, "timeout"?, "tools"?}.
 //
 // Every response is {"tasks": [RESULT, ...]} with a "hint" when the caller should change how it
 // waits, or {"error": {"message", "hint"}} for a request ask can't carry out. RESULT is {"id",
@@ -72,6 +72,9 @@ TASK
   effort     Reasoning effort, like low, medium or high
   schema     A JSON Schema its answer must match
   timeout    Seconds before it is stopped (default: 900)
+  tools      Optional allowlist of built-in-loop capability names; [] allows none.
+             Can't enable a disabled tool or override read-only. Follow-ups inherit it unless
+             they supply a new list. Not supported by external harnesses.
 
 RESPONSE
   {"tasks": [{"id", "state", "answer", "error", "changes", "retrying", "activity"}]}
@@ -98,7 +101,7 @@ EXAMPLE
   EOF
 `
 
-export type Task = { prompt: string; model?: string; write?: boolean; worktree?: boolean; dir?: string; effort?: string; schema?: object; timeout?: number }
+export type Task = { prompt: string; model?: string; write?: boolean; worktree?: boolean; dir?: string; effort?: string; schema?: object; timeout?: number; tools?: string[] }
 
 export type Request =
   | { start: Task[]; wait?: number }
@@ -149,7 +152,7 @@ export class Invalid extends Error {
   }
 }
 
-const taskKeys = ["prompt", "model", "write", "worktree", "dir", "effort", "schema", "timeout"]
+const taskKeys = ["prompt", "model", "write", "worktree", "dir", "effort", "schema", "timeout", "tools"]
 const ops = ["start", "collect", "continue", "stop", "show", "sessions"]
 
 /** Parses and carries out one request. Never throws: failures become `{"error"}`. */
@@ -179,7 +182,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       for (const [i, t] of tasks.entries()) {
         const dir = folder(t.dir, `start[${i}]`)
         if (t.worktree && !top(dir)) throw new Invalid(`start[${i}].worktree needs a git repository, and ${dir} is not in one`)
-        ready.push({ t, dir, model: await chosen(h, t.model) })
+        ready.push({ t, dir, model: await chosen(h, t.model, t.tools) })
       }
       const started: Session[] = []
       try {
@@ -213,7 +216,8 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
         return wait === undefined ? [result(reload(s))] : collect([s], wait)
       }
       const t = task(rest, "continue")
-      const target = await chosen(h, t.model ?? last.model)
+      const capabilities = t.tools ?? last.tools
+      const target = await chosen(h, t.model ?? last.model, capabilities)
       if (active(s) || !claim(s)) throw new Invalid(`${s.id} is changing or still running; collect it first`)
       const fresh = reload(s)
       if (fresh.turns.length !== s.turns.length || (latest(fresh).generation ?? latest(fresh).resumed ?? 0) !== (last.generation ?? last.resumed ?? 0) || active(fresh))
@@ -229,6 +233,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
         prompt: t.prompt,
         model: target,
         write: t.write ?? false,
+        tools: capabilities,
         sandbox: readJSON<Config>(h.config, {}).sandbox !== false,
         effort: t.effort ?? (t.model ? undefined : last.effort),
         schema: t.schema,
@@ -256,7 +261,7 @@ async function carry(h: Home, r: unknown): Promise<Result[]> {
       only(req, ["show"])
       if (typeof req.show !== "string") throw new Invalid("show takes a session id", '{"show": "k3f9a2"}')
       const s = find(h, req.show)
-      return [{ ...result(s), steps: steps(transcript(s), s.turns.length) }]
+      return [{ ...result(s), steps: steps(transcript(s), s.turns.length, latest(s).actions) }]
     }
     case "sessions": {
       only(req, ["sessions"])
@@ -285,7 +290,7 @@ export function result(s: Session): Result {
   if (s.worktree) r.worktree = s.worktree
   if (t.retry) r.retrying = t.retry
   if (t.resumed) r.resumed = t.resumed
-  if (t.state === "running" || t.state === "retrying") r.activity = activity(transcript(s))
+  if (t.state === "running" || t.state === "retrying") r.activity = activity(transcript(s), t.actions)
   return r
 }
 
@@ -371,6 +376,7 @@ function begin(h: Home, t: Task, dir: string, model: string): Session {
       prompt: t.prompt,
       model,
       write: (t.write ?? false) || !!w,
+      tools: t.tools,
       sandbox: readJSON<Config>(h.config, {}).sandbox !== false,
       effort: t.effort,
       schema: t.schema,
@@ -439,7 +445,7 @@ async function stop(s: Session): Promise<Session> {
  * Resolve the public model name. Built-in filesystem tools require an OS sandbox even for
  * read turns; reject unsupported hosts before spending model quota.
  */
-async function chosen(h: Home, name: string | undefined): Promise<string> {
+async function chosen(h: Home, name: string | undefined, capabilities?: string[]): Promise<string> {
   checkConfig(h)
   let m
   try {
@@ -447,6 +453,8 @@ async function chosen(h: Home, name: string | undefined): Promise<string> {
   } catch (err) {
     throw new Invalid((err as Error).message)
   }
+  if (m.protocol === "harness" && capabilities !== undefined)
+    throw new Invalid("a tools allowlist requires a built-in ask model", "choose a provider model that runs in ask's loop, or start a separate task without the allowlist")
   if (m.protocol !== "harness" && readJSON<Config>(h.config, {}).sandbox !== false) {
     const can = support()
     if (!can.ok) throw new Invalid(`built-in tasks need a sandbox, and ${can.detail}`, can.fix)
@@ -475,6 +483,8 @@ function task(v: unknown, where: string): Task {
   for (const k of ["model", "dir", "effort"]) if (t[k] !== undefined && typeof t[k] !== "string") throw new Invalid(`${where}.${k} must be a string`)
   if (typeof t.effort === "string" && !/^[a-z]{1,16}$/.test(t.effort)) throw new Invalid(`${where}.effort is a word like low, medium or high`)
   if (t.write !== undefined && typeof t.write !== "boolean") throw new Invalid(`${where}.write must be true or false`)
+  if (t.tools !== undefined && (!Array.isArray(t.tools) || t.tools.length > 100 || !t.tools.every((n) => typeof n === "string" && n.length <= 128 && n.trim() === n && n !== "")))
+    throw new Invalid(`${where}.tools must be a list of up to 100 capability names`)
   if (t.schema !== undefined && (!t.schema || typeof t.schema !== "object" || Array.isArray(t.schema))) throw new Invalid(`${where}.schema must be a JSON Schema object`)
   const timeout = seconds(t.timeout, `${where}.timeout`)
   if (timeout === 0) throw new Invalid(`${where}.timeout must be more than 0 seconds`)
