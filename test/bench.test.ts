@@ -44,3 +44,17 @@ test("comparison preserves saved grades and warns about mismatched workloads", (
   assert.match(compared.stderr, /not directly comparable: parallel/)
   assert.equal(readFileSync(join(runs, "callers", "a", "results.jsonl"), "utf8"), saved)
 })
+
+test("failed provider requests do not skew benchmark averages", (t) => {
+  const { runs, run } = setup(t)
+  const dir = join(runs, "callers", "quota")
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify({ schema: 1, suite: "callers", label: "quota", completed: "now", count: 2 }))
+  writeFileSync(join(dir, "results.jsonl"), [
+    { group: "opencode/skill", case: "parallel-questions", rep: 0, error: "quota", seconds: 1, input: 0 },
+    { group: "opencode/skill", case: "parallel-questions", rep: 1, pass: true, seconds: 9, input: 500 },
+  ].map((row) => JSON.stringify(row)).join("\n"))
+  const compared = run("compare", "callers", "quota")
+  assert.equal(compared.status, 0, compared.stderr)
+  assert.match(compared.stdout, /1\/1\t1\t0\/0\/0\/0\t500\t-\t9\.00/)
+})

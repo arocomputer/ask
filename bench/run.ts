@@ -82,8 +82,13 @@ function environment(scratch: string, live: boolean): NodeJS.ProcessEnv {
     const text = readFileSync(from, "utf8")
     // Reusing a rotating refresh token in the scratch profile can sign out the real profile.
     // Keep the current access credential; require it to be fresh enough for the whole run.
-    const bytes = auth ? JSON.stringify(JSON.parse(text, (key, value) =>
-      (key === "refreshToken" || key === "refresh_token") && value ? "benchmark-no-refresh" : value)) : text
+    let bytes = text
+    if (auth) {
+      try {
+        bytes = JSON.stringify(JSON.parse(text, (key, value) =>
+          (key === "refreshToken" || key === "refresh_token") && value ? "benchmark-no-refresh" : value))
+      } catch { throw new Error(`cannot read benchmark credentials at ${from}: invalid JSON`) }
+    }
     writeFileSync(to, bytes, { mode: 0o600, flag: "wx" })
   }
   if (live) {
@@ -110,11 +115,12 @@ function summary(name: string, rows: Row[]) {
     return numbers.length ? (numbers.reduce((a, b) => a + b, 0) / numbers.length).toFixed(digits) : "-"
   }
   for (const [group, items] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
-    const scores = items.filter((r) => !r.error && typeof r.pass === "boolean")
-    const routes = ["ask", "native", "mixed", "self"].map((route) => items.filter((r) => r.route === route).length).join("/")
+    const completed = items.filter((r) => !r.error)
+    const scores = completed.filter((r) => typeof r.pass === "boolean")
+    const routes = ["ask", "native", "mixed", "self"].map((route) => completed.filter((r) => r.route === route).length).join("/")
     console.log([name, group, scores.length ? `${scores.filter((r) => r.pass).length}/${scores.length}` : "-",
-      items.filter((r) => r.error).length, routes, mean(items, "input"), mean(items, "output"), mean(items, "seconds", 2),
-      mean(items, "p50", 3), mean(items, "p95", 3)].join("\t"))
+      items.length - completed.length, routes, mean(completed, "input"), mean(completed, "output"), mean(completed, "seconds", 2),
+      mean(completed, "p50", 3), mean(completed, "p95", 3)].join("\t"))
   }
 }
 

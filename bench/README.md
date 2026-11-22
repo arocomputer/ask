@@ -55,7 +55,8 @@ Ask's worker and the `subagents` suite default to that Go model. To measure GPT-
 directly, set `--models chatgpt/gpt-6-luna` (ChatGPT plan) or `--models openai/gpt-6-luna`
 (metered API key). Check current availability before scheduling large runs.
 
-Rows report errors separately from grading failures. In caller runs, `none` exposes no
+Rows report errors separately from grading failures. Errored cases do not contribute
+to usage or timing averages. In caller runs, `none` exposes no
 ask integration beyond `PATH`, `skill` adds the skill, and `deny` adds the skill and
 turns native subagents off. Caller token counters are not peak context or total tokens
 including delegated work. Sandbox reports warmed p50/p95 timings, not quality grades.
