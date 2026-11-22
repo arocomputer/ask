@@ -246,7 +246,7 @@ const list: Tool = {
 
 const grep: Tool = {
   name: "grep",
-  description: `Search file contents with a JavaScript regular expression, recursively from path (default: the working directory): the quickest way to find where something is defined or used. It prints matching lines as path:line:text, at most ${matchLimit}; several narrow searches beat one broad one. ${patternNote}`,
+  description: `Search file contents with a JavaScript regular expression, recursively from path (default: the working directory): the quickest way to find where something is defined or used. A leading (?i) ignores case. It prints matching lines as path:line:text, at most ${matchLimit}; several narrow searches beat one broad one. ${patternNote}`,
   parameters: schema(
     {
       pattern: { type: "string", description: "Regular expression" },
@@ -263,7 +263,9 @@ const grep: Tool = {
     if (!source) throw new Error("pattern is required")
     let re: RegExp
     try {
-      re = new RegExp(source)
+      // Flags written the way other dialects write them, as a leading (?i), which JavaScript rejects.
+      const inline = /^\(\?([ims]+)\)/.exec(source)
+      re = inline ? new RegExp(source.slice(inline[0].length), [...new Set(inline[1])].join("")) : new RegExp(source)
     } catch (err) {
       throw new Error(`bad regular expression: ${(err as Error).message}`)
     }

@@ -42,7 +42,11 @@ const bootstrap = String.raw`(bridge, names, source) => {
       if (typeof args[key] === "string") return name + " " + (args[key].length > 60 ? args[key].slice(0, 60) + "…" : args[key])
     return name
   }
-  const plain = (key, value) => value instanceof RegExp ? value.source : value
+  const plain = (key, value) => {
+    if (!(value instanceof RegExp)) return value
+    const flags = value.flags.replace(/[^ims]/g, "")
+    return (flags ? "(?" + flags + ")" : "") + value.source
+  }
   const invoke = async (name, args) => {
     // A bare value, as in tools.read("a.txt"), goes to the broker under "" to be matched to
     // the tool's one required parameter.
@@ -99,7 +103,7 @@ const bootstrap = String.raw`(bridge, names, source) => {
   const clip = (text, max) => text.length > max ? text.slice(0, max) + "\n[" + (text.length - max) + " more characters]" : text
   const finish = (value) => {
     const parts = logs.slice()
-    if (value !== undefined) parts.push(render(value))
+    if (value !== undefined && typeof value !== "function") parts.push(render(value))
     if (parts.length) return parts.join("\n") || "(empty)"
     if (!calls.length) return "(no output: the script returned nothing; end with \`return value\` or use console.log)"
     const each = calls.length === 1 ? Infinity : Math.max(400, Math.floor(16000 / calls.length))
@@ -120,7 +124,10 @@ const bootstrap = String.raw`(bridge, names, source) => {
     if (logs.length) message += "\nOutput before the error:\n" + clip(logs.join("\n"), 6000)
     return message
   }
-  return [finish, fail]
+  // A final expression that is just a tool call, as in "await tools.a(); await tools.b()", was
+  // written to see every call, not only the last one.
+  const last = (value) => finish(isResult(value) && calls.length > 1 ? undefined : value)
+  return [finish, fail, last]
 }`
 
 /** Evaluate one script from stdin, pump only its pending tool results, and report one outcome. */
@@ -178,6 +185,7 @@ async function evaluate(code: string, names: string[], next: () => Promise<unkno
   using formats = vm.unwrapResult(vm.callFunction(setup, vm.undefined, bridge, catalog, source))
   using serialize = vm.getProp(formats, 0)
   using describe = vm.getProp(formats, 1)
+  using implicit = vm.getProp(formats, 2)
 
   /** Run guest code only inside its time budget; waiting for a tool does not spend CPU time. */
   function tick<T>(fn: () => T): T {
@@ -204,9 +212,42 @@ async function evaluate(code: string, names: string[], next: () => Promise<unkno
     return value.value.consume((s) => vm.getString(s))
   }
 
+  /**
+   * The script with its final expression statement returned, the way a REPL shows the last
+   * value: models that write `rows.map(...).join("\n")` as the last line mean it as the result.
+   * Only compiling decides where that statement starts, so nothing is guessed from the text:
+   * the shortest tail whose head compiles alone is the last statement, and it is returned only
+   * if it compiles as an expression. Lines keep their numbers.
+   */
+  function completed(script: string): string {
+    const compiles = (body: string) => {
+      const compiled = vm.evalCode(`(async () => {\n${body}\n})`, "execute.js", { compileOnly: true })
+      const ok = !compiled.error
+      ;(compiled.error ?? compiled.value).dispose()
+      return ok
+    }
+    const text = script.replace(/[\s;]+$/, "")
+    for (let at = text.length - 1, tries = 0; at >= -1 && tries < 48; at--) {
+      if (at >= 0 && text[at] !== "\n" && text[at] !== ";") continue
+      const head = text.slice(0, at + 1)
+      const tail = text.slice(at + 1)
+      // A line that opens with an operator or bracket continues the statement before it.
+      if (!tail.trim() || (at >= 0 && text[at] === "\n" && /^\s*[-+*/%.,(\[?:&|=<>`]/.test(tail))) continue
+      tries++
+      if (!compiles(head)) continue
+      const returned = `${head}return (${tail}\n)`
+      return compiles(returned) ? returned : script
+    }
+    return script
+  }
+
+  let serializer = serialize
   try {
+    const body = tick(() => completed(code))
+    if (body !== code) serializer = implicit
+    check()
     // One wrapper line precedes the script, which the guest subtracts from error positions.
-    using initial = tick(() => vm.evalCode(`(async () => {\n${code}\n})()`, "execute.js"))
+    using initial = tick(() => vm.evalCode(`(async () => {\n${body}\n})()`, "execute.js"))
     check()
     if (initial.error) throw new Error(bounded(tick(() => format(initial.error!, describe)), errorLimit))
     const promise = initial.value
@@ -226,7 +267,7 @@ async function evaluate(code: string, names: string[], next: () => Promise<unkno
         using value = state.value
         check()
         if (pending.size) throw new Error("Code Mode finished with pending tool calls; await all calls that matter")
-        const text = tick(() => format(value, serialize))
+        const text = tick(() => format(value, serializer))
         check()
         return bounded(text, outputLimit)
       }

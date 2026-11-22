@@ -2,7 +2,8 @@
 import type { Readable, Writable } from "node:stream"
 
 const frameLimit = 1024 * 1024
-export const maxCalls = 32
+/** Enough to read a directory of files in one script; the turn's time limit bounds the rest. */
+export const maxCalls = 128
 export const outputLimit = 64 * 1024
 /** Room for an error with the calls and console output that preceded it. */
 export const errorLimit = 12 * 1024

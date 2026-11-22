@@ -35,13 +35,24 @@ test("console output is kept, and a script that returns nothing shows what its c
   assert.match(silent, /^\(nothing returned[^\n]*\n=== list ===\na\.txt\n=== write b\.txt ===\nwrote b\.txt$/)
 })
 
+test("a script that ends in an expression returns its value, and only then", async () => {
+  const list = tool("list", true, async () => "a.txt\nb.txt")
+  assert.equal(await execute(`const r = await tools.list()\nr.split("\\n").map((f) => f.toUpperCase()).join(",");`, [list]), "A.TXT,B.TXT")
+  assert.equal(await execute(`(await tools.list()).length`, [list]), "11")
+  assert.equal(await execute(`const n = 2; n\n  + 3`), "5")
+  assert.equal(await execute(`if (true) { return "early" }\n"late"`), "early")
+  assert.match(await execute(`const r = await tools.list()`, [list]), /^\(nothing returned/)
+  assert.equal(await execute("const t = `a;\nb`; t.length"), "4")
+  assert.equal(await execute(`const x = 1\nreturn missing.value`), "error: ReferenceError: 'missing' is not defined (line 2: return missing.value)")
+})
+
 test("a result reads as its text and carries the tool's fields", async () => {
   const grep: Tool = { ...tool("grep", true, async (args) => JSON.stringify({ text: `a.ts:2:${args.pattern}`, data: { matches: [{ path: "a.ts", line: 2 }] } })), structured: "{ matches }" }
   const output = await execute(`
-    const r = await tools.grep({ pattern: /TODO/ });
+    const r = await tools.grep({ pattern: /TODO/i });
     return [r.matches[0].line, r.split(":")[0], r + "!", r.length, JSON.stringify(r), r.text];
   `, [grep])
-  assert.deepEqual(JSON.parse(output), [2, "a.ts", "a.ts:2:TODO!", 11, '"a.ts:2:TODO"', "a.ts:2:TODO"])
+  assert.deepEqual(JSON.parse(output), [2, "a.ts", "a.ts:2:(?i)TODO!", 15, '"a.ts:2:(?i)TODO"', "a.ts:2:(?i)TODO"])
 })
 
 test("returned text comes out as labeled blocks, not escaped inside JSON", async () => {
@@ -157,8 +168,8 @@ test("the guest heap is bounded", async () => {
 test("one snippet cannot dispatch more than its nested call budget", async () => {
   let calls = 0
   const read = tool("read", true, async () => String(++calls))
-  assert.match(await execute(`for (let i = 0; i < 40; i++) await tools.read()`, [read]), /^error:.*at most 32 nested calls/)
-  assert.equal(calls, 32)
+  assert.match(await execute(`for (let i = 0; i < 140; i++) await tools.read()`, [read]), /^error:.*at most 128 nested calls/)
+  assert.equal(calls, 128)
 })
 
 test("the model-facing result is bounded after script processing", async () => {

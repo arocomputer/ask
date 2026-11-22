@@ -7,8 +7,9 @@
   also carries fields like `matches`, `content`, `stdout` and `exitCode`, replacing the
   `format: "json"` switch; returned text comes back as labeled blocks instead of escaped JSON;
   and errors name the line, the tool's signature or the available tools, and the calls that had
-  already completed. `print` and `text` work like `console.log`. Scripts sent together in a
-  read-only task run together.
+  already completed. `print` and `text` work like `console.log`. A script that ends in an
+  expression returns its value. A script may make 128 nested calls, up from 32, and `grep` takes
+  a leading `(?i)`. Scripts sent together in a read-only task run together.
 
 - Give likely diff reviews a short Code Mode recipe for inspecting the requested change without
   gathering unrelated evidence. Benchmark traces now record each script, its nested actions and

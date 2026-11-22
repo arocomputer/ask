@@ -37,7 +37,7 @@ return { files: [...new Set(hits.matches.map((m) => m.path))], tests };
 
 Each script starts fresh. It has no imports, timers, direct filesystem access, or direct network
 access. It runs in an always-confined process with CPU, memory, wall-time, and output limits and
-can invoke up to 32 nested calls. Independent reads can run in parallel; mutations run one at a
+can invoke up to 128 nested calls. Independent reads can run in parallel; mutations run one at a
 time and don't overlap other calls. Await every call you need. Ask never automatically retries an
 interrupted script: some of its actions may already have taken effect. `ask show` lists nested
 actions locally, separately from what goes to the model. There is no direct-tool fallback.
@@ -49,7 +49,8 @@ parsing), `nextLine` (where to continue, or `null`) and `clipped` (one line was 
 return whole); `grep` has `matches` (`{ path, line, text }` each) and `truncated`; `git` and
 `shell` have `stdout`, `stderr` and `exitCode`; `search` has `results`.
 
-The runtime is forgiving where a mistake would otherwise cost the model a turn. `console.log`
+The runtime is forgiving where a mistake would otherwise cost the model a turn. A script that
+ends in an expression returns its value, as a REPL would. `console.log`
 output is returned with the script's value, as is `print` or `text`, which some models write. A script that returns nothing shows what each of its
 calls returned. An object or array holding results or multi-line text comes back as labeled
 blocks rather than text escaped inside JSON. A call with a wrong argument name or type fails

@@ -159,6 +159,10 @@ describe("tools", () => {
     assert.equal(JSON.parse(await all.read.run({ path: "records", line: page.nextLine, format: "json" }, { dir: d })).data.content, "next")
   })
 
+  test("grep takes a leading (?i) as the flag other regex dialects make it", async () => {
+    assert.equal(await all.grep.run({ pattern: "(?i)CONST TWO", glob: "*.ts" }, { dir: dir() }), "src/deep/b.ts:1:const two = 2")
+  })
+
   test("structured grep separates paths and lines and reports truncation", async () => {
     const d = dir()
     writeFileSync(join(d, "notes:today"), "marker: details\n".repeat(201))
