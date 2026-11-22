@@ -6,25 +6,18 @@
 //   skill   ask's skill, installed as a project skill (only its description sits in context)
 //   deny    the skill, with the agent's built-in subagents turned off
 //
-// The callers reuse existing sign-ins, but hide the installed ask skill and override settings
-// that deny native subagents. Jobs never name ask: three ask for a subagent, one asks for
-// nothing. It spends real quota.
-//
-//   bun bench/callers.ts --ask PATH --label NAME [--arms none,skill,deny]
-//       [--drivers claude,codex,opencode] [--jobs ID,...] [--reps N] [--lanes N] [--skill FILE]
-//   bun bench/callers.ts --compare NAME...
+// Caller state lives in scratch profiles. None of the jobs names ask.
 
 import { execFile, execFileSync, spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { appendFileSync, chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { homedir, tmpdir } from "node:os"
 import { delimiter, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
-import { tasks as subagentTasks } from "./tasks.ts"
-
-const here = import.meta.dirname
-const runs = join(here, ".runs")
+import { tasks as subagentTasks } from "../fixtures/tasks.ts"
+import { goModel, pick, pool, type Suite } from "../suite.ts"
 const allArms = ["none", "skill", "deny"] as const
-const allDrivers = ["claude", "codex", "opencode"]
+const allDrivers = ["claude", "codex", "opencode"] as const
+const callerModels = { claude: "claude-haiku-5-5", codex: "gpt-6-luna", opencode: "opencode/deepseek-v4.1-flash-free" }
 
 type Job = { id: string; prompt: string; files: Record<string, string>; after?: Record<string, string>; grade(answer: string, dir: string): { pass: boolean; notes: string } }
 type Arm = typeof allArms[number]
@@ -65,8 +58,8 @@ const jobs: Job[] = [
   },
 ]
 
-function git(dir: string, ...args: string[]) {
-  execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, stdio: "ignore", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "bench", GIT_AUTHOR_EMAIL: "bench@ask", GIT_COMMITTER_NAME: "bench", GIT_COMMITTER_EMAIL: "bench@ask" } })
+function git(dir: string, env: NodeJS.ProcessEnv, ...args: string[]) {
+  execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, stdio: "ignore", env: { ...env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "bench", GIT_AUTHOR_EMAIL: "bench@ask", GIT_COMMITTER_NAME: "bench", GIT_COMMITTER_EMAIL: "bench@ask" } })
 }
 
 /** Quote executable paths for the shell wrapper. */
@@ -79,8 +72,8 @@ const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
  * skill from .agents/skills; OpenCode from .opencode, whose skill replaces a global one of the
  * same name.
  */
-function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; bin: string; plugin: string } {
-  const root = mkdtempSync(join(tmpdir(), `callers-${j.id}-`))
+function prepare(j: Job, arm: Arm, skill: string, scratch: string, env: NodeJS.ProcessEnv, model: string): { root: string; dir: string; home: string; bin: string; plugin: string } {
+  const root = mkdtempSync(join(scratch, `caller-${j.id}-`))
   const dir = join(root, "work")
   const home = join(root, "home")
   const bin = join(root, "bin")
@@ -88,9 +81,9 @@ function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; 
   try {
     for (const d of [dir, join(home, "cache"), bin, plugin]) mkdirSync(d, { recursive: true })
     for (const [name, text] of Object.entries(j.files)) writeFileSync(join(dir, name), text)
-    git(dir, "init", "-q")
-    git(dir, "add", ".")
-    git(dir, "commit", "-qm", "start")
+    git(dir, env, "init", "-q")
+    git(dir, env, "add", ".")
+    git(dir, env, "commit", "-qm", "start")
     for (const [name, text] of Object.entries(j.after ?? {})) writeFileSync(join(dir, name), text)
     writeFileSync(join(dir, ".git", "info", "exclude"), ".agents/\n.opencode/\n")
     const put = (path: string, text: string) => (mkdirSync(join(path, ".."), { recursive: true }), writeFileSync(path, text))
@@ -100,19 +93,23 @@ function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; 
       put(join(dir, ".agents", "skills", "ask", "SKILL.md"), skill)
       put(join(dir, ".opencode", "skills", "ask", "SKILL.md"), skill)
     }
-    // Project rules come after the user's, so they win: built-in subagents are on unless the arm
-    // denies them, even where the user's own config turns them off.
+    // Native subagents are on unless the arm denies them.
     const rules = [{ action: "subagent", resource: "*", effect: arm === "deny" ? "deny" : "allow" }, ...(arm === "none" ? [{ action: "skill", resource: "ask", effect: "deny" }] : [])]
-    put(join(dir, ".opencode", "opencode.json"), JSON.stringify({ permissions: rules }))
-    const real = process.env.ASK_HOME || join(homedir(), ".ask")
-    cpSync(join(real, "cache", "models.json"), join(home, "cache", "models.json"))
+    put(join(dir, ".opencode", "opencode.json"), JSON.stringify({
+      model,
+      permissions: rules,
+      providers: { "opencode-go": { settings: { apiKey: "{env:OPENCODE_API_KEY}" } } },
+    }))
+    const real = env.ASK_HOME!
+    const catalog = join(real, "cache", "models.json")
+    if (existsSync(catalog)) cpSync(catalog, join(home, "cache", "models.json"))
     const auth = join(real, "auth.json")
     if (existsSync(auth)) {
       const key = JSON.parse(readFileSync(auth, "utf8"))["opencode-go"]?.api_key
       if (key) writeFileSync(join(home, "auth.json"), JSON.stringify({ "opencode-go": { api_key: key } }), { mode: 0o600 })
     }
-    writeFileSync(join(home, "config.json"), JSON.stringify({ model: "opencode-go/glm-5.3" }))
-    return { dir, home, bin, plugin }
+    writeFileSync(join(home, "config.json"), JSON.stringify({ model: goModel }))
+    return { root, dir, home, bin, plugin }
   } catch (error) {
     rmSync(root, { recursive: true, force: true })
     throw error
@@ -122,22 +119,17 @@ function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; 
 /** What one caller run did: its answer, and how it got there. */
 type Trace = { answer: string; seconds: number; native: number; skill: boolean; calls: number; tokens: number; cost: number | null; error?: string }
 
-/** The ask skills the user installed for Codex, which a run turns off by path. */
-const installed = [join(process.env.CODEX_HOME || join(homedir(), ".codex"), "skills"), ...[".agents/skills", ".claude/skills"].map((d) => join(homedir(), d))]
-  .map((d) => join(d, "ask", "SKILL.md")).filter((p) => existsSync(p))
-
 /** The command line for a driver in an arm. */
-function command(name: string, arm: Arm, prompt: string, dir: string, plugin: string): [string, string[]] {
+function command(name: string, model: string, arm: Arm, prompt: string, dir: string, plugin: string): [string, string[]] {
   if (name === "claude") {
     const tools = "Bash,Read,Grep,Glob,Edit,Write,Agent,Skill"
-    return ["claude", ["-p", "--model", "sonnet", "--output-format", "stream-json", "--verbose", "--no-session-persistence", "--tools", tools, "--allowedTools", tools, ...(arm === "deny" ? ["--disallowedTools", "Agent"] : []), "--permission-mode", "dontAsk", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "project,local", "--settings", JSON.stringify({ skillOverrides: { ask: "off" } }), "--plugin-dir", plugin, "--", prompt]]
+    return ["claude", ["-p", "--model", model, "--output-format", "stream-json", "--verbose", "--no-session-persistence", "--tools", tools, "--allowedTools", tools, ...(arm === "deny" ? ["--disallowedTools", "Agent"] : []), "--permission-mode", "dontAsk", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "project,local", "--settings", JSON.stringify({ skillOverrides: { ask: "off" } }), "--plugin-dir", plugin, "--", prompt]]
   }
   if (name === "codex") {
-    const off = `skills.config=[${installed.map((p) => `{path=${JSON.stringify(p)}, enabled=false}`).join(", ")}]`
-    return ["codex", ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "-c", 'approval_policy="never"', "-c", `agents.enabled=${arm !== "deny"}`, "-c", off, "-C", dir, prompt]]
+    return ["codex", ["exec", "--json", "--ephemeral", "--model", model, "--skip-git-repo-check", "--ignore-user-config", "-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true", "-c", 'approval_policy="never"', "-c", `agents.enabled=${arm !== "deny"}`, "-C", dir, prompt]]
   }
-  // Named, as a standalone run left to choose billed pay-as-you-go credits instead of OpenCode Go.
-  if (name === "opencode") return ["opencode", ["run", "--format", "json", "--standalone", "--auto", "--archived", "-m", "opencode-go/deepseek-v4.1-flash", "--title", "callers benchmark", prompt]]
+  // Name the free or Go model explicitly; OpenCode's own default can use metered credits.
+  if (name === "opencode") return ["opencode", ["run", "--format", "json", "--standalone", "--auto", "--archived", "-m", model, "--title", "callers benchmark", prompt]]
   throw new Error(`no driver ${name}`)
 }
 
@@ -190,8 +182,8 @@ function observe(name: string, e: Record<string, any>, t: Trace) {
 }
 
 /** Runs a caller to its end, keeping its raw events in `trace` to read when a route surprises. */
-function drive(name: string, arm: Arm, prompt: string, dir: string, plugin: string, env: NodeJS.ProcessEnv, trace: string): Promise<Trace> {
-  const [cmd, args] = command(name, arm, prompt, dir, plugin)
+function drive(name: string, model: string, arm: Arm, prompt: string, dir: string, plugin: string, env: NodeJS.ProcessEnv, trace?: string): Promise<Trace> {
+  const [cmd, args] = command(name, model, arm, prompt, dir, plugin)
   const t: Trace = { answer: "", seconds: 0, native: 0, skill: false, calls: 0, tokens: 0, cost: null }
   const began = Date.now()
   return new Promise((done) => {
@@ -206,7 +198,7 @@ function drive(name: string, arm: Arm, prompt: string, dir: string, plugin: stri
     child.stderr.resume()
     child.on("error", (e: NodeJS.ErrnoException) => { t.error ??= `${cmd} could not start (${e.code ?? "unknown"})` })
     child.stdout.setEncoding("utf8").on("data", (d: string) => {
-      appendFileSync(trace, d, { mode: 0o600 })
+      if (trace) appendFileSync(trace, d, { mode: 0o600 })
       buffer += d
       for (let nl = buffer.indexOf("\n"); nl >= 0; nl = buffer.indexOf("\n")) take(buffer.slice(0, nl)), (buffer = buffer.slice(nl + 1))
     })
@@ -252,104 +244,54 @@ async function stop(ids: string[], bin: string, dir: string, env: NodeJS.Process
   })
 }
 
-/**
- * The environment of a caller: the user's, with the scratch ask first on PATH, and without the
- * markers that would make it take itself for part of the agent session running the benchmark.
- * Inside OpenCode that is every OPENCODE_ variable: with them, \`opencode run\` ignores the
- * scratch repository's configuration.
- */
-const markers = /^(CLAUDECODE|CLAUDE_CODE_(SESSION_ID|CHILD_SESSION|ENTRYPOINT|EXECPATH|SESSION_ATTENDED)|CLAUDE_PID|CODEX_(THREAD_ID|SESSION_ID|TOOL_CALL_ID|SANDBOX\w*)|OPENCODE\w*|ASK_\w+)$/
-function environment(bin: string, home: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {}
-  for (const [k, v] of Object.entries(process.env)) if (!markers.test(k)) env[k] = v
-  return { ...env, PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`, ASK_HOME: home, NO_COLOR: "1" }
-}
-
-const { values: v, positionals } = parseArgs({
-  allowPositionals: true,
-  options: { ask: { type: "string" }, skill: { type: "string" }, label: { type: "string" }, arms: { type: "string" }, drivers: { type: "string" }, jobs: { type: "string" }, reps: { type: "string" }, lanes: { type: "string" }, compare: { type: "boolean" } },
-})
-
-/** Validate selectors before creating files or spending quota. */
-function pick<T extends string>(value: string | undefined, choices: readonly T[], flag: string): T[] {
-  if (value === undefined) return [...choices]
-  const list = value.split(",")
-  if (list.some((item) => !choices.includes(item as T)) || new Set(list).size !== list.length)
-    throw new Error(`${flag} expects a comma-separated list from ${choices.join(", ")}`)
-  return list as T[]
-}
-
-/** Refuse empty, unsafe or unbounded run identifiers and counts. */
-function label(value: string) {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(value)) throw new Error(`invalid run label: ${value}`)
-  return value
-}
-
-function positive(value: string | undefined, fallback: number, flag: string): number {
-  const n = Number(value ?? fallback)
-  if (!Number.isSafeInteger(n) || n < 1) throw new Error(`${flag} must be a positive integer`)
-  return n
-}
-
-if (v.compare) {
-  const mean = (rs: Record<string, any>[], k: string) => {
-    const values = rs.map((r) => r[k]).filter((n): n is number => typeof n === "number")
-    return values.length ? values.reduce((a, n) => a + n, 0) / values.length : undefined
-  }
-  console.log(["label", "arm", "driver", "passed", "errors", "ask", "native", "mixed", "self", "skill", "input", "reported $", "calls", "secs"].join("\t"))
-  for (const name of positionals.map(label)) {
-    const rows = readFileSync(join(runs, `callers-${name}.jsonl`), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l))
-      .filter((r) => r.arm === undefined || allArms.includes(r.arm))
-    for (const arm of [...new Set(rows.map((r) => r.arm))])
-      for (const d of [...new Set(rows.map((r) => r.driver))]) {
-        const group = rows.filter((r) => (r.arm ?? "skill") === (arm ?? "skill") && r.driver === d)
-        if (!group.length) continue
-        const rs = group.filter((r) => !r.error && r.answer?.trim())
-        const n = (route: string) => rs.filter((r) => r.route === route || (route === "mixed" && r.route === "both")).length
-        console.log([name, arm ?? "skill", d, `${rs.filter((r) => r.pass).length}/${rs.length}`, group.length - rs.length, n("ask"), n("native"), n("mixed"), n("self"), rs.filter((r) => r.skill).length, mean(rs, "tokens")?.toFixed(0) ?? "-", (d === "codex" ? undefined : mean(rs, "cost"))?.toFixed(2) ?? "-", mean(rs, "calls")?.toFixed(1) ?? "-", mean(rs, "seconds")?.toFixed(1) ?? "-"].join("\t"))
-      }
-  }
-} else {
-  if (!v.ask || !v.label) throw new Error("usage: bun bench/callers.ts --ask PATH --label NAME [--arms ...] [--drivers ...] [--jobs ...] [--reps N] [--skill FILE]")
-  const ask = resolve(v.ask)
-  const name = label(v.label)
-  const drivers = pick(v.drivers, allDrivers, "--drivers")
-  const arms = pick(v.arms, allArms, "--arms")
-  const reps = positive(v.reps, 2, "--reps")
-  const lanes = positive(v.lanes, 1, "--lanes")
-  const ids = pick(v.jobs, jobs.map((j) => j.id), "--jobs")
-  const chosen = jobs.filter((j) => ids.includes(j.id))
-  const all = arms.flatMap((arm) => drivers.flatMap((d) => chosen.flatMap((j) => Array.from({ length: reps }, (_, rep) => ({ arm, d, j, rep })))))
-  const skill = v.skill ? readFileSync(v.skill, "utf8") : ((await import(join(ask, "src", "harnesses", "skill.ts"))).text as string)
-  const file = join(runs, `callers-${name}.jsonl`)
-  const traces = join(runs, `callers-${name}`)
-  mkdirSync(runs, { recursive: true, mode: 0o700 })
-  writeFileSync(file, "", { flag: "wx", mode: 0o600 })
-  mkdirSync(traces, { mode: 0o700 })
-  console.error(`${all.length} runs`)
-  await Promise.all(
-    // Lanes share ask's subagent model; too many at once and its provider rate-limits, which
-    // shows up as slow, retried tasks the caller has to wait out.
-    Array.from({ length: Math.min(lanes, all.length) }, async (_, lane) => {
-      for (let i = lane; i < all.length; i += lanes) {
-        const { arm, d, j, rep } = all[i]
-        const { dir, home, bin, plugin } = prepare(j, arm, skill)
-        const env = environment(bin, home)
-        try {
-          writeFileSync(join(bin, "ask"), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(join(ask, "src", "cli.ts"))} "$@"\n`)
-          chmodSync(join(bin, "ask"), 0o755)
-          const t = await drive(d, arm, j.prompt, dir, plugin, env, join(traces, `${arm}-${d}-${j.id}-${rep}.jsonl`))
-          const { ids: sessions, ...u } = usage(home)
-          await stop(sessions, bin, dir, env)
-          const route = t.error ? null : u.sessions ? (t.native ? "mixed" : "ask") : t.native ? "native" : "self"
-          const grade = t.error ? { pass: false, notes: t.error } : j.grade(t.answer, dir)
-          const row = { label: name, arm, driver: d, job: j.id, rep, route, ...grade, ...u, ...t }
-          appendFileSync(file, JSON.stringify(row) + "\n")
-          console.error(`${arm} ${d} ${j.id} ${t.error ? "ERROR" : row.pass ? "pass" : "FAIL"} ${row.notes} route=${route ?? "-"} sessions=${u.sessions} native=${t.native} tokens=${t.tokens}`)
-        } finally {
-          rmSync(join(dir, ".."), { recursive: true, force: true })
-        }
-      }
-    }),
-  )
+/** Run each caller/job/arm with a private ask home and scratch caller profile. */
+export const suite: Suite = {
+  live: true,
+  repetitions: 2,
+  compareFiles: [import.meta.filename, join(import.meta.dirname, "../fixtures/tasks.ts")],
+  select(args, reps) {
+    const { values } = parseArgs({ args, options: { skill: { type: "string" }, arms: { type: "string" }, drivers: { type: "string" }, jobs: { type: "string" }, opencode: { type: "string", default: "free" } } })
+    if (!["free", "go"].includes(values.opencode)) throw new Error("--opencode expects free or go")
+    const models = { ...callerModels, ...(values.opencode === "go" && { opencode: goModel }) }
+    const drivers = pick(values.drivers, allDrivers, "--drivers")
+    const arms = pick(values.arms, allArms, "--arms")
+    const ids = pick(values.jobs, jobs.map((j) => j.id), "--jobs")
+    const chosen = jobs.filter((j) => ids.includes(j.id))
+    const cases = arms.flatMap((arm) => drivers.flatMap((d) => chosen.flatMap((j) => Array.from({ length: reps }, (_, rep) => ({ arm, d, j, rep })))))
+    const custom = values.skill ? readFileSync(resolve(values.skill), "utf8") : undefined
+    return {
+      inputs: { arms, jobs: ids, callers: Object.fromEntries(drivers.map((d) => [d, models[d]])), workerModel: goModel },
+      variant: custom === undefined ? undefined : { skill: createHash("sha256").update(custom).digest("hex") },
+      count: cases.length,
+      async run(ctx) {
+        const skill = custom ?? ((await import(join(ctx.checkout, "src", "harnesses", "skill.ts"))).text as string)
+        const key = ctx.env.OPENCODE_API_KEY ?? (existsSync(join(ctx.env.ASK_HOME!, "auth.json"))
+          ? JSON.parse(readFileSync(join(ctx.env.ASK_HOME!, "auth.json"), "utf8"))["opencode-go"]?.api_key : undefined)
+        await pool(cases, ctx.parallel, async ({ arm, d, j, rep }) => {
+          const base = { group: `${d}/${arm}`, case: j.id, rep, model: models[d] }
+          let root: string | undefined
+          try {
+            const setup = prepare(j, arm, skill, ctx.scratch, ctx.env, models.opencode)
+            const { dir, home, bin, plugin } = setup
+            root = setup.root
+            const env = { ...ctx.env, PATH: `${bin}${delimiter}${ctx.env.PATH ?? ""}`, ASK_HOME: home,
+              XDG_DATA_HOME: join(root, "data"), OPENCODE_DB: ":memory:", ...(d === "opencode" && { OPENCODE_API_KEY: key }) }
+            writeFileSync(join(bin, "ask"), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(join(ctx.checkout, "src", "cli.ts"))} "$@"\n`)
+            chmodSync(join(bin, "ask"), 0o755)
+            if (d === "opencode" && values.opencode === "go" && !key) throw new Error("OpenCode Go needs an ask Go key or OPENCODE_API_KEY")
+            const t = await drive(d, models[d], arm, j.prompt, dir, plugin, env, ctx.traces && join(ctx.traces, `${arm}-${d}-${j.id}-${rep}.jsonl`))
+            const { ids: sessions, ...u } = usage(home)
+            await stop(sessions, bin, dir, env)
+            const route = t.error ? null : u.sessions ? (t.native ? "mixed" : "ask") : t.native ? "native" : "self"
+            const grade = t.error ? {} : j.grade(t.answer, dir)
+            ctx.record({ ...base, route, ...grade, ...u, ...t, input: t.tokens })
+          } catch (err) {
+            ctx.record({ ...base, error: (err as Error).message })
+          } finally {
+            if (root) rmSync(root, { recursive: true, force: true })
+          }
+        })
+      },
+    }
+  },
 }

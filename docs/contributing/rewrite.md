@@ -46,7 +46,7 @@ Linux x86_64 and macOS arm64 are the tested hosts. Release packaging also cross-
 architectures on both systems. Executing a cross-built binary still requires its target host.
 See the PR's final validation record for the exact checked commit and counts.
 
-The compaction fixture (`bench/compact.ts`) passed all six task-fact checks in independent runs:
+The [compaction benchmark](../../bench/README.md) passed all six task-fact checks in independent runs:
 
 | Model | Seconds | Input tokens | Output tokens | Cached tokens |
 | --- | ---: | ---: | ---: | ---: |
