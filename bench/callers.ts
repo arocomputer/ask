@@ -5,13 +5,12 @@
 //   none    ask is on PATH, nothing tells the agent about it
 //   skill   ask's skill, installed as a project skill (only its description sits in context)
 //   deny    the skill, with the agent's built-in subagents turned off
-//   hook    no skill; built-in subagent calls are handed to ask (bench/hook.ts)
 //
 // The callers reuse existing sign-ins, but hide the installed ask skill and override settings
 // that deny native subagents. Jobs never name ask: three ask for a subagent, one asks for
 // nothing. It spends real quota.
 //
-//   bun bench/callers.ts --ask PATH --label NAME [--arms none,skill,deny,hook]
+//   bun bench/callers.ts --ask PATH --label NAME [--arms none,skill,deny]
 //       [--drivers claude,codex,opencode] [--jobs ID,...] [--reps N] [--lanes N] [--skill FILE]
 //   bun bench/callers.ts --compare NAME...
 
@@ -21,12 +20,10 @@ import { homedir, tmpdir } from "node:os"
 import { delimiter, join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { tasks as subagentTasks } from "./tasks.ts"
-import { routed } from "./hook.ts"
 
 const here = import.meta.dirname
 const runs = join(here, ".runs")
-const hook = join(here, "hook.ts")
-const allArms = ["none", "skill", "deny", "hook"] as const
+const allArms = ["none", "skill", "deny"] as const
 const allDrivers = ["claude", "codex", "opencode"]
 
 type Job = { id: string; prompt: string; files: Record<string, string>; after?: Record<string, string>; grade(answer: string, dir: string): { pass: boolean; notes: string } }
@@ -72,13 +69,13 @@ function git(dir: string, ...args: string[]) {
   execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd: dir, stdio: "ignore", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "bench", GIT_AUTHOR_EMAIL: "bench@ask", GIT_COMMITTER_NAME: "bench", GIT_COMMITTER_EMAIL: "bench@ask" } })
 }
 
-/** Quote executable paths for the shell wrappers and hook commands. */
+/** Quote executable paths for the shell wrapper. */
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
 
 /**
  * A scratch repository for one run, with the arm's agent configuration beside it or inside it
  * (kept out of git status), and a scratch ask home with the user's catalog and keys. Claude Code
- * gets the arm's skill and hook as a plugin, the way an ask plugin would ship; Codex reads the
+ * gets the arm's skill as a temporary plugin; Codex reads the
  * skill from .agents/skills; OpenCode from .opencode, whose skill replaces a global one of the
  * same name.
  */
@@ -105,14 +102,8 @@ function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; 
     }
     // Project rules come after the user's, so they win: built-in subagents are on unless the arm
     // denies them, even where the user's own config turns them off.
-    const rules = [{ action: "subagent", resource: "*", effect: arm === "deny" ? "deny" : "allow" }, ...(arm === "none" || arm === "hook" ? [{ action: "skill", resource: "ask", effect: "deny" }] : [])]
+    const rules = [{ action: "subagent", resource: "*", effect: arm === "deny" ? "deny" : "allow" }, ...(arm === "none" ? [{ action: "skill", resource: "ask", effect: "deny" }] : [])]
     put(join(dir, ".opencode", "opencode.json"), JSON.stringify({ permissions: rules }))
-    if (arm === "hook") {
-      const command = `${quote(process.execPath)} ${quote(hook)}`
-      put(join(plugin, "hooks", "hooks.json"), JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Agent|Task", hooks: [{ type: "command", command, timeout: 600 }] }] } }))
-      // OpenCode 2's plugin API: a throw from execute.before refuses the call, and its message is the result.
-      put(join(dir, ".opencode", "plugins", "ask", "index.ts"), `import { Plugin } from "@opencode/plugin"\nimport { route } from ${JSON.stringify(hook)}\nexport default Plugin.define({ id: "ask", async setup(ctx) { await ctx.tool.hook("execute.before", async (event: any) => { if (event.tool === "subagent") throw new Error(await route(event.input ?? {})) }) } })\n`)
-    }
     const real = process.env.ASK_HOME || join(homedir(), ".ask")
     cpSync(join(real, "cache", "models.json"), join(home, "cache", "models.json"))
     const auth = join(real, "auth.json")
@@ -129,7 +120,7 @@ function prepare(j: Job, arm: Arm, skill: string): { dir: string; home: string; 
 }
 
 /** What one caller run did: its answer, and how it got there. */
-type Trace = { answer: string; seconds: number; native: number; skill: boolean; calls: number; tokens: number; cost: number | null; redirected: number; error?: string }
+type Trace = { answer: string; seconds: number; native: number; skill: boolean; calls: number; tokens: number; cost: number | null; error?: string }
 
 /** The ask skills the user installed for Codex, which a run turns off by path. */
 const installed = [join(process.env.CODEX_HOME || join(homedir(), ".codex"), "skills"), ...[".agents/skills", ".claude/skills"].map((d) => join(homedir(), d))]
@@ -168,9 +159,6 @@ function observe(name: string, e: Record<string, any>, t: Trace) {
       t.cost = e.total_cost_usd ?? null
       if (e.is_error) t.error ??= "Claude Code reported a failed turn"
     }
-    if (e.type === "user" && !e.parent_tool_use_id && Array.isArray(e.message?.content))
-      for (const b of e.message.content)
-        if (b.type === "tool_result" && JSON.stringify(b.content)?.includes(routed)) t.redirected++
   } else if (name === "codex") {
     const item = e.item ?? {}
     if (e.type === "item.completed") {
@@ -189,7 +177,6 @@ function observe(name: string, e: Record<string, any>, t: Trace) {
     if (e.type === "tool_use") {
       t.calls++
       if (part.tool === "subagent" || part.tool === "task") t.native++
-      if ((part.tool === "subagent" || part.tool === "task") && JSON.stringify(part.state?.error)?.includes(routed)) t.redirected++
       if (part.tool === "skill" && part.state?.input?.id === "ask") t.skill = true
     }
     if (e.type === "text") t.answer = part.text ?? t.answer
@@ -205,7 +192,7 @@ function observe(name: string, e: Record<string, any>, t: Trace) {
 /** Runs a caller to its end, keeping its raw events in `trace` to read when a route surprises. */
 function drive(name: string, arm: Arm, prompt: string, dir: string, plugin: string, env: NodeJS.ProcessEnv, trace: string): Promise<Trace> {
   const [cmd, args] = command(name, arm, prompt, dir, plugin)
-  const t: Trace = { answer: "", seconds: 0, native: 0, skill: false, calls: 0, tokens: 0, cost: null, redirected: 0 }
+  const t: Trace = { answer: "", seconds: 0, native: 0, skill: false, calls: 0, tokens: 0, cost: null }
   const began = Date.now()
   return new Promise((done) => {
     // OpenCode takes its directory from PWD, not the process's working directory.
@@ -272,10 +259,10 @@ async function stop(ids: string[], bin: string, dir: string, env: NodeJS.Process
  * scratch repository's configuration.
  */
 const markers = /^(CLAUDECODE|CLAUDE_CODE_(SESSION_ID|CHILD_SESSION|ENTRYPOINT|EXECPATH|SESSION_ATTENDED)|CLAUDE_PID|CODEX_(THREAD_ID|SESSION_ID|TOOL_CALL_ID|SANDBOX\w*)|OPENCODE\w*|ASK_\w+)$/
-function environment(bin: string, home: string, dir: string, write: boolean): NodeJS.ProcessEnv {
+function environment(bin: string, home: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {}
   for (const [k, v] of Object.entries(process.env)) if (!markers.test(k)) env[k] = v
-  return { ...env, PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`, ASK_HOME: home, ASK_BENCH_DIR: dir, ASK_BENCH_WRITE: write ? "1" : "0", NO_COLOR: "1" }
+  return { ...env, PATH: `${bin}${delimiter}${process.env.PATH ?? ""}`, ASK_HOME: home, NO_COLOR: "1" }
 }
 
 const { values: v, positionals } = parseArgs({
@@ -309,9 +296,10 @@ if (v.compare) {
     const values = rs.map((r) => r[k]).filter((n): n is number => typeof n === "number")
     return values.length ? values.reduce((a, n) => a + n, 0) / values.length : undefined
   }
-  console.log(["label", "arm", "driver", "passed", "errors", "ask", "hook", "native", "mixed", "self", "skill", "input", "reported $", "calls", "secs"].join("\t"))
+  console.log(["label", "arm", "driver", "passed", "errors", "ask", "native", "mixed", "self", "skill", "input", "reported $", "calls", "secs"].join("\t"))
   for (const name of positionals.map(label)) {
     const rows = readFileSync(join(runs, `callers-${name}.jsonl`), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l))
+      .filter((r) => r.arm === undefined || allArms.includes(r.arm))
     // Graded again with today's graders, except the fix, whose grade came from its folder.
     for (const r of rows) if (!r.error && r.job !== "delegated-fix") {
       const job = jobs.find((j) => j.id === r.job)
@@ -323,7 +311,7 @@ if (v.compare) {
         if (!group.length) continue
         const rs = group.filter((r) => !r.error && r.answer?.trim())
         const n = (route: string) => rs.filter((r) => r.route === route || (route === "mixed" && r.route === "both")).length
-        console.log([name, arm ?? "skill", d, `${rs.filter((r) => r.pass).length}/${rs.length}`, group.length - rs.length, n("ask"), n("hook"), n("native"), n("mixed"), n("self"), rs.filter((r) => r.skill).length, mean(rs, "tokens")?.toFixed(0) ?? "-", (d === "codex" ? undefined : mean(rs, "cost"))?.toFixed(2) ?? "-", mean(rs, "calls")?.toFixed(1) ?? "-", mean(rs, "seconds")?.toFixed(1) ?? "-"].join("\t"))
+        console.log([name, arm ?? "skill", d, `${rs.filter((r) => r.pass).length}/${rs.length}`, group.length - rs.length, n("ask"), n("native"), n("mixed"), n("self"), rs.filter((r) => r.skill).length, mean(rs, "tokens")?.toFixed(0) ?? "-", (d === "codex" ? undefined : mean(rs, "cost"))?.toFixed(2) ?? "-", mean(rs, "calls")?.toFixed(1) ?? "-", mean(rs, "seconds")?.toFixed(1) ?? "-"].join("\t"))
       }
   }
 } else {
@@ -336,9 +324,7 @@ if (v.compare) {
   const lanes = positive(v.lanes, 1, "--lanes")
   const ids = pick(v.jobs, jobs.map((j) => j.id), "--jobs")
   const chosen = jobs.filter((j) => ids.includes(j.id))
-  const all = arms.flatMap((arm) => drivers.filter((d) => !(arm === "hook" && d === "codex"))
-    .flatMap((d) => chosen.flatMap((j) => Array.from({ length: reps }, (_, rep) => ({ arm, d, j, rep })))))
-  if (!all.length) throw new Error("no runs selected (Codex has no benchmark hook adapter)")
+  const all = arms.flatMap((arm) => drivers.flatMap((d) => chosen.flatMap((j) => Array.from({ length: reps }, (_, rep) => ({ arm, d, j, rep })))))
   const skill = v.skill ? readFileSync(v.skill, "utf8") : ((await import(join(ask, "src", "harnesses", "skill.ts"))).text as string)
   const file = join(runs, `callers-${name}.jsonl`)
   const traces = join(runs, `callers-${name}`)
@@ -353,19 +339,18 @@ if (v.compare) {
       for (let i = lane; i < all.length; i += lanes) {
         const { arm, d, j, rep } = all[i]
         const { dir, home, bin, plugin } = prepare(j, arm, skill)
-        const env = environment(bin, home, dir, j.id === "delegated-fix")
+        const env = environment(bin, home)
         try {
           writeFileSync(join(bin, "ask"), `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(join(ask, "src", "cli.ts"))} "$@"\n`)
           chmodSync(join(bin, "ask"), 0o755)
           const t = await drive(d, arm, j.prompt, dir, plugin, env, join(traces, `${arm}-${d}-${j.id}-${rep}.jsonl`))
           const { ids: sessions, ...u } = usage(home)
           await stop(sessions, bin, dir, env)
-          const native = Math.max(0, t.native - t.redirected)
-          const route = t.error ? null : u.sessions ? (native ? "mixed" : t.redirected ? "hook" : "ask") : native ? "native" : "self"
+          const route = t.error ? null : u.sessions ? (t.native ? "mixed" : "ask") : t.native ? "native" : "self"
           const grade = t.error ? { pass: false, notes: t.error } : j.grade(t.answer, dir)
-          const row = { label: name, arm, driver: d, job: j.id, rep, route, ...grade, ...u, ...t, native }
+          const row = { label: name, arm, driver: d, job: j.id, rep, route, ...grade, ...u, ...t }
           appendFileSync(file, JSON.stringify(row) + "\n")
-          console.error(`${arm} ${d} ${j.id} ${t.error ? "ERROR" : row.pass ? "pass" : "FAIL"} ${row.notes} route=${route ?? "-"} sessions=${u.sessions} native=${native} tokens=${t.tokens}`)
+          console.error(`${arm} ${d} ${j.id} ${t.error ? "ERROR" : row.pass ? "pass" : "FAIL"} ${row.notes} route=${route ?? "-"} sessions=${u.sessions} native=${t.native} tokens=${t.tokens}`)
         } finally {
           rmSync(join(dir, ".."), { recursive: true, force: true })
         }

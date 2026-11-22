@@ -38,27 +38,26 @@ against uncompacted context or evidence of reliability across models and tasks.
 
 `bench/callers.ts` measures the other side: Claude Code, Codex and OpenCode given four fixture
 jobs, three that request delegation and one that doesn't. None names ask. It grades the
-outcome separately from the route: direct ask, via the hook, native subagents, mixed, or self.
+outcome separately from the route: ask, native subagents, mixed, or self.
 
 | Arm | What the agent gets |
 | --- | --- |
 | `none` | ask on `PATH`, nothing else: the control |
 | `skill` | ask's skill as a project skill, so only its description is in context until loaded |
 | `deny` | the skill, with built-in subagents turned off |
-| `hook` | no skill: a prototype in `bench/hook.ts` redirects native calls for Claude Code and OpenCode |
 
 The agents run on your own sign-ins, with three changes: an ask skill you installed is hidden
 (Claude Code's `skillOverrides`, Codex's `skills.config`, OpenCode's project skill and
 permissions); your Claude Code user settings and Codex config aren't loaded
 (`--setting-sources project,local`, `--ignore-user-config`); and built-in subagents are on unless
-the arm turns them off. Claude Code gets the arm's skill or hook as a temporary plugin
+the arm turns them off. Claude Code gets the arm's skill as a temporary plugin
 (`--plugin-dir`). Claude Code and Codex don't save their sessions; OpenCode archives its sessions.
 Ask uses a scratch home, your cached catalog and your OpenCode Go key (`auth.json` or
 `OPENCODE_API_KEY`). The callers are Claude Code on Sonnet, Codex on its default model, and
 OpenCode on `opencode-go/deepseek-v4.1-flash`; ask defaults to `opencode-go/glm-5.3`.
 
 ```sh
-bun bench/callers.ts --ask . --label smoke --reps 1 --jobs parallel-questions   # 11 runs
+bun bench/callers.ts --ask . --label smoke --reps 1 --jobs parallel-questions   # 9 runs
 bun bench/callers.ts --ask . --label must
 bun bench/callers.ts --ask . --label soft --arms skill,deny --skill bench/soft.md
 bun bench/callers.ts --compare must soft
@@ -77,26 +76,24 @@ size, end-to-end tokens, or a bill. Missing cost data is shown as `-`.
 Two repeats of the three explicit-delegation jobs. These are routing counts from the pilot,
 not predictions for other models or more difficult tasks:
 
-| Caller | Native/control | Current skill | Soft skill | Hook only |
+| Caller | Native/control | Current skill | Soft skill | Current skill, native denied |
 | --- | --- | --- | --- | --- |
-| Claude Code | Native 6/6 | Ask 6/6 | Native 6/6 | Redirected to ask 6/6 |
-| Codex `exec` | Self 6/6 | Ask 6/6 | Ask 6/6 | No native call to intercept |
+| Claude Code | Native 6/6 | Ask 6/6 | Native 6/6 | Ask 6/6 |
+| Codex `exec` | Self 6/6 | Ask 6/6 | Ask 6/6 | Ask 6/6 |
+| OpenCode Go | Native 6/6 | Ask 4/6 | Not rerun on Go | Ask 6/6 |
 
 Claude Code and Codex passed all four fixture jobs in those runs, including the
-non-delegation job. In the pinned Go rerun, OpenCode chose native subagents in 6/6 control
-delegation runs, ask in 4/6 with the current skill, and ask in 6/6 with the skill and native
-subagents denied. The softened skill wasn't rerun on the pinned model. Some hook traces
-straddled a benchmark edit, so use the final-version smoke test instead: all three native
-calls were redirected to ask and all three questions were answered correctly.
+non-delegation job. The softened OpenCode skill wasn't rerun on the pinned model.
 
 Don't pool the original metered OpenCode runs (which hit quota) with the pinned Go rerun,
 which used a different model. Shared-provider rate limiting caused retries and extra calls
 in several arms; don't use the pilot to rank latency or cost.
 
-Keep the skill as the portable default: the stronger description changed Claude Code's
-routing, and a hook cannot help when the caller never tries a native subagent. The Claude
-Code and OpenCode hooks are benchmark prototypes only. An opt-in hook or a small MCP
-interface could reduce shell round trips; MCP and Pi weren't benchmarked.
+Keep the skill as the portable default. The stronger description changed Claude Code's
+routing. Where users want ask to handle every delegation, the skill with native subagents
+disabled was the most consistent option in this pilot. We dropped the hook prototype:
+it worked on Claude Code and OpenCode but depended on caller-specific behavior and had
+nothing to intercept in the Codex runs.
 
 ## Results, November 2026
 
