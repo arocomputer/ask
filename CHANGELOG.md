@@ -17,7 +17,9 @@
 
 - An empty `grep` now says how many files it searched and what a narrower search left out,
   and the subagent briefing says a whole-directory search that finds nothing is the answer.
-  Subagents asked about something that isn't there stop looking sooner.
+  Subagents asked about something that isn't there stop looking sooner. The briefing also puts
+  the caller's requested format ahead of its own answer layout, so an answer asked for as JSON
+  only comes back without the evidence section.
 
 - Give likely diff reviews a short Code Mode recipe for inspecting the requested change without
   gathering unrelated evidence. Benchmark traces now record each script, its nested actions and

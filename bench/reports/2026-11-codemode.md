@@ -125,7 +125,7 @@ things the runtime was costing:
 - `return r.content` and `return r.matches` dropped the line numbers the answer needs. GPT-6
   Luna read six files that way and spent two more turns finding the lines again. A field
   returned whole now shows the result itself.
-- `"confirmations\("` in a JavaScript string is `confirmations(`, an invalid pattern, and a
+- `"handler\("` in a JavaScript string is `handler(`, an invalid pattern, and a
   `(?i)` anywhere but the start was one too. `grep` now takes the flag anywhere and searches
   for the text of a pattern it cannot compile, saying so.
 - A script used a variable from an earlier script. The error now says scripts start fresh.
@@ -171,6 +171,16 @@ no text. On this suite's seven tasks, DeepSeek and GLM passed 42 of 42 at 5.4 tu
 turns against 12.5 and 7.5 in the two runs before. On MiniMax and MiMo it passed the same 21
 of 28, every failure but one the 150-second limit, at 9.1 turns and 86,731 tokens against
 10.4 and 116,895 for the first version: lower, on 28 runs, and still not a gain in passes.
+
+### A requested format
+
+The briefing lays out the final message (the answer, then the evidence) and, further down,
+says to follow the caller's format. Asked for JSON only, DeepSeek gave the JSON and then the
+evidence. With the exception moved into the layout's first line ("unless the task asks for a
+particular format"), the count task on the real repository came back as JSON alone in 23 of
+24 runs against 18 of 24, DeepSeek's in 6 of 6 against 1 of 6, with the values right in 23
+of 24 either way. A task that asks for JSON without saying "only" still gets its evidence
+from three models of four, with or without the change.
 
 ### How to read this
 
