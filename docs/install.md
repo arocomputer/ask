@@ -74,6 +74,13 @@ everything works:
 ask doctor
 ```
 
+## Removing ask
+
+If you installed the agent skill, run `ask remove skill` with the same `ASK_HOME` before
+removing the binary or its package. This restores native delegation settings changed by
+`ask install skill --prefer-ask` and removes ask's installed skill without deleting
+sessions or worktrees. See [the agent skill](extensions.md#the-agent-skill).
+
 ## Where ask keeps things
 
 Everything is in `~/.ask` (set `ASK_HOME` to move it), and nothing is there until it is used:
@@ -84,5 +91,6 @@ Everything is in `~/.ask` (set `ASK_HOME` to move it), and nothing is there unti
 ├── auth.json        pasted provider keys, mode 0600
 ├── cache/           the model catalog, safe to delete
 ├── sessions/        one folder per session (see sessions.md)
+├── skill/           receipts for native delegation settings changed by ask
 └── worktrees/       the checkouts worktree tasks work in
 ```

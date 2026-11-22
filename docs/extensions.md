@@ -13,7 +13,7 @@ more as an **extension**:
 ask install            # what there is, and what is installed
 ask install claude     # turn on the claude harness
 ask install codex
-ask install skill      # teach Claude Code and Codex to hand work to ask
+ask install skill      # teach Claude Code, Codex and OpenCode to hand work to ask
 ask remove codex       # turn it off again
 ```
 
@@ -114,9 +114,22 @@ and an extension that is turned off is never loaded.
 
 ## The agent skill
 
-`ask install skill` writes a short skill, `skills/ask/SKILL.md`, into `~/.claude` and `~/.codex`
-(whichever exist), so those agents hand work to ask with JSON requests. A different file already
-there is kept as `SKILL.md.bak`, and `ask remove skill` puts it back.
+`ask install skill` writes a short skill, `skills/ask/SKILL.md`, into `~/.claude`, `~/.codex` and
+`~/.config/opencode` if those directories exist. Ask respects `CLAUDE_CONFIG_DIR`, `CODEX_HOME`
+and `XDG_CONFIG_HOME`. OpenCode is a caller here, not an ask harness. A previous skill is
+saved as `SKILL.md.bak`.
+
+To use ask instead of native subagents, opt in with `ask install skill --prefer-ask`. This
+adds `Agent` to Claude Code's deny list, sets Codex's `agents.enabled` to `false`, and adds
+an OpenCode V2 `subagent` deny rule. It edits only user settings, not project or managed
+policy. If ask can't safely edit a config (for example, an unsupported layout or a symlink),
+it reports the problem rather than rewriting the file. Plain `ask install skill` doesn't
+change native delegation settings.
+
+Run `ask remove skill` with the same `ASK_HOME` before uninstalling ask. It restores the
+setting ask changed, keeps a native deny that was already there, and puts back a previous
+skill if ask's own copy is still unchanged. It preserves unrelated edits and stops if it
+can't identify the settings change to undo. Open a new caller session to pick up the change.
 
 ## Turning tools off, and replacing them
 

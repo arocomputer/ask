@@ -326,7 +326,7 @@ describe("install", () => {
     const file = join(user, ".claude", "skills", "ask", "SKILL.md")
     mkdirSync(join(user, ".claude", "skills", "ask"), { recursive: true })
     writeFileSync(file, "mine")
-    const { run } = setup("ok", {}, { HOME: user })
+    const { run } = setup("ok", {}, { HOME: user, CLAUDE_CONFIG_DIR: join(user, ".claude"), CODEX_HOME: join(user, ".codex"), XDG_CONFIG_HOME: join(user, ".config") })
     assert.equal((await run(["install", "skill"])).code, 0)
     assert.match(readFileSync(file, "utf8"), /^---\nname: ask/)
     assert.equal(readFileSync(`${file}.bak`, "utf8"), "mine")
@@ -334,6 +334,46 @@ describe("install", () => {
     assert.equal((await run(["remove", "skill"])).code, 0)
     assert.equal(readFileSync(file, "utf8"), "mine")
     assert.ok(!existsSync(`${file}.bak`))
+  })
+
+  test("removing the preferred delegation skill restores owned settings and keeps unrelated edits", async () => {
+    const user = mkdtempSync(join(tmpdir(), "ask-delegation-"))
+    const claude = join(user, "claude"), codex = join(user, "codex"), xdg = join(user, "xdg"), opencode = join(xdg, "opencode")
+    for (const dir of [claude, codex, opencode]) mkdirSync(dir, { recursive: true })
+    const c = join(claude, "settings.json"), d = join(codex, "config.toml"), o = join(opencode, "opencode.jsonc")
+    writeFileSync(c, '{"permissions":{"deny":["WebFetch"]}}\n')
+    writeFileSync(d, '[agents]\nenabled = true # my setting\n')
+    writeFileSync(o, '{\n  // Keep comments.\n  "permissions": [],\n}\n')
+    const { run } = setup("ok", {}, { HOME: user, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, XDG_CONFIG_HOME: xdg })
+    for (let i = 0; i < 2; i++) assert.equal((await run(["install", "skill", "--prefer-ask"])).code, 0)
+    assert.deepEqual(JSON.parse(readFileSync(c, "utf8")).permissions.deny, ["WebFetch", "Agent"])
+    assert.match(readFileSync(d, "utf8"), /enabled = false # my setting/)
+    assert.match(readFileSync(o, "utf8"), /"action":"subagent","resource":"\*","effect":"deny"/)
+    assert.ok(existsSync(join(opencode, "skills", "ask", "SKILL.md")))
+    writeFileSync(c, '{"permissions":{"deny":["WebFetch","Agent","WebSearch"]},"model":"opus"}\n')
+    writeFileSync(d, '[agents]\nenabled = false # my setting\nmax_depth = 2\n')
+    writeFileSync(o, readFileSync(o, "utf8").replace('  "permissions"', '  "snapshots": false,\n  "permissions"'))
+    assert.equal((await run(["remove", "skill"])).code, 0)
+    assert.deepEqual(JSON.parse(readFileSync(c, "utf8")), { permissions: { deny: ["WebFetch", "WebSearch"] }, model: "opus" })
+    assert.equal(readFileSync(d, "utf8"), '[agents]\nenabled = true # my setting\nmax_depth = 2\n')
+    assert.equal(readFileSync(o, "utf8"), '{\n  // Keep comments.\n  "snapshots": false,\n  "permissions": [],\n}\n')
+    assert.ok(!existsSync(join(opencode, "skills", "ask", "SKILL.md")))
+  })
+
+  test("skill removal leaves a pre-existing native delegation deny alone", async () => {
+    const user = mkdtempSync(join(tmpdir(), "ask-delegation-"))
+    const claude = join(user, "claude"), codex = join(user, "codex"), xdg = join(user, "xdg")
+    for (const dir of [claude, codex, join(xdg, "opencode")]) mkdirSync(dir, { recursive: true })
+    const originals = {
+      [join(claude, "settings.json")]: '{"permissions":{"deny":["Agent"]}}',
+      [join(codex, "config.toml")]: '[agents]\nenabled = false\n',
+      [join(xdg, "opencode", "opencode.json")]: '{"permissions":[{"effect":"deny","resource":"*","action":"subagent"}]}',
+    }
+    for (const [file, original] of Object.entries(originals)) writeFileSync(file, original)
+    const { run } = setup("ok", {}, { HOME: user, CLAUDE_CONFIG_DIR: claude, CODEX_HOME: codex, XDG_CONFIG_HOME: xdg })
+    assert.equal((await run(["install", "skill", "--prefer-ask"])).code, 0)
+    assert.equal((await run(["remove", "skill"])).code, 0)
+    for (const [file, original] of Object.entries(originals)) assert.equal(readFileSync(file, "utf8"), original)
   })
 
   test("an extension is copied in only when installed, runs as a harness, and leaves no folder once removed", async () => {
