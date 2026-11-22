@@ -98,21 +98,23 @@ transcripts stay outside this repository because the source is private.
 
 | Arm | Passed | Turns, mean · median | Input tokens, mean · median | Scripts spent on runtime mistakes |
 | --- | ---: | ---: | ---: | ---: |
-| Direct tools (`45eeae9`) | 66 | 7.4 · 5.5 | 81,158 · 33,493 | |
-| Code Mode (`f457e5f`) | 66 | 6.1 · 6.0 | 40,644 · 32,132 | 34 of 365 (9.3%) |
-| Code Mode (`6dd9abd`) | 68 | 5.9 · 5.0 | 42,944 · 29,017 | 10 of 356 (2.8%) |
+| Direct tools (`45eeae9`) | 67 | 7.4 · 5.5 | 81,158 · 33,493 | |
+| Code Mode (`f457e5f`) | 67 | 6.1 · 6.0 | 40,644 · 32,132 | 34 of 365 (9.3%) |
+| Code Mode (`6dd9abd`) | 70 | 5.9 · 5.0 | 42,944 · 29,017 | 10 of 356 (2.8%) |
+| Code Mode (`ddf5071`) | 68 | 5.4 · 5.0 | 39,000 · 32,271 | 7 of 323 (2.2%) |
 
-| Model, mean turns · input tokens | Direct tools | `f457e5f` | `6dd9abd` |
-| --- | ---: | ---: | ---: |
-| Claude Haiku 5.5 | 5.1 · 48k | 4.0 · 28k | 3.9 · 29k |
-| GPT-6 Luna | 4.3 · 28k | 5.5 · 40k | 4.7 · 30k |
-| DeepSeek V4.1 Flash | 14.4 · 216k | 8.7 · 67k | 8.8 · 79k |
-| GLM-5.3-Flash | 5.8 · 33k | 6.1 · 28k | 6.1 · 34k |
+| Model, mean turns · input tokens | Direct tools | `f457e5f` | `6dd9abd` | `ddf5071` |
+| --- | ---: | ---: | ---: | ---: |
+| Claude Haiku 5.5 | 5.1 · 48k | 4.0 · 28k | 3.9 · 29k | 3.2 · 23k |
+| GPT-6 Luna | 4.3 · 28k | 5.5 · 40k | 4.7 · 30k | 3.9 · 29k |
+| DeepSeek V4.1 Flash | 14.4 · 216k | 8.7 · 67k | 8.8 · 79k | 8.7 · 68k |
+| GLM-5.3-Flash | 5.8 · 33k | 6.1 · 28k | 6.1 · 34k | 5.9 · 35k |
 
-Code Mode halves the mean input and passes as often or more. The gain is DeepSeek's and
+Code Mode halves the mean input and passes as often. The gain in turns is DeepSeek's and
 Claude's; GLM is level, and GPT-6 Luna, which already batches its direct calls in one turn,
-is slightly behind direct tools. The medians of the two interfaces are close: most of the
-difference in means is DeepSeek's long direct-tool runs.
+started behind direct tools and ended level with them. The medians of the two interfaces are
+close: most of the difference in means is DeepSeek's long direct-tool runs. Passes differ by
+no more than three in 72, which these counts can't tell apart.
 
 The first Code Mode run is what the second was built from. Its transcripts showed four more
 things the runtime was costing:
@@ -129,13 +131,15 @@ things the runtime was costing:
 - A script used a variable from an earlier script. The error now says scripts start fresh.
 
 The count over 33 files is where a script should win, and it does: all five values were right
-in 12 of 12 runs at 3.6 turns, against 9 of 12 at 4.3 with direct tools, where the model adds
-by hand. Four of those twelve answers still failed the grader for adding prose to a
-JSON-only answer, three of them DeepSeek's, which did the same with direct tools.
+in 23 of 24 runs on the last two arms at 3.7 turns, against 9 of 12 at 4.3 with direct
+tools, where the model adds by hand. The one miss printed all 33 files and counted by eye.
+The pass counts above grade that task on its values; a third of the Code Mode answers
+(8 of 24) also added prose to an answer asked for as JSON only, six of them DeepSeek's, which
+did the same with direct tools.
 
 **The review is where Code Mode may be behind.** GPT-6 Luna found all three planted bugs in 8
-of 11 direct-tool reviews and 8 of 20 Code Mode reviews, missing the same one each time after
-reading the same files. That is not a settled difference at these counts (p ≈ 0.13), and the
+of 11 direct-tool reviews and 9 of 23 Code Mode reviews, missing the same one each time after
+reading the same files. That is not a settled difference at these counts (p ≈ 0.14), and the
 other three models found all three bugs in every review either way. Dropping the catalog's
 review recipe did not explain it: over 24 reviews an arm, Luna passed 4 of 6 with the recipe
 and 5 of 6 without, and the recipe saved the four models 0.8 turns and 13k tokens a review.
@@ -157,7 +161,16 @@ suite's own version of it (16 runs an arm), on the four models above:
 
 Every run in every arm passed. The `grep` message alone helped where the name appears nowhere;
 in this suite the name survives in git history, which the models went on to read, and only
-the briefing line stopped that. Both shipped. CONFIRM
+the briefing line stopped that. Both shipped, as `ddf5071`.
+
+A line that says finding nothing is an answer could make a model give up on something that
+is there, so that commit ran every task again. On the real repository it is the last row of
+the table above: 23 of 24 lookups passed, and the one that didn't was a provider reply with
+no text. On this suite's seven tasks, DeepSeek and GLM passed 42 of 42 at 5.4 turns and
+24,191 tokens, level with the best earlier run, and the symbol that isn't there took 8.0
+turns against 12.5 and 7.5 in the two runs before. On MiniMax and MiMo it passed the same 21
+of 28, every failure but one the 150-second limit, at 9.1 turns and 86,731 tokens against
+10.4 and 116,895 for the first version: lower, on 28 runs, and still not a gain in passes.
 
 ### How to read this
 
@@ -170,8 +183,9 @@ the briefing line stopped that. Both shipped. CONFIRM
   without case, and every arm above was regraded from its saved answers the same way.
 - Most input tokens were served from the provider's cache. Seconds depend on the provider's
   load and on timeouts (three direct-tool runs hit the 150-second limit).
-- Seven tasks, no web tasks, four inexpensive models. The gain is on the two models the
-  problems were found on. This is not a comparison with any other harness's Code Mode.
+- Thirteen tasks on two repositories, six models, no web tasks. Each fix was found in one
+  run's transcripts and measured on a later run of the same tasks, not on tasks held back
+  from it. This is not a comparison with any other harness's Code Mode.
 
 ## Earlier runs
 

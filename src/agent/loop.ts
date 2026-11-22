@@ -9,7 +9,7 @@ import type { Sandbox } from "../sandbox/confine.ts"
 import type { Models } from "./context.ts"
 import { search, type Engine } from "./search.ts"
 import { tools as builtIn, type Tool } from "./tools.ts"
-import { catalog, execute, runCode } from "./code.ts"
+import { catalog, execute, runCode, wellFormed } from "./code.ts"
 import type { Action } from "./steps.ts"
 
 export type RunOptions = {
@@ -164,6 +164,8 @@ export async function run(o: RunOptions): Promise<RunResult> {
       return end({ error: describe(err) }, step)
     }
     compactions = 0
+    // Before the message is kept: it is replayed to the provider on every later step.
+    for (const c of res.message.calls) c.arguments = wellFormed(c.arguments)
     measured = res.usage.input
     measuredLength = JSON.stringify(context).length
     messages.push(res.message)

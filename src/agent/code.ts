@@ -142,16 +142,36 @@ export type Notice = { id: number; label: string; state: "started" | "finished" 
 type Call = { id: number; tool: Tool; args: Args }
 type Frame = { type: "result"; id: number; output: string; data?: object } | { type: "result"; id: number; error: string }
 
+/** Tool-call markup a model left on the end of what it wrote. */
+const markup = /(?:\s*<\/[\w:|-]+>)+\s*$/
+
+/**
+ * A call's arguments as JSON that parses. Some models leave their tool-call markup on the end
+ * or stop before closing the string; the script is still plain, and a provider refuses a
+ * history that replays arguments it cannot parse. What can't be recovered is kept under
+ * `malformed`, so the model sees what it sent.
+ */
+export function wellFormed(text: string): string {
+  if (!text.trim()) return "{}"
+  const bare = text.replace(markup, "")
+  for (const attempt of [text, bare, bare + '"}', bare + "}"]) {
+    try {
+      const value: unknown = JSON.parse(attempt)
+      if (object(value)) return attempt === text ? text : JSON.stringify(value)
+    } catch {}
+  }
+  return JSON.stringify({ malformed: text.slice(0, 4000) })
+}
+
 /** Execute one script, killing the child and abandoning queued calls on any terminal outcome. */
 export async function runCode(text: string, tools: Tool[], ctx: Context, notice: (step: Notice) => void): Promise<string> {
   let request: unknown
-  try { request = JSON.parse(text) }
-  catch { return "error: execute arguments must be a JSON object with a code string" }
+  try { request = JSON.parse(wellFormed(text)) } catch {}
   if (!object(request) || typeof request.code !== "string" || !request.code.trim() || Object.keys(request).length !== 1)
-    return "error: execute expects only a nonempty code string"
+    return 'error: execute takes one JSON object, {"code": "..."}, with the script as a string'
   if (Buffer.byteLength(request.code) > maxCode) return "error: Code Mode source exceeds 128 KiB"
   // A fenced script is the same script, and so is one with its tool-call markup still attached.
-  const code = request.code.replace(/(?:\s*<\/[\w:|-]+>)+\s*$/, "").replace(/^\s*```[a-z]*\n([\s\S]*?)\n?```\s*$/i, "$1")
+  const code = request.code.replace(markup, "").replace(/^\s*```[a-z]*\n([\s\S]*?)\n?```\s*$/i, "$1")
   if (ctx.signal?.aborted) return "error: stopped"
   try {
     const ext = import.meta.url.endsWith(".ts") ? "ts" : "js"

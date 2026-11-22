@@ -362,7 +362,21 @@ describe("loop", () => {
       prompt: "Go",
       maxSteps: 1,
     })
-    assert.equal((bad.messages.at(-1) as { output: string }).output, "error: execute arguments must be a JSON object with a code string")
+    assert.equal((bad.messages.at(-1) as { output: string }).output, 'error: execute takes one JSON object, {"code": "..."}, with the script as a string')
+    assert.equal((bad.messages.at(-2) as { calls: { arguments: string }[] }).calls[0].arguments, '{"malformed":"{not json"}')
+  })
+
+  test("arguments cut off inside the script, markup and all, still run and are kept as valid JSON", async () => {
+    const cut = '{"code": "return 1 + 1;\\n</function></tool_call>'
+    const r = await run({
+      provider: { complete: async () => ({ message: { role: "assistant", text: "", calls: [{ id: "c", name: "execute", arguments: cut }] }, usage: { input: 0, output: 0, cached: 0 } }) },
+      model: "m",
+      dir: project(),
+      prompt: "Go",
+      maxSteps: 1,
+    })
+    assert.equal((r.messages.at(-1) as { output: string }).output, "2")
+    assert.equal((r.messages.at(-2) as { calls: { arguments: string }[] }).calls[0].arguments, '{"code":"return 1 + 1;\\n"}')
   })
 
   test("a reply cut off at the output limit is a failure, not an answer", async () => {
