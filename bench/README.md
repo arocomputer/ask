@@ -36,15 +36,42 @@ One isolated run on `opencode-go/glm-5.3` passed all six checks in 22.9 seconds 
 write's outcome was unknown and should be checked. This single synthetic run is not a comparison
 against uncompacted context or evidence of reliability across models and tasks.
 
-`bench/callers.ts` measures the other side: Claude Code and Codex, given work to hand off,
-with a version of ask's skill in their instructions (never installed), graded on the outcome
-and on how they delegated: sessions, whether they started together, how much their task
-prompts said.
+`bench/callers.ts` measures the other side: Claude Code, Codex and OpenCode given four fixture
+jobs, three that request delegation and one that doesn't. None names ask. It grades the
+outcome separately from the route: ask, native subagents, mixed, or self.
+
+| Arm | What the agent gets |
+| --- | --- |
+| `none` | ask on `PATH`, nothing else: the control |
+| `skill` | ask's skill as a project skill, so only its description is in context until loaded |
+| `deny` | the skill, with built-in subagents turned off |
+
+The agents run on your own sign-ins, with three changes: an ask skill you installed is hidden
+(Claude Code's `skillOverrides`, Codex's `skills.config`, OpenCode's project skill and
+permissions); your Claude Code user settings and Codex config aren't loaded
+(`--setting-sources project,local`, `--ignore-user-config`); and built-in subagents are on unless
+the arm turns them off. Claude Code gets the arm's skill as a temporary plugin
+(`--plugin-dir`). Claude Code and Codex don't save their sessions; OpenCode archives its sessions.
+Ask uses a scratch home, your cached catalog and your OpenCode Go key (`auth.json` or
+`OPENCODE_API_KEY`). The callers are Claude Code on Sonnet, Codex on its default model, and
+OpenCode on `opencode-go/deepseek-v4.1-flash`; ask defaults to `opencode-go/glm-5.3`.
 
 ```sh
-bun bench/callers.ts --ask . --skill SKILL.md --label mine [--drivers claude,codex] [--reps N]
-bun bench/callers.ts --compare old mine
+bun bench/callers.ts --ask . --label smoke --reps 1 --jobs parallel-questions   # 9 runs
+bun bench/callers.ts --ask . --label must
+bun bench/callers.ts --ask . --label soft --arms skill,deny --skill bench/soft.md
+bun bench/callers.ts --compare must soft
 ```
+
+Use a fresh label for each batch. `--drivers`, `--jobs` and `--arms` select subsets; `--lanes`
+defaults to one to limit provider contention. The benchmark spends quota and runs real agents
+with access to local tools; use it on the scratch fixtures, not as a sandbox for hostile work.
+Answers and raw caller events stay in `bench/.runs/` and should not be shared without checking
+their contents. The report separates caller errors from grading failures. Its usage columns
+are caller-reported totals, including cached input where reported. They aren't peak context
+size, end-to-end tokens, or a bill. Missing cost data is shown as `-`.
+
+See the [November 2026 caller pilot](reports/2026-11-callers.md) for results and limitations.
 
 ## Results, November 2026
 
@@ -60,7 +87,8 @@ Reviews failed before because read-only tasks couldn't see the diff at all. Clau
 pieces brought web tasks from 269k input tokens to about 140k, at one more step. Callers, 3
 jobs × 2 runs: with the new skill Claude Code passed 6 of 6 (4 with the old, which sent a
 fix to a worktree and left the user's files broken) and wrote fuller task prompts (271 → 390
-characters); Codex passed 6 of 6 with both.
+characters); Codex passed 6 of 6 with both. Those caller runs predate the arms: the jobs named
+ask, the skill sat in the system prompt, and Claude Code had no Agent tool to choose instead.
 
 ## Sandbox and extraction follow-up
 
