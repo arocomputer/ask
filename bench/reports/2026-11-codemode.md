@@ -62,8 +62,6 @@ rather than their fields. It passed 41 of 42 at 6.8 turns and 32,542 tokens, ins
 of the two runs above, and answers cited `path:line` just as often either way, so the wording
 stayed as first written.
 
-HOLDOUT
-
 ### How to read this
 
 - The runs came from a copy of the `subagents` runner that keeps whole transcripts. The suite's
@@ -75,9 +73,8 @@ HOLDOUT
   without case, and every arm above was regraded from its saved answers the same way.
 - Most input tokens were served from the provider's cache. Seconds depend on the provider's
   load and on timeouts (three direct-tool runs hit the 150-second limit).
-- Two inexpensive models, three repetitions, seven tasks, no web tasks. The problems were found
-  on these two models; the holdout above is the check that the fix isn't particular to them.
-  This is not a comparison with any other harness's Code Mode.
+- Two inexpensive models, three repetitions, seven tasks, no web tasks, and the problems were
+  found on these same two models. This is not a comparison with any other harness's Code Mode.
 
 ## Earlier runs
 
