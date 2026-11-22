@@ -180,13 +180,14 @@ export async function run(o: RunOptions): Promise<RunResult> {
       return end(answer ? { answer } : { error: { message: "the model gave no answer", hint: "continue the session to ask again" } }, step)
     }
     const at = messages.length - 1
-    for (const [script, c] of calls.entries()) {
+    const script = (c: (typeof calls)[number], n: number) => c.name === execute.name
+      ? runCode(c.arguments, tools, { dir: o.dir, signal: o.signal, sandbox: o.sandbox, models }, (notice) => o.onAction?.({ ...notice, at, script: n }))
+      : Promise.resolve(`error: ${c.name} is not callable directly; use execute with the Code Mode catalog`)
+    // Scripts sent together run together only when nothing they can reach writes.
+    const together = calls.length > 1 && tools.every((t) => t.readonly) ? await Promise.all(calls.map(script)) : undefined
+    for (const [n, c] of calls.entries()) {
       if (o.signal?.aborted) return end({ error: { message: "stopped" } }, step)
-      const output = c.name === execute.name
-        ? await runCode(c.arguments, tools, { dir: o.dir, signal: o.signal, sandbox: o.sandbox, models }, (notice) => {
-            o.onAction?.({ ...notice, at, script })
-          })
-        : `error: ${c.name} is not callable directly; use execute with the Code Mode catalog`
+      const output = together ? together[n] : await script(c, n)
       const result: Message = { role: "tool", id: c.id, name: c.name, output }
       messages.push(result)
       context.push(result)

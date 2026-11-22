@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Make Code Mode forgiving of how models write JavaScript. `console.log` output is returned; a
+  script that returns nothing shows what its calls returned; every tool result reads as text and
+  also carries fields like `matches`, `content`, `stdout` and `exitCode`, replacing the
+  `format: "json"` switch; returned text comes back as labeled blocks instead of escaped JSON;
+  and errors name the line, the tool's signature or the available tools, and the calls that had
+  already completed. Scripts sent together in a read-only task run together.
+
 - Give likely diff reviews a short Code Mode recipe for inspecting the requested change without
   gathering unrelated evidence. Benchmark traces now record action summaries and payload sizes.
 

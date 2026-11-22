@@ -53,9 +53,12 @@ death, so a restarted write turn reports changes made before the crash too.
 An interrupted `execute` call gets an unknown-outcome result, not a replay. Nested starts are
 persisted before dispatch, so the local activity record can show which actions may have run.
 The Code Mode broker builds its catalog from the same filtered set it dispatches. `discover()`
-uses that set too; it never exposes a capability unavailable to the current turn. Structured
-results cross the bridge as bounded JSON and become JavaScript values inside the evaluator,
-not an additional model-facing exchange.
+uses that set too; it never exposes a capability unavailable to the current turn. A result
+crosses the bridge as bounded text, with a tool's fields beside it when it declares any, and
+becomes one value in the evaluator that reads as the text and carries the fields. The guest
+side is deliberately forgiving (console output, a fallback when nothing is returned, errors
+with lines and signatures), because the transcripts in `bench/reports` showed about one script
+in five lost to a mistake the runtime could absorb or explain.
 Inline entries use compact argument signatures; discovery returns the full JSON Schema.
 For a likely diff review, the catalog adds a short recipe only if Git is permitted.
 This follows the catalog-and-permission split in

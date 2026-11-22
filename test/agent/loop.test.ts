@@ -24,7 +24,7 @@ describe("loop", () => {
   for (const protocol of ["responses", "chat", "anthropic"] as const) {
     test(`${protocol}: execute alone is offered and only the script's return reaches the model`, async () => {
       const fake = await serve(protocol, [{ calls: [code(`
-        const { matches: [hit] } = await tools.grep({ pattern: "service-" + "alpha", format: "json" });
+        const { matches: [hit] } = await tools.grep({ pattern: "service-" + "alpha" });
         const text = await tools.read({ path: hit.path, line: hit.line });
         return { port: Number(text.match(/\\d+$/m)[0]) };
       `)] }, { text: "It is 7341." }])
@@ -50,8 +50,8 @@ describe("loop", () => {
       const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Weather?", extra: [tool("weather", true), tool("deploy", false)] })
       assert.equal(r.answer, "Sunny.")
       const offered = fake.requests[0].messages[0].content
-      assert.match(offered, /tools\["weather"\]/)
-      assert.doesNotMatch(offered, /tools\["deploy"\]/)
+      assert.match(offered, /tools\.weather\(/)
+      assert.doesNotMatch(offered, /tools\.deploy\(/)
       assert.match(JSON.stringify(fake.requests[1]), /weather ran/)
     } finally {
       await fake.close()
@@ -59,14 +59,14 @@ describe("loop", () => {
   })
 
   test("search is offered, even read-only, only when there is an engine to search with", async () => {
-    const fake = await serve("chat", [{ calls: [code('const [hit] = await tools.search({ query: "bun release", format: "json" }); return hit.title')] }, { text: "Done." }, { text: "Done." }])
+    const fake = await serve("chat", [{ calls: [code('const { results: [hit] } = await tools.search({ query: "bun release" }); return hit.title')] }, { text: "Done." }, { text: "Done." }])
     try {
       const engine = async (q: string) => [{ title: `found ${q}`, url: "https://example.com/", snippet: "" }]
       await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Look it up", search: engine })
-      assert.match(fake.requests[0].messages[0].content, /tools\["search"\]/)
+      assert.match(fake.requests[0].messages[0].content, /tools\.search\(/)
       assert.match(JSON.stringify(fake.requests[1]), /found bun release/)
       await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Again" })
-      assert.doesNotMatch(fake.requests[2].messages[0].content, /tools\["search"\]/)
+      assert.doesNotMatch(fake.requests[2].messages[0].content, /tools\.search\(/)
     } finally {
       await fake.close()
     }
@@ -75,7 +75,7 @@ describe("loop", () => {
   test("large tool schemas stay out of the prompt and can be discovered on demand", () => {
     const extra = Array.from({ length: 50 }, (_, i) => ({ name: `extension-${i}`, description: "marker".repeat(300), parameters: {}, readonly: true, run: async () => "" }))
     const prompt = catalog(toolset({ extra }))
-    assert.match(prompt, /tools\["read"\]/)
+    assert.match(prompt, /tools\.read\(/)
     assert.match(prompt, /await discover/)
     assert.doesNotMatch(prompt, /extension-49/)
   })
@@ -85,6 +85,20 @@ describe("loop", () => {
     assert.match(catalog(toolset({}), prompt), /For a simple diff review/)
     assert.doesNotMatch(catalog(toolset({}), "Total the daily data"), /For a simple diff review/)
     assert.doesNotMatch(catalog(toolset({ off: ["git"] }), prompt), /For a simple diff review/)
+  })
+
+  test("scripts sent together in a read-only turn run together", { timeout: 10_000 }, async () => {
+    let started = 0
+    const both = Promise.withResolvers<void>()
+    const gate = { name: "gate", description: "gate", parameters: {}, readonly: true, run: async () => { if (++started === 2) both.resolve(); await both.promise; return "open" } }
+    const fake = await serve("chat", [{ calls: [use("gate"), use("gate")] }, { text: "Done." }])
+    try {
+      const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Go", extra: [gate] })
+      assert.equal(r.answer, "Done.")
+      assert.deepEqual(r.messages.filter((m) => m.role === "tool").map((m) => m.output), ["open", "open"])
+    } finally {
+      await fake.close()
+    }
   })
 
   test("an added tool replaces the built-in of its name, a read-only task only takes read-only ones, and off leaves tools out", () => {
@@ -264,12 +278,12 @@ describe("loop", () => {
   })
 
   test("a read-only task is offered no way to write or run commands", async () => {
-    const fake = await serve("chat", [{ calls: [code('return [typeof tools.write, typeof tools.edit, typeof tools.shell, typeof tools.read];')] }, { text: "ok" }])
+    const fake = await serve("chat", [{ calls: [code('return ["write", "edit", "shell", "read"].map((name) => name in tools);')] }, { text: "ok" }])
     try {
       await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Look" })
       const prompt = fake.requests[0].messages[0].content
-      assert.doesNotMatch(prompt, /tools\["(write|edit|shell)"\]/)
-      assert.equal(fake.requests[1].messages.at(-1).content, '["undefined","undefined","undefined","function"]')
+      assert.doesNotMatch(prompt, /tools\.(write|edit|shell)\(/)
+      assert.equal(fake.requests[1].messages.at(-1).content, "[false,false,false,true]")
     } finally {
       await fake.close()
     }

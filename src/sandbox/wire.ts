@@ -4,6 +4,8 @@ import type { Readable, Writable } from "node:stream"
 const frameLimit = 1024 * 1024
 export const maxCalls = 32
 export const outputLimit = 64 * 1024
+/** Room for an error with the calls and console output that preceded it. */
+export const errorLimit = 12 * 1024
 
 /** Read complete frames without buffering an unbounded line from a child. */
 export async function* frames(stream: Readable): AsyncGenerator<unknown> {

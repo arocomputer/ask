@@ -153,8 +153,9 @@ only takes read-only tools, so a replacement for `read`, `list`, `grep`, `git`, 
 own.
 
 Callers can also narrow access for one task with the [request's `tools` list](requests.md#start).
-Tool authors can opt into structured results by adding a `format` parameter, documenting the JSON
-shape in `structured`, and returning serialized JSON when `format: "json"` is requested. Code Mode
+Tool authors can put fields on a tool's result: name them in `structured`, as a type like
+`"{ rows: object[], total: number }"`, and when `run` receives `format: "json"` return JSON
+`{ text, data }` with the text the result prints as and an object holding those fields. Code Mode
 decodes it inside the sandbox. Keep the default text response for ordinary calls.
 
 ## Installing an extension

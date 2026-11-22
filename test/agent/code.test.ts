@@ -20,17 +20,58 @@ async function execute(code: string, tools: Tool[] = [], options: { signal?: Abo
 
 test("scripts have no ambient process, imports, filesystem, network or timers", async () => {
   const output = await execute(`
-    const types = [typeof process, typeof require, typeof Bun, typeof fetch, typeof setTimeout, typeof console];
+    const types = [typeof process, typeof require, typeof Bun, typeof fetch, typeof setTimeout];
     const imported = await import("node:fs").then(() => true, () => false);
     return { types, imported };
   `)
-  assert.deepEqual(JSON.parse(output), { types: Array(6).fill("undefined"), imported: false })
+  assert.deepEqual(JSON.parse(output), { types: Array(5).fill("undefined"), imported: false })
+})
+
+test("console output is kept, and a script that returns nothing shows what its calls returned", async () => {
+  const list = tool("list", true, async () => "a.txt")
+  const write = tool("write", false, async () => "wrote b.txt")
+  assert.equal(await execute(`console.log("found", { n: 1 }); console.log(await tools.list()); return 2`, [list]), 'found {"n":1}\na.txt\n2')
+  const silent = await execute(`await tools.list(); await tools.write({ path: "b.txt" })`, [list, write])
+  assert.match(silent, /^\(nothing returned[^\n]*\n=== list ===\na\.txt\n=== write b\.txt ===\nwrote b\.txt$/)
+})
+
+test("a result reads as its text and carries the tool's fields", async () => {
+  const grep: Tool = { ...tool("grep", true, async (args) => JSON.stringify({ text: `a.ts:2:${args.pattern}`, data: { matches: [{ path: "a.ts", line: 2 }] } })), structured: "{ matches }" }
+  const output = await execute(`
+    const r = await tools.grep({ pattern: /TODO/ });
+    return [r.matches[0].line, r.split(":")[0], r + "!", r.length, JSON.stringify(r), r.text];
+  `, [grep])
+  assert.deepEqual(JSON.parse(output), [2, "a.ts", "a.ts:2:TODO!", 11, '"a.ts:2:TODO"', "a.ts:2:TODO"])
+})
+
+test("returned text comes out as labeled blocks, not escaped inside JSON", async () => {
+  const read = tool("read", true, async ({ path }) => `1\tin "${path}"\n2\tend\n`)
+  const output = await execute(`const [a, b] = await Promise.all([tools.read({ path: "a" }), tools.read({ path: "b" })]); return { a, b, count: 2 }`, [read])
+  assert.equal(output, '=== a ===\n1\tin "a"\n2\tend\n\n=== b ===\n1\tin "b"\n2\tend\n\ncount: 2')
+})
+
+test("a script error names its line, the calls that completed and the output so far", async () => {
+  const write = tool("write", false, async () => "wrote a.txt")
+  const output = await execute(`console.log("starting")\nawait tools.write({ path: "a.txt" })\nreturn missing.value`, [write])
+  assert.equal(output, `error: ReferenceError: 'missing' is not defined (line 3: return missing.value)
+Calls that completed before the error: write a.txt
+Output before the error:
+starting
+A tool may already have changed state. Verify before retrying.`)
+})
+
+test("a call that doesn't fit the tool's schema fails with its signature, or is repaired when unambiguous", async () => {
+  const edit: Tool = { ...tool("edit", false, async (args) => JSON.stringify(args)), parameters: { type: "object", properties: { path: { type: "string" }, old: { type: "string" }, count: { type: "integer" } }, required: ["path"], additionalProperties: false } }
+  assert.equal(await execute(`return await tools.edit({ path: "a", oldString: "x" })`, [edit]), 'error: tools.edit: unknown argument "oldString"; tools.edit takes {path: string, old?: string, count?: integer}')
+  assert.equal(await execute(`return await tools.edit("a")`, [edit]), '{"path":"a"}')
+  assert.equal(await execute(`return await tools.edit({ path: "a", count: "3" })`, [edit]), '{"path":"a","count":3}')
+  assert.match(await execute(`return await tools.patch({})`, [edit]), /^error: no tool named "patch"; the tools are edit \(line 1/)
 })
 
 test("disabled capabilities are not available inside a write script", async () => {
   const tools = toolset({ write: true, off: ["shell"] })
-  const output = await execute(`return [typeof tools.shell, typeof tools.write, typeof tools.execute]`, tools)
-  assert.deepEqual(JSON.parse(output), ["undefined", "function", "undefined"])
+  const output = await execute(`return ["shell" in tools, "write" in tools, "execute" in tools, Object.keys(tools).includes("shell")]`, tools)
+  assert.deepEqual(JSON.parse(output), [false, true, false, false])
 })
 
 test("discovery pages the permitted catalog without leaking denied tools", async () => {
@@ -94,7 +135,7 @@ test("tool errors can be handled by a script, but unawaited calls cannot outlive
   const calls: string[] = []
   const read = tool("read", true, async () => { throw new Error("not found") })
   const write = tool("write", false, async () => { calls.push("write"); return "" })
-  assert.equal(await execute(`try { await tools.read() } catch (err) { return err.message }`, [read]), "not found")
+  assert.equal(await execute(`try { await tools.read() } catch (err) { return err.message }`, [read]), "tools.read: not found")
   assert.match(await execute(`tools.write(); return 42`, [write]), /^error:.*pending tool calls/)
   assert.deepEqual(calls, [])
 })

@@ -28,11 +28,11 @@ Ask's built-in loop exposes one tool to the model: `execute`. A script can combi
 branch on results, and return only the relevant data:
 
 ```js
-const results = await Promise.all([
-  tools.grep({ pattern: "timeout", glob: "*.ts", limit: 10, format: "json" }),
+const [hits, tests] = await Promise.all([
+  tools.grep({ pattern: "timeout", glob: "*.ts", limit: 10 }),
   tools.list({ path: "test" }),
 ]);
-return { matches: results[0].matches, tests: results[1] };
+return { files: [...new Set(hits.matches.map((m) => m.path))], tests };
 ```
 
 Each script starts fresh. It has no imports, timers, direct filesystem access, or direct network
@@ -42,13 +42,21 @@ time and don't overlap other calls. Await every call you need. Ask never automat
 interrupted script: some of its actions may already have taken effect. `ask show` lists nested
 actions locally, separately from what goes to the model. There is no direct-tool fallback.
 
-`read`, `grep`, `git`, and `search` take `format: "json"` to return JavaScript data instead of text.
-Use `read` with this format to parse files: the `text` is unnumbered, `nextLine` is the cursor
-for the next page, and `clipped` means one line was too large to return whole. Binary files
-set `binary` and have empty `text`. The `limit` argument caps lines per page.
-`grep` gives `{ matches, truncated }`, `git` gives `{ stdout, stderr, exitCode, truncated }`,
-and `search` gives a list of `{ title, url, snippet }` records. Other responses, and calls without
-this option, remain text.
+A tool result prints as text and works where a string does (`split`, `includes`, `+`,
+template strings), and `.text` is that text. Some tools also put fields on it, so a script
+doesn't parse what it printed: `read` has `content` (the text without line numbers, for
+parsing), `nextLine` (where to continue, or `null`) and `clipped` (one line was too large to
+return whole); `grep` has `matches` (`{ path, line, text }` each) and `truncated`; `git` and
+`shell` have `stdout`, `stderr` and `exitCode`; `search` has `results`.
+
+The runtime is forgiving where a mistake would otherwise cost the model a turn. `console.log`
+output is returned with the script's value. A script that returns nothing shows what each of its
+calls returned. An object or array holding results or multi-line text comes back as labeled
+blocks rather than text escaped inside JSON. A call with a wrong argument name or type fails
+with the tool's signature; an unknown tool with the list of tools; a script error with its line,
+the calls that had completed, and the output so far.
+
+In a read-only task, scripts the model sends in one step run at the same time.
 
 With a large extension catalog, some schemas are shown only on demand. Scripts can call
 `await discover({ query: "keywords", limit: 5 })` and return the relevant entries. Discovery

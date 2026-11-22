@@ -5,8 +5,13 @@ import type { Sandbox } from "../sandbox/confine.ts"
 import type { ToolSpace } from "./tools.ts"
 import type { Usage } from "../providers/stream.ts"
 
-/** Common opt-in for tools with a structured output contract. */
-export const resultFormat = { type: "string", enum: ["text", "json"], description: "Return structured data with json; default text" }
+/**
+ * A structured tool's reply: its text for ordinary callers or, when Code Mode asked with
+ * `format: "json"`, that text together with the fields scripts read from the result.
+ */
+export function result(args: Record<string, unknown>, text: string, data: object): string {
+  return args.format === "json" ? JSON.stringify({ text, data }) : text
+}
 
 export type Context = ToolSpace & {
   dir: string
