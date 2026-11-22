@@ -1,7 +1,7 @@
 // ask remove: undoes ask install. A harness or extension comes out of config.json's
 // "extensions", with the models chosen from it, and its "harnesses" entry if still as ask wrote
 // it; an extension's folder is deleted, and ~/.ask/extensions with it once empty. `skill`
-// deletes the skill files that are still ask's.
+// restores caller preferences and deletes the skill files that are still ask's.
 
 import { existsSync, readdirSync, rmdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
@@ -16,7 +16,8 @@ import { positional, Usage } from "./command.ts"
 export const summary = "Remove an integration"
 export const about = `Turn off a harness, the agent skill or an extension that ask install turned on. Its models
 leave your chosen models, and an extension's files are deleted. Your own changes to a
-harness's "harnesses" entry in ~/.ask/config.json are kept.`
+harness's "harnesses" entry in ~/.ask/config.json are kept. Removing skill also undoes the
+native delegation settings added by ask install skill --prefer-ask.`
 export const usage = "ask remove <name>"
 export const examples = ["ask remove codex", "ask remove skill"]
 
@@ -28,10 +29,11 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   if (!argv.length) throw new Usage("name what to remove")
   const name = argv[0]
   if (name === "skill") {
-    const paths = skill.remove()
-    if (!paths.length) say("Ask's skill isn't installed")
-    for (const p of paths) say(`${p.restored ? "Restored your earlier skill at" : "Removed"} ${p.path}`)
-    return 0
+    const { paths, errors } = skill.remove(h)
+    if (!paths.length && !errors.length) say("Ask's skill isn't installed")
+    for (const p of paths) say(`${p.kind === "settings" ? "Restored native delegation settings in" : p.restored ? "Restored your earlier skill at" : "Removed"} ${p.path}`)
+    for (const error of errors) say(`${st.bold("error")}  ${error}`)
+    return errors.length ? 1 : 0
   }
   if (!/^[a-z][a-z0-9-]{0,30}$/.test(name)) {
     say(`${st.bold("error")}  ${name} isn't installed; ask install lists what is`)
