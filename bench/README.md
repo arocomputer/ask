@@ -71,29 +71,7 @@ their contents. The report separates caller errors from grading failures. Its us
 are caller-reported totals, including cached input where reported. They aren't peak context
 size, end-to-end tokens, or a bill. Missing cost data is shown as `-`.
 
-### Caller pilot, November 2026
-
-Two repeats of the three explicit-delegation jobs. These are routing counts from the pilot,
-not predictions for other models or more difficult tasks:
-
-| Caller | Native/control | Current skill | Soft skill | Current skill, native denied |
-| --- | --- | --- | --- | --- |
-| Claude Code | Native 6/6 | Ask 6/6 | Native 6/6 | Ask 6/6 |
-| Codex `exec` | Self 6/6 | Ask 6/6 | Ask 6/6 | Ask 6/6 |
-| OpenCode Go | Native 6/6 | Ask 4/6 | Not rerun on Go | Ask 6/6 |
-
-Claude Code and Codex passed all four fixture jobs in those runs, including the
-non-delegation job. The softened OpenCode skill wasn't rerun on the pinned model.
-
-Don't pool the original metered OpenCode runs (which hit quota) with the pinned Go rerun,
-which used a different model. Shared-provider rate limiting caused retries and extra calls
-in several arms; don't use the pilot to rank latency or cost.
-
-Keep the skill as the portable default. The stronger description changed Claude Code's
-routing. Where users want ask to handle every delegation, the skill with native subagents
-disabled was the most consistent option in this pilot. We dropped the hook prototype:
-it worked on Claude Code and OpenCode but depended on caller-specific behavior and had
-nothing to intercept in the Codex runs.
+See the [November 2026 caller pilot](reports/2026-11-callers.md) for results and limitations.
 
 ## Results, November 2026
 

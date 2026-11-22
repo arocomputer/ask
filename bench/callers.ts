@@ -300,11 +300,6 @@ if (v.compare) {
   for (const name of positionals.map(label)) {
     const rows = readFileSync(join(runs, `callers-${name}.jsonl`), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l))
       .filter((r) => r.arm === undefined || allArms.includes(r.arm))
-    // Graded again with today's graders, except the fix, whose grade came from its folder.
-    for (const r of rows) if (!r.error && r.job !== "delegated-fix") {
-      const job = jobs.find((j) => j.id === r.job)
-      if (job) Object.assign(r, job.grade(r.answer, ""))
-    }
     for (const arm of [...new Set(rows.map((r) => r.arm))])
       for (const d of [...new Set(rows.map((r) => r.driver))]) {
         const group = rows.filter((r) => (r.arm ?? "skill") === (arm ?? "skill") && r.driver === d)
