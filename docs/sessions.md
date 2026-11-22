@@ -47,7 +47,10 @@ template strings), and `.text` is that text. Some tools also put fields on it, s
 doesn't parse what it printed: `read` has `content` (the text without line numbers, for
 parsing), `nextLine` (where to continue, or `null`) and `clipped` (one line was too large to
 return whole); `grep` has `matches` (`{ path, line, text }` each) and `truncated`; `git` and
-`shell` have `stdout`, `stderr` and `exitCode`; `search` has `results`.
+`shell` have `stdout`, `stderr` and `exitCode`; `search` has `results`. A `list` result is the
+array of its paths, each relative to the working directory, so `for (const path of await
+tools.list({ pattern: "*.json" }))` works and `length` counts files. Returning a field whole,
+as in `return r.content` or `return r.matches`, shows the result itself, with its line numbers.
 
 The runtime is forgiving where a mistake would otherwise cost the model a turn. A script that
 ends in an expression returns its value, as a REPL would. `console.log`

@@ -136,6 +136,18 @@ describe("tools", () => {
     assert.equal(await all.list.run({ pattern: "src/**/*.ts" }, { dir: dir() }), "src/a.ts\nsrc/deep/b.ts")
   })
 
+  test("list gives paths from the working directory, whatever directory it listed", async () => {
+    const d = dir()
+    assert.equal(await all.list.run({ path: "src" }, { dir: d }), "src/a.ts\nsrc/deep/")
+    assert.deepEqual(JSON.parse(await all.list.run({ path: "src", pattern: "*.ts", format: "json" }, { dir: d })).data, { paths: ["src/a.ts", "src/deep/b.ts"], truncated: false })
+  })
+
+  test("grep searches for the text of a pattern that is not a regular expression, and says so", async () => {
+    const d = dir()
+    writeFileSync(join(d, "calls.ts"), "start(\nstop[\n")
+    assert.match(await all.grep.run({ pattern: "start(|stop[", glob: "calls.ts" }, { dir: d }), /^calls\.ts:1:start\(\ncalls\.ts:2:stop\[\n\[the pattern is not a valid regular expression \(.*\), so each \|-separated part was searched for as plain text\]$/)
+  })
+
   test("grep reports path:line:text, limited by glob", async () => {
     assert.equal(await all.grep.run({ pattern: "two", glob: "*.ts" }, { dir: dir() }), "src/a.ts:2:two\nsrc/deep/b.ts:1:const two = 2")
   })
@@ -159,8 +171,9 @@ describe("tools", () => {
     assert.equal(JSON.parse(await all.read.run({ path: "records", line: page.nextLine, format: "json" }, { dir: d })).data.content, "next")
   })
 
-  test("grep takes a leading (?i) as the flag other regex dialects make it", async () => {
+  test("grep takes (?i) as the flag other regex dialects make it", async () => {
     assert.equal(await all.grep.run({ pattern: "(?i)CONST TWO", glob: "*.ts" }, { dir: dir() }), "src/deep/b.ts:1:const two = 2")
+    assert.equal(await all.grep.run({ pattern: "nothing|(?i)CONST TWO", glob: "*.ts" }, { dir: dir() }), "src/deep/b.ts:1:const two = 2")
   })
 
   test("structured grep separates paths and lines and reports truncation", async () => {

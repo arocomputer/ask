@@ -43,7 +43,7 @@ test("a script that ends in an expression returns its value, and only then", asy
   assert.equal(await execute(`if (true) { return "early" }\n"late"`), "early")
   assert.match(await execute(`const r = await tools.list()`, [list]), /^\(nothing returned/)
   assert.equal(await execute("const t = `a;\nb`; t.length"), "4")
-  assert.equal(await execute(`const x = 1\nreturn missing.value`), "error: ReferenceError: 'missing' is not defined (line 2: return missing.value)")
+  assert.equal(await execute(`const x = 1\nreturn missing.value`), "error: ReferenceError: 'missing' is not defined (line 2: return missing.value)\nEach script starts fresh: nothing defined in an earlier script is still there.")
 })
 
 test("a result reads as its text and carries the tool's fields", async () => {
@@ -53,6 +53,29 @@ test("a result reads as its text and carries the tool's fields", async () => {
     return [r.matches[0].line, r.split(":")[0], r + "!", r.length, JSON.stringify(r), r.text];
   `, [grep])
   assert.deepEqual(JSON.parse(output), [2, "a.ts", "a.ts:2:(?i)TODO!", 15, '"a.ts:2:(?i)TODO"', "a.ts:2:(?i)TODO"])
+})
+
+test("a result with paths is their array, and still prints and splits as its text", async () => {
+  const list: Tool = { ...tool("list", true, async () => JSON.stringify({ text: "a.json\nb.json\n[3 more]", data: { paths: ["a.json", "b.json"], truncated: true } })), structured: "{ paths }" }
+  const output = await execute(`
+    const files = await tools.list();
+    const seen = []; for (const f of files) seen.push(f);
+    return [seen, files.length, files[1], files.map((f) => f.toUpperCase()), Array.isArray(files.filter(Boolean)), files.truncated, files.split("\\n").length, String(files) === files.text];
+  `, [list])
+  assert.deepEqual(JSON.parse(output), [["a.json", "b.json"], 2, "b.json", ["A.JSON", "B.JSON"], true, true, 3, true])
+  assert.equal(await execute(`return await tools.list()`, [list]), "a.json\nb.json\n[3 more]")
+})
+
+test("a field returned whole shows the result, unless it was changed or says more than the text", async () => {
+  const read: Tool = { ...tool("read", true, async ({ path }) => JSON.stringify(path === "long"
+    ? { text: "1\tabc…\n2\tend", data: { content: "abcdef\nend\n" } }
+    : { text: "7\tone\n8\ttwo", data: { content: "one\ntwo\n" } })), structured: "{ content }" }
+  const grep: Tool = { ...tool("grep", true, async () => JSON.stringify({ text: "a.ts:2:x\nb.ts:5:y", data: { matches: [{ path: "a.ts", line: 2, text: "x" }, { path: "b.ts", line: 5, text: "y" }] } })), structured: "{ matches }" }
+  assert.equal(await execute(`return (await tools.read({ path: "a" })).content`, [read]), "7\tone\n8\ttwo")
+  assert.equal(await execute(`const r = await tools.read({ path: "a" }); return [r.content, JSON.parse('"' + r.content.trim().split("\\n")[1] + '"')]`, [read]), "=== [0] ===\n7\tone\n8\ttwo\n[1]: two")
+  assert.equal(await execute(`return (await tools.read({ path: "long" })).content`, [read]), "abcdef\nend\n")
+  assert.equal(await execute(`return (await tools.grep()).matches`, [grep]), "a.ts:2:x\nb.ts:5:y")
+  assert.equal(await execute(`const m = (await tools.grep()).matches; m.pop(); return m`, [grep]), '[{"path":"a.ts","line":2,"text":"x"}]')
 })
 
 test("returned text comes out as labeled blocks, not escaped inside JSON", async () => {
@@ -70,6 +93,7 @@ test("a script error names its line, the calls that completed and the output so 
   const write = tool("write", false, async () => "wrote a.txt")
   const output = await execute(`console.log("starting")\nawait tools.write({ path: "a.txt" })\nreturn missing.value`, [write])
   assert.equal(output, `error: ReferenceError: 'missing' is not defined (line 3: return missing.value)
+Each script starts fresh: nothing defined in an earlier script is still there.
 Calls that completed before the error: write a.txt
 Output before the error:
 starting

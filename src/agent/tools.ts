@@ -27,7 +27,8 @@ export type Tool = ToolSpec & {
    * The fields a script finds on this tool's result besides its text, written as a type like
    * "{ stdout: string, exitCode: number }". When set, Code Mode calls `run` with
    * `format: "json"` added to the arguments and expects JSON `{ text, data }` back; see
-   * `result` in context.ts. Other callers get the text.
+   * `result` in context.ts. Other callers get the text. A `paths` field makes the result the
+   * array of those paths in a script.
    */
   structured?: string
   run(args: Args, ctx: Context): Promise<string>
@@ -220,14 +221,16 @@ const read: Tool = {
 
 const list: Tool = {
   name: "list",
-  description: `List a directory's entries, directories with a trailing slash; or with pattern, every file below it that matches. ${patternNote} Omit path for the working directory.`,
+  description: `List a directory's entries, directories with a trailing slash; or with pattern, every file below it that matches. ${patternNote} Omit path for the working directory. Paths are relative to the working directory, as read takes them, and the result is also their array: for (const path of await tools.list({ pattern: "*.json" })).`,
   parameters: schema({
     path: { type: "string", description: "Directory path, relative to the working directory" },
     pattern: { type: "string", description: "Glob of files to find recursively" },
   }),
   readonly: true,
+  structured: "{ paths: string[], truncated: boolean }",
   async run(args, { dir }) {
     const path = await resolve(dir, str(args, "path"))
+    const root = await realpath(dir)
     const pattern = str(args, "pattern")
     let names: string[]
     if (pattern) {
@@ -237,16 +240,19 @@ const list: Tool = {
       const entries = await readdir(path, { withFileTypes: true })
       names = entries.filter((e) => e.name !== ".git").map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
     }
-    names.sort()
-    if (!names.length) return pattern ? "(no matches)" : "(empty)"
-    if (names.length > listLimit) return [...names.slice(0, listLimit), `[${names.length - listLimit} more; narrow the path or pattern]`].join("\n")
-    return names.join("\n")
+    // Shown from the working directory, like grep's paths, so each can go straight to read.
+    const paths = names.map((name) => relative(root, join(path, name)) + (name.endsWith("/") ? "/" : "")).sort()
+    const truncated = paths.length > listLimit
+    const shown = paths.slice(0, listLimit)
+    const text = !paths.length ? (pattern ? "(no matches)" : "(empty)")
+      : truncated ? [...shown, `[${paths.length - listLimit} more; narrow the path or pattern]`].join("\n") : shown.join("\n")
+    return result(args, text, { paths: shown, truncated })
   },
 }
 
 const grep: Tool = {
   name: "grep",
-  description: `Search file contents with a JavaScript regular expression, recursively from path (default: the working directory): the quickest way to find where something is defined or used. A leading (?i) ignores case. It prints matching lines as path:line:text, at most ${matchLimit}; several narrow searches beat one broad one. ${patternNote}`,
+  description: `Search file contents with a JavaScript regular expression, recursively from path (default: the working directory): the quickest way to find where something is defined or used. (?i) ignores case. It prints matching lines as path:line:text, at most ${matchLimit}; several narrow searches beat one broad one. ${patternNote}`,
   parameters: schema(
     {
       pattern: { type: "string", description: "Regular expression" },
@@ -261,13 +267,19 @@ const grep: Tool = {
   async run(args, { dir, signal }) {
     const source = str(args, "pattern")
     if (!source) throw new Error("pattern is required")
+    // Flags written the way other dialects write them, as (?i), which JavaScript rejects.
+    // Wherever one sits, it applies to the whole pattern.
+    const flags = new Set<string>()
+    const pattern = source.replace(/(?<!\\)\(\?([ims]+)\)/g, (_, set: string) => { for (const flag of set) flags.add(flag); return "" })
     let re: RegExp
+    let note = ""
     try {
-      // Flags written the way other dialects write them, as a leading (?i), which JavaScript rejects.
-      const inline = /^\(\?([ims]+)\)/.exec(source)
-      re = inline ? new RegExp(source.slice(inline[0].length), [...new Set(inline[1])].join("")) : new RegExp(source)
+      re = new RegExp(pattern, [...flags].join(""))
     } catch (err) {
-      throw new Error(`bad regular expression: ${(err as Error).message}`)
+      // Usually a parenthesis whose backslash a string literal swallowed, or a glob: search for
+      // the text itself and say so, rather than spend a turn on the error.
+      re = new RegExp(pattern.split("|").filter(Boolean).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") || "(?!)", [...flags].join(""))
+      note = `\n[the pattern is not a valid regular expression (${(err as Error).message}), so ${pattern.includes("|") ? "each |-separated part" : "it"} was searched for as plain text]`
     }
     const path = await resolve(dir, str(args, "path"))
     const root = await realpath(dir)
@@ -298,7 +310,7 @@ const grep: Tool = {
     const text = matches.length
       ? matches.map(({ path, line, text }) => `${path}:${line}:${text}`).join("\n") + (truncated ? "\n[more matches not shown; narrow the pattern or path]" : "")
       : "(no matches; try a shorter pattern, another spelling, or a wider path)"
-    return result(args, text, { matches, truncated })
+    return result(args, text + note, { matches, truncated })
   },
 }
 

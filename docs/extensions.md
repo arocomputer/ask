@@ -156,7 +156,8 @@ Callers can also narrow access for one task with the [request's `tools` list](re
 Tool authors can put fields on a tool's result: name them in `structured`, as a type like
 `"{ rows: object[], total: number }"`, and when `run` receives `format: "json"` return JSON
 `{ text, data }` with the text the result prints as and an object holding those fields. Code Mode
-decodes it inside the sandbox. Keep the default text response for ordinary calls.
+decodes it inside the sandbox. A `paths` field makes the result the array of those paths in a
+script. Keep the default text response for ordinary calls.
 
 ## Installing an extension
 

@@ -29,11 +29,41 @@ const bootstrap = String.raw`(bridge, names, source) => {
   for (const name of ["toString", "valueOf", "toJSON", Symbol.toPrimitive])
     Object.defineProperty(proto, name, hidden(function () { return this.text }))
   Object.defineProperty(proto, Symbol.iterator, hidden(function () { return this.text[Symbol.iterator]() }))
-  const isResult = (value) => value !== null && typeof value === "object" && Object.getPrototypeOf(value) === proto
+  // A result with paths, as list gives, is the array of them, so loops, map and length mean the
+  // files rather than the characters of the listing. It prints and splits as its text all the same.
+  const listed = Object.create(Array.prototype)
+  for (const key of Reflect.ownKeys(proto))
+    if (key !== "length" && key !== Symbol.iterator && (key === "toString" || !Object.prototype.hasOwnProperty.call(Array.prototype, key)))
+      Object.defineProperty(listed, key, Object.getOwnPropertyDescriptor(proto, key))
+  const results = new WeakSet()
+  const isResult = (value) => value !== null && typeof value === "object" && results.has(value)
+  // A field returned whole, as in "return r.content" or "return rs.map((r) => r.matches)", was
+  // written to look at the result, so it shows the result's text, which has the line numbers
+  // the field lacks. That holds only while an array is as the tool returned it, and only if the
+  // text says everything the field does: a line clipped in the text stays whole in the field.
+  const whole = new Map()
+  const strings = (value) => typeof value === "string" ? value.split("\n") : value.flatMap((item) =>
+    typeof item === "string" ? [item] : item !== null && typeof item === "object" ? Object.values(item).filter((v) => typeof v === "string") : [])
+  const seen = (value) => {
+    const from = whole.get(value)
+    if (!from || (from.items && (from.items.length !== value.length || from.items.some((item, i) => item !== value[i])))) return value
+    if (from.kept === undefined) {
+      let at = 0
+      from.kept = strings(value).every((s) => (at = from.result.text.indexOf(s, at)) >= 0 && ((at += s.length), true))
+    }
+    return from.kept ? from.result : value
+  }
   const result = (text, data) => {
-    const r = Object.create(proto)
-    for (const key of data ? Object.keys(data) : [])
-      if (key !== "text") Object.defineProperty(r, key, { value: data[key], enumerable: true, writable: true, configurable: true })
+    const array = data && Array.isArray(data.paths)
+    const r = array ? Object.setPrototypeOf(data.paths.slice(), listed) : Object.create(proto)
+    results.add(r)
+    for (const key of data ? Object.keys(data) : []) {
+      if (key === "text") continue
+      const value = data[key]
+      Object.defineProperty(r, key, { value, enumerable: !array, writable: true, configurable: true })
+      if (Array.isArray(value)) whole.set(value, { result: r, items: value.slice() })
+      else if (typeof value === "string" && value.includes("\n")) whole.set(value, { result: r })
+    }
     return Object.defineProperty(r, "text", { value: text })
   }
 
@@ -76,6 +106,7 @@ const bootstrap = String.raw`(bridge, names, source) => {
   Object.defineProperty(globalThis, "discover", { value: async (args = {}) => parse(await bridge(null, stringify(args))).v })
 
   const show = (value) => {
+    value = seen(value)
     if (typeof value === "string") return value
     if (isResult(value)) return value.text
     if (value instanceof Error) return String(value)
@@ -85,8 +116,10 @@ const bootstrap = String.raw`(bridge, names, source) => {
   // Text inside JSON is escaped and hard to read or copy exactly, so results and multi-line
   // strings held in an object or array come out as labeled blocks instead.
   const render = (value) => {
+    value = seen(value)
     if (value !== null && typeof value === "object" && !isResult(value)) {
       const entries = (Array.isArray(value) ? value.map((v, i) => ["[" + i + "]", v]) : Object.entries(value)).map(([key, v]) => {
+        v = seen(v)
         const text = show(v)
         return [key, text, (typeof v === "string" || isResult(v)) && text.trim().includes("\n")]
       })
@@ -119,6 +152,8 @@ const bootstrap = String.raw`(bridge, names, source) => {
     if (line >= 1 && line <= lines.length) message += " (line " + line + ": " + lines[line - 1].trim().slice(0, 120) + ")"
     if (/^ReferenceError: '?(require|process|fetch|fs|setTimeout|setInterval|Bun|Deno|window|document)\b/.test(message) || (/^SyntaxError/.test(message) && /^\s*(import|export)\b/m.test(source)))
       message += "\nScripts have no modules, timers or direct file or network access; use tools.* for those."
+    else if (/^ReferenceError/.test(message))
+      message += "\nEach script starts fresh: nothing defined in an earlier script is still there."
     const done = calls.filter((c) => c.text !== undefined).map((c) => c.label)
     if (done.length) message += "\nCalls that completed before the error: " + done.slice(0, 12).join("; ") + (done.length > 12 ? "; …" : "")
     if (logs.length) message += "\nOutput before the error:\n" + clip(logs.join("\n"), 6000)
