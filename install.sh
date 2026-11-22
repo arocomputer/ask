@@ -114,7 +114,9 @@ if [ "$os" = linux ] && [ "$got" != "$version" ] && [ "$members" = ask ]; then
 fi
 if grep -qx 'LICENSE' "$work/members"; then
   tar -xzf "$work/$archive" -C "$work" LICENSE
-  [ -f "$work/LICENSE" ] && [ ! -L "$work/LICENSE" ] || fail "$archive has an invalid license file"
+  if [ ! -f "$work/LICENSE" ] || [ -L "$work/LICENSE" ]; then
+    fail "$archive has an invalid license file"
+  fi
   mv "$work/LICENSE" "$work/ask.LICENSE"
   members="$members ask.LICENSE"
 fi

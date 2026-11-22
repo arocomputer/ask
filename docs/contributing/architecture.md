@@ -57,6 +57,7 @@ uses that set too; it never exposes a capability unavailable to the current turn
 results cross the bridge as bounded JSON and become JavaScript values inside the evaluator,
 not an additional model-facing exchange.
 Inline entries use compact argument signatures; discovery returns the full JSON Schema.
+For a likely diff review, the catalog adds a short recipe only if Git is permitted.
 This follows the catalog-and-permission split in
 [OpenCode Code Mode](https://opencode.ai/docs/tools/#execute), without a direct-tool fallback or
 an ambient HTTP client in the evaluator.

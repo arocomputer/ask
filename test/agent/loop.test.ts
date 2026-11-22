@@ -80,6 +80,13 @@ describe("loop", () => {
     assert.doesNotMatch(prompt, /extension-49/)
   })
 
+  test("the review recipe is only shown when the task calls for a diff and git is available", () => {
+    const prompt = "Review the uncommitted changes for bugs"
+    assert.match(catalog(toolset({}), prompt), /For a simple diff review/)
+    assert.doesNotMatch(catalog(toolset({}), "Total the daily data"), /For a simple diff review/)
+    assert.doesNotMatch(catalog(toolset({ off: ["git"] }), prompt), /For a simple diff review/)
+  })
+
   test("an added tool replaces the built-in of its name, a read-only task only takes read-only ones, and off leaves tools out", () => {
     const tool = (name: string, readonly: boolean) => ({ name, description: "mine", parameters: {}, readonly, run: async () => "mine" })
     const write = toolset({ write: true, search: async () => [], extra: [tool("search", true), tool("shell", false)], off: ["edit"] })

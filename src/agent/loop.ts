@@ -91,7 +91,8 @@ export async function run(o: RunOptions): Promise<RunResult> {
   const usage: Usage = { input: 0, output: 0, cached: 0, ...o.initialUsage }
   const tools = toolset(o)
   const briefing = o.instructions ?? await instructions(o.dir, o.write ?? false, !!o.schema, o.sandbox?.limits, tools.some((t) => t.name === "shell"), o.sandbox)
-  const system = `${briefing}\n\n${catalog(tools)}`
+  const task = messages.findLast((m) => m.role === "user")?.text
+  const system = `${briefing}\n\n${catalog(tools, task)}`
   // The turn's models answer inside the turn, and their tokens belong to it.
   const models = o.models
     ? {

@@ -6,6 +6,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test, type TestContext } from "node:test"
+import { trace } from "../bench/suites/subagents.ts"
 
 /** Copy the runner so the test can verify what it writes next to itself. */
 function setup(t: TestContext) {
@@ -36,6 +37,17 @@ test("a subagent run pins the same per-task deadline in both arms", (t) => {
   assert.equal(JSON.parse(plan.stdout).inputs.timeout, 90)
   assert.match(run("plan", "subagents", "--timeout", "0").stderr, /seconds in 1\.\.900/)
   assert.ok(!existsSync(runs))
+})
+
+test("subagent traces show nested actions without capturing scripts or raw results", () => {
+  const result = trace([
+    { role: "assistant", text: "", calls: [{ id: "one", name: "execute", arguments: '{"code":"not-saved"}' }] },
+    { role: "tool", id: "one", name: "execute", output: "error: not-saved" },
+  ], [{ at: 0, script: 0, id: 1, label: "git diff", state: "finished" }])
+  assert.deepEqual(result, [
+    { call: "execute", target: undefined, chars: '{"code":"not-saved"}'.length, actions: [{ label: "git diff", state: "finished" }] },
+    { result: "execute", chars: "error: not-saved".length, error: true },
+  ])
 })
 
 test("comparison preserves saved grades and warns about mismatched workloads", (t) => {

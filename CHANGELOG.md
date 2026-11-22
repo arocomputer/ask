@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Give likely diff reviews a short Code Mode recipe for inspecting the requested change without
+  gathering unrelated evidence. Benchmark traces now record action summaries and payload sizes.
+
 - Add per-task capability allowlists for the built-in loop, paged discovery for large tool
   catalogs, and structured Code Mode results for file reads, `grep`, `git`, and web search.
 

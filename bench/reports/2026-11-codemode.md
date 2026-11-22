@@ -41,6 +41,39 @@ bun bench/run.ts run subagents --label NAME --ask CHECKOUT \
 bun bench/run.ts compare subagents BASELINE CANDIDATE
 ```
 
+## Traced review rerun
+
+Two review repetitions per model using the same fixture (four reviews per arm). Both arms
+passed all four. The earlier large review slowdown did not reproduce:
+
+| Mean per review | Direct tools | Tuned Code Mode | With review recipe |
+| --- | ---: | ---: | ---: |
+| Model turns | 5.50 | 5.75 | 4.75 |
+| Input tokens | 10,561 | 11,182 | 9,599 |
+| Cached input tokens | 7,856 | 8,410 | 6,144 |
+| Output tokens | 1,449 | 1,160 | 1,010 |
+| Elapsed seconds | 16.84 | 14.24 | 13.75 |
+
+The local action traces showed repeat `git status`, overlapping diffs, and history lookups
+after the changed code was visible. Some direct-tool runs did similar work. In a local
+probe, 14 warm confined evaluator launches with a single mock tool took 66 ms median on
+this host. The probe does not include real file tools, but points at choosing fewer model
+turns before optimizing the evaluator.
+
+The review recipe tells the model to start with the requested diff and inspect only what a
+finding still needs. It also passed all four reviews. Nested `git status` calls dropped from
+seven to four. Mean input fell 14% versus tuned Code Mode, but the improvement came from
+GLM; DeepSeek used more input in this sample. Cached token counts differed across runs, so
+lower total input here does not establish lower billed cost. This is still one review fixture,
+not a comparison with OpenCode or proof of a general improvement.
+
+As a check on showing the recipe everywhere, a separate two-model run on the JSON join and
+date fix passed 3/4 with the global recipe versus 4/4 without it. The miss was an uppercase
+service ID in the join answer, not a wrong tally, and one repetition cannot attribute it to
+the recipe. The candidate therefore includes the recipe only for likely diff reviews
+with Git enabled. This keeps the exact evaluated recipe for reviews and the original prompt
+for those two other tasks.
+
 ## Earlier pilot
 
 One `subagents` run per arm on Linux x64 with Bun 1.4.5 and
