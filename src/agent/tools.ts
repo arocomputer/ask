@@ -291,6 +291,7 @@ const grep: Tool = {
     const matches: { path: string; line: number; text: string }[] = []
     const limit = Math.min(matchLimit, Math.max(1, Math.floor(num(args, "limit") ?? matchLimit)))
     let truncated = false
+    let searched = 0
     scan: for (const rel of list) {
       signal?.throwIfAborted()
       if (secret(rel)) continue
@@ -299,6 +300,7 @@ const grep: Tool = {
       const b = await contents(full).catch(() => undefined)
       if (!b || b.length > 2 * 1024 * 1024 || b.subarray(0, 8192).includes(0)) continue
       const shown = relative(root, join(base, rel))
+      searched++
       const lines = b.toString("utf8").split("\n")
       for (let i = 0; i < lines.length; i++) {
         if (!re.test(lines[i])) continue
@@ -309,9 +311,19 @@ const grep: Tool = {
     }
     const text = matches.length
       ? matches.map(({ path, line, text }) => `${path}:${line}:${text}`).join("\n") + (truncated ? "\n[more matches not shown; narrow the pattern or path]" : "")
-      : "(no matches; try a shorter pattern, another spelling, or a wider path)"
+      : isFile ? `(no matches in ${relative(root, path)})` : nothing(searched, relative(root, path), str(args, "glob"))
     return result(args, text + note, { matches, truncated })
   },
+}
+
+/**
+ * What an empty search says: how much was searched, so that nothing found in the whole working
+ * directory can be taken as an answer, and what a narrower search left out.
+ */
+function nothing(files: number, path: string, glob: string): string {
+  const count = `${files} file${files === 1 ? "" : "s"}`
+  if (!path && !glob) return `(no matches in the ${count} of the working directory)`
+  return `(no matches in ${count}${path ? ` under ${path}` : ""}${glob ? ` matching ${glob}` : ""}; the rest of the working directory was not searched)`
 }
 
 const writeTool: Tool = {

@@ -14,6 +14,10 @@
   `grep` takes `(?i)` and searches for the text of a pattern that is not a regular expression.
   Scripts sent together in a read-only task run together.
 
+- An empty `grep` now says how many files it searched and what a narrower search left out,
+  and the subagent briefing says a whole-directory search that finds nothing is the answer.
+  Subagents asked about something that isn't there stop looking sooner.
+
 - Give likely diff reviews a short Code Mode recipe for inspecting the requested change without
   gathering unrelated evidence. Benchmark traces now record each script, its nested actions and
   the start of what it returned.

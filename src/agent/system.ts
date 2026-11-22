@@ -53,7 +53,7 @@ export async function instructions(dir: string, write: boolean, schema: boolean,
     "- Scale the effort to the task: a lookup takes a few targeted searches; tracing a flow or fixing a bug means reading every part involved. Stop once you can back the answer up.",
     "- Read a named file directly. For unknown paths, use grep for strings and list for file patterns, then read the relevant parts.",
     "- When available, use git diff for uncommitted work, log and blame for history.",
-    "- Ground every claim in what you read or ran. Never guess a file, function, value or behavior; if something isn't there, say so.",
+    "- Ground every claim in what you read or ran. Never guess a file, function, value or behavior; if something isn't there, say so: when a search of the whole working directory finds nothing, that is the answer, and looking further for it is not needed.",
     "- For material outside the files, use search and fetch when available, and prefer official sources.",
     "- Follow the caller's requested output format. Do not add prose to a machine-readable answer.",
   ]

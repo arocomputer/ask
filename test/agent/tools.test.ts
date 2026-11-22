@@ -142,6 +142,13 @@ describe("tools", () => {
     assert.deepEqual(JSON.parse(await all.list.run({ path: "src", pattern: "*.ts", format: "json" }, { dir: d })).data, { paths: ["src/a.ts", "src/deep/b.ts"], truncated: false })
   })
 
+  test("an empty grep says how much it searched and what it left out", async () => {
+    const d = dir()
+    assert.match(await all.grep.run({ pattern: "nowhere-at-all" }, { dir: d }), /^\(no matches in the \d+ files of the working directory\)$/)
+    assert.equal(await all.grep.run({ pattern: "nowhere-at-all", path: "src/deep" }, { dir: d }), "(no matches in 1 file under src/deep; the rest of the working directory was not searched)")
+    assert.equal(await all.grep.run({ pattern: "nowhere-at-all", path: "src/a.ts" }, { dir: d }), "(no matches in src/a.ts)")
+  })
+
   test("grep searches for the text of a pattern that is not a regular expression, and says so", async () => {
     const d = dir()
     writeFileSync(join(d, "calls.ts"), "start(\nstop[\n")

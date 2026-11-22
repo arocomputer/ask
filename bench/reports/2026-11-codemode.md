@@ -87,6 +87,78 @@ version passed 4 of 6 at 13.7 turns, the forgiving runtime 6 of 6 at 9.3. The tw
 noise, which is also the caution for everything else in this section: 28 runs an arm on models
 this slow against a 150-second limit can't separate a small effect from none.
 
+### A real repository, four models
+
+The tasks above are small fixtures. These six run on a private Go project (258 files, pinned
+with `git archive`): two lookups that need several files, a symbol that doesn't exist, a
+count over 33 JSON files, a review of a diff with three planted bugs, and a failing
+`go test` to fix. Each ran three times on Claude Haiku 5.5, GPT-6 Luna, DeepSeek V4.1 Flash
+and GLM-5.3-Flash through OpenCode Go, 72 runs an arm, 240 seconds a task. The tasks and
+transcripts stay outside this repository because the source is private.
+
+| Arm | Passed | Turns, mean · median | Input tokens, mean · median | Scripts spent on runtime mistakes |
+| --- | ---: | ---: | ---: | ---: |
+| Direct tools (`45eeae9`) | 66 | 7.4 · 5.5 | 81,158 · 33,493 | |
+| Code Mode (`f457e5f`) | 66 | 6.1 · 6.0 | 40,644 · 32,132 | 34 of 365 (9.3%) |
+| Code Mode (`6dd9abd`) | 68 | 5.9 · 5.0 | 42,944 · 29,017 | 10 of 356 (2.8%) |
+
+| Model, mean turns · input tokens | Direct tools | `f457e5f` | `6dd9abd` |
+| --- | ---: | ---: | ---: |
+| Claude Haiku 5.5 | 5.1 · 48k | 4.0 · 28k | 3.9 · 29k |
+| GPT-6 Luna | 4.3 · 28k | 5.5 · 40k | 4.7 · 30k |
+| DeepSeek V4.1 Flash | 14.4 · 216k | 8.7 · 67k | 8.8 · 79k |
+| GLM-5.3-Flash | 5.8 · 33k | 6.1 · 28k | 6.1 · 34k |
+
+Code Mode halves the mean input and passes as often or more. The gain is DeepSeek's and
+Claude's; GLM is level, and GPT-6 Luna, which already batches its direct calls in one turn,
+is slightly behind direct tools. The medians of the two interfaces are close: most of the
+difference in means is DeepSeek's long direct-tool runs.
+
+The first Code Mode run is what the second was built from. Its transcripts showed four more
+things the runtime was costing:
+
+- A `list` result was text, so `for (const f of files)` walked its characters and
+  `files.length` counted them, and its paths were relative to the directory listed, not to
+  where `read` resolves them. It is now the array of its paths, from the working directory.
+- `return r.content` and `return r.matches` dropped the line numbers the answer needs. GPT-6
+  Luna read six files that way and spent two more turns finding the lines again. A field
+  returned whole now shows the result itself.
+- `"confirmations\("` in a JavaScript string is `confirmations(`, an invalid pattern, and a
+  `(?i)` anywhere but the start was one too. `grep` now takes the flag anywhere and searches
+  for the text of a pattern it cannot compile, saying so.
+- A script used a variable from an earlier script. The error now says scripts start fresh.
+
+The count over 33 files is where a script should win, and it does: all five values were right
+in 12 of 12 runs at 3.6 turns, against 9 of 12 at 4.3 with direct tools, where the model adds
+by hand. Four of those twelve answers still failed the grader for adding prose to a
+JSON-only answer, three of them DeepSeek's, which did the same with direct tools.
+
+**The review is where Code Mode may be behind.** GPT-6 Luna found all three planted bugs in 8
+of 11 direct-tool reviews and 8 of 20 Code Mode reviews, missing the same one each time after
+reading the same files. That is not a settled difference at these counts (p ≈ 0.13), and the
+other three models found all three bugs in every review either way. Dropping the catalog's
+review recipe did not explain it: over 24 reviews an arm, Luna passed 4 of 6 with the recipe
+and 5 of 6 without, and the recipe saved the four models 0.8 turns and 13k tokens a review.
+
+### Something that isn't there
+
+Asked where a function that doesn't exist is defined, every model kept going for five to
+eight turns after two searches had found nothing: other spellings, the file tree, git
+history. The empty `grep` said "try a shorter pattern, another spelling, or a wider path",
+which is advice to keep looking. Two changes were tried on that task, on the real repository
+(24 runs an arm, with an ordinary lookup beside it as a check, another 24) and on this
+suite's own version of it (16 runs an arm), on the four models above:
+
+| Arm | Missing symbol, real repository | Missing symbol, this suite | Ordinary lookup |
+| --- | ---: | ---: | ---: |
+| `6dd9abd` | 7.9 turns · 41k tokens | 8.0 · 44k | 5.0 · 49k |
+| An empty `grep` says how many files it searched | 6.1 · 27k | 8.1 · 38k | 4.9 · 48k |
+| And the briefing says an empty whole-directory search is the answer | 5.1 · 21k | 4.7 · 20k | 4.6 · 46k |
+
+Every run in every arm passed. The `grep` message alone helped where the name appears nowhere;
+in this suite the name survives in git history, which the models went on to read, and only
+the briefing line stopped that. Both shipped. CONFIRM
+
 ### How to read this
 
 - The runs came from a copy of the `subagents` runner that keeps whole transcripts. The suite's
