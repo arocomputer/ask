@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdtempSync, readdirSync, readFileSync, readlink
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, test } from "node:test"
-import { open, support } from "../../src/sandbox/confine.ts"
+import { evaluator, open, support } from "../../src/sandbox/confine.ts"
 import { blocked } from "../../src/sandbox/address.ts"
 
 const can = support()
@@ -45,6 +45,24 @@ function repo(): string {
 }
 
 describe("sandbox", { skip: !can.ok && `this machine can't sandbox: ${!can.ok && can.detail}` }, () => {
+  test("the evaluator's OS policy has no workspace read or scratch write access", () => {
+    const dir = repo()
+    const workspace = join(dir, "private.txt")
+    writeFileSync(workspace, "workspace data")
+    const probe = `
+      const fs = require("node:fs");
+      const fsAllows = (op) => { try { op(); return true } catch { return false } };
+      console.log(JSON.stringify([fsAllows(() => fs.readFileSync(${JSON.stringify(workspace)})),
+        fsAllows(() => fs.writeFileSync("scratch.txt", "x")), typeof process.env.ASK_HOME]));
+    `
+    const child = evaluator([process.execPath, "-e", probe])
+    try {
+      const result = spawnSync(child.file, child.args, { cwd: child.cwd, env: child.env, encoding: "utf8", timeout: 5000 })
+      assert.equal(result.status, 0, result.stderr)
+      assert.deepEqual(JSON.parse(result.stdout), [false, false, "undefined"])
+    } finally { child.close() }
+  })
+
   test("a hard-link alias created during execution cannot make existing Git metadata writable", async () => {
     const dir = repo()
     const original = readFileSync(join(dir, ".git/config"), "utf8")

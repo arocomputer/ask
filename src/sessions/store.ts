@@ -1,5 +1,5 @@
 // Sessions on disk: one folder per conversation under ~/.ask/sessions/ID, holding session.json
-// (the record and its turns), transcript.json (every message so far, saved after each step) and
+// (the record, turns and local actions), transcript.json (model messages saved after each step) and
 // lock (the pid of the worker running the latest turn). A turn marked running whose worker is
 // gone has failed; readers work that out without writing.
 
@@ -9,6 +9,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { readJSON, writeJSON, type Home } from "../base/home.ts"
 import type { Failure } from "../agent/loop.ts"
+import type { Action } from "../agent/steps.ts"
 import type { Message, Usage } from "../providers/stream.ts"
 
 export type State = "running" | "retrying" | "succeeded" | "failed" | "stopped"
@@ -21,6 +22,8 @@ export type Turn = {
   prompt: string
   model: string
   write: boolean
+  /** Caller-supplied allowlist, preserved when this turn restarts. */
+  tools?: string[]
   /** OS confinement selected when the turn starts. Missing on older turns means enabled. */
   sandbox?: boolean
   /** Serializes stop/restart transitions independently of the reported restart count. */
@@ -38,6 +41,8 @@ export type Turn = {
   error?: Failure
   usage?: Usage
   steps?: number
+  /** Code Mode action summaries, separate from provider messages. */
+  actions?: Action[]
   /** Why the provider is being retried, while it is. */
   retry?: string
   /** How many times the turn was restarted after its worker was stopped. */

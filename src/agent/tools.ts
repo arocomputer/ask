@@ -10,7 +10,7 @@ import { dirname, isAbsolute, join, normalize, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { open as confine } from "../sandbox/confine.ts"
 import type { ToolSpec } from "../providers/stream.ts"
-import type { Context } from "./context.ts"
+import { result, type Context } from "./context.ts"
 import { fetch } from "./fetch.ts"
 import { git } from "./git.ts"
 
@@ -20,9 +20,17 @@ export type ToolSource = { extension?: string; builtin?: boolean }
 /** What a tool needs to run: set by the loop, not by whoever registered it. */
 export type ToolSpace = { source?: ToolSource }
 
-/** A tool the model may call. `readonly` tools may run in parallel. Errors become "error: ..." for the model. */
+/** A capability Code Mode may call. `readonly` tools may run in parallel. Throws reject in the script. */
 export type Tool = ToolSpec & {
   readonly: boolean
+  /**
+   * The fields a script finds on this tool's result besides its text, written as a type like
+   * "{ stdout: string, exitCode: number }". When set, Code Mode calls `run` with
+   * `format: "json"` added to the arguments and expects JSON `{ text, data }` back; see
+   * `result` in context.ts. Other callers get the text. A `paths` field makes the result the
+   * array of those paths in a script.
+   */
+  structured?: string
   run(args: Args, ctx: Context): Promise<string>
 }
 
@@ -150,45 +158,79 @@ const patternNote = "A pattern without a slash matches file names anywhere, like
 
 const read: Tool = {
   name: "read",
-  description: `Read a text file. Each line comes numbered as N<tab>text. Returns up to ${lineLimit} lines or 64 KiB from the optional 1-based start line; call again with a later line for more.`,
+  description: `Read a text file, up to ${lineLimit} lines or 64 KiB from an optional 1-based line. It prints with line numbers, as N<tab>text, for citing lines; content is the same text without them, for parsing; nextLine is where to continue, or null at the end.`,
   parameters: schema(
-    { path: { type: "string", description: "File path, relative to the working directory" }, line: { type: "integer", description: "1-based line to start from" } },
+    {
+      path: { type: "string", description: "File path, relative to the working directory" },
+      line: { type: "integer", description: "1-based line to start from" },
+      limit: { type: "integer", description: `Maximum lines to read (1–${lineLimit})` },
+    },
     ["path"],
   ),
   readonly: true,
+  structured: "{ content: string, startLine: number, nextLine: number | null, clipped: boolean, binary: boolean }",
   async run(args, { dir }) {
     const path = await resolve(dir, str(args, "path"))
     if (secret(path)) throw new Error(`${str(args, "path")} is an environment file, which holds secrets, so read doesn't open it; its example, like .env.example, is fine`)
     const b = await contents(path)
-    if (b.subarray(0, 8192).includes(0)) return `${str(args, "path")} is a binary file of ${b.length} bytes`
-    const lines = b.toString("utf8").split("\n")
-    if (lines.at(-1) === "") lines.pop()
     const start = Math.max(1, Math.floor(num(args, "line") ?? 1))
+    const limit = Math.min(lineLimit, Math.max(1, Math.floor(num(args, "limit") ?? lineLimit)))
+    if (b.subarray(0, 8192).includes(0))
+      return result(args, `${str(args, "path")} is a binary file of ${b.length} bytes`, { content: "", startLine: start, nextLine: null, clipped: false, binary: true })
+    const lines = b.toString("utf8").split("\n")
+    const newline = lines.at(-1) === "" && b.length > 0
+    if (lines.at(-1) === "") lines.pop()
     if (start > Math.max(lines.length, 1)) throw new Error(`${str(args, "path")} has only ${lines.length} lines`)
-    let out = ""
+    // One page serves both views: whole lines within a budget that counts their JSON-escaped
+    // size and line number, so neither the numbered text nor the content outgrows the bridge.
+    const budget = readLimit - 256
+    const page: string[] = []
+    let bytes = 0
+    let clipped = false
     let n = start
-    for (; n <= lines.length && n < start + lineLimit; n++) {
-      let line = lines[n - 1]
-      if (line.length > 2000) line = line.slice(0, 2000) + "…"
-      const next = `${n}\t${line}\n`
-      if (out.length + next.length > readLimit) break
-      out += next
+    for (; n <= lines.length && n < start + limit; n++) {
+      const line = lines[n - 1] + (newline || n < lines.length ? "\n" : "")
+      const size = Buffer.byteLength(JSON.stringify(line)) + 8
+      if (bytes + size > budget) {
+        if (page.length) break
+        let lo = 0
+        let hi = Math.min(line.length, readLimit)
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi) / 2)
+          if (Buffer.byteLength(JSON.stringify(line.slice(0, mid))) + 8 <= budget) lo = mid
+          else hi = mid - 1
+        }
+        if (/[\uD800-\uDBFF]/.test(line[lo - 1] ?? "")) lo--
+        page.push(line.slice(0, lo))
+        clipped = true
+        n++
+        break
+      }
+      page.push(line)
+      bytes += size
     }
-    if (n <= lines.length) out += `[${lines.length - n + 1} more lines; continue from line ${n}]`
-    return out || "(empty file)"
+    let text = ""
+    for (const [i, raw] of page.entries()) {
+      const line = raw.endsWith("\n") ? raw.slice(0, -1) : raw
+      text += `${start + i}\t${line.length > 2000 ? line.slice(0, 2000) + "…" : line}\n`
+    }
+    if (n <= lines.length) text += `[${lines.length - n + 1} more lines; continue from line ${n}]`
+    return result(args, text || "(empty file)", { content: page.join(""), startLine: start, nextLine: n <= lines.length ? n : null, clipped, binary: false })
   },
 }
 
 const list: Tool = {
   name: "list",
-  description: `List a directory's entries, directories with a trailing slash; or with pattern, every file below it that matches. ${patternNote} Omit path for the working directory.`,
+  description: `List a directory's entries, directories with a trailing slash; or with pattern, every file below it that matches. ${patternNote} Omit path for the working directory. Paths are relative to the working directory, as read takes them, and the result is also their array: for (const path of await tools.list({ pattern: "*.json" })).`,
   parameters: schema({
     path: { type: "string", description: "Directory path, relative to the working directory" },
     pattern: { type: "string", description: "Glob of files to find recursively" },
   }),
   readonly: true,
+  structured: "{ paths: string[], truncated: boolean }",
   async run(args, { dir }) {
     const path = await resolve(dir, str(args, "path"))
+    const root = await realpath(dir)
     const pattern = str(args, "pattern")
     let names: string[]
     if (pattern) {
@@ -198,33 +240,46 @@ const list: Tool = {
       const entries = await readdir(path, { withFileTypes: true })
       names = entries.filter((e) => e.name !== ".git").map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
     }
-    names.sort()
-    if (!names.length) return pattern ? "(no matches)" : "(empty)"
-    if (names.length > listLimit) return [...names.slice(0, listLimit), `[${names.length - listLimit} more; narrow the path or pattern]`].join("\n")
-    return names.join("\n")
+    // Shown from the working directory, like grep's paths, so each can go straight to read.
+    const paths = names.map((name) => relative(root, join(path, name)) + (name.endsWith("/") ? "/" : "")).sort()
+    const truncated = paths.length > listLimit
+    const shown = paths.slice(0, listLimit)
+    const text = !paths.length ? (pattern ? "(no matches)" : "(empty)")
+      : truncated ? [...shown, `[${paths.length - listLimit} more; narrow the path or pattern]`].join("\n") : shown.join("\n")
+    return result(args, text, { paths: shown, truncated })
   },
 }
 
 const grep: Tool = {
   name: "grep",
-  description: `Search file contents with a JavaScript regular expression, recursively from path (default: the working directory): the quickest way to find where something is defined or used. Returns matching lines as path:line:text, at most ${matchLimit}; several narrow searches beat one broad one. ${patternNote}`,
+  description: `Search file contents with a JavaScript regular expression, recursively from path (default: the working directory): the quickest way to find where something is defined or used. (?i) ignores case. It prints matching lines as path:line:text, at most ${matchLimit}; several narrow searches beat one broad one. ${patternNote}`,
   parameters: schema(
     {
       pattern: { type: "string", description: "Regular expression" },
       path: { type: "string", description: "File or directory to search" },
       glob: { type: "string", description: "Only files matching this pattern" },
+      limit: { type: "integer", description: `Maximum matches to return (1–${matchLimit})` },
     },
     ["pattern"],
   ),
   readonly: true,
+  structured: "{ matches: { path: string, line: number, text: string }[], truncated: boolean }",
   async run(args, { dir, signal }) {
     const source = str(args, "pattern")
     if (!source) throw new Error("pattern is required")
+    // Flags written the way other dialects write them, as (?i), which JavaScript rejects.
+    // Wherever one sits, it applies to the whole pattern.
+    const flags = new Set<string>()
+    const pattern = source.replace(/(?<!\\)\(\?([ims]+)\)/g, (_, set: string) => { for (const flag of set) flags.add(flag); return "" })
     let re: RegExp
+    let note = ""
     try {
-      re = new RegExp(source)
+      re = new RegExp(pattern, [...flags].join(""))
     } catch (err) {
-      throw new Error(`bad regular expression: ${(err as Error).message}`)
+      // Usually a parenthesis whose backslash a string literal swallowed, or a glob: search for
+      // the text itself and say so, rather than spend a turn on the error.
+      re = new RegExp(pattern.split("|").filter(Boolean).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") || "(?!)", [...flags].join(""))
+      note = `\n[the pattern is not a valid regular expression (${(err as Error).message}), so ${pattern.includes("|") ? "each |-separated part" : "it"} was searched for as plain text]`
     }
     const path = await resolve(dir, str(args, "path"))
     const root = await realpath(dir)
@@ -233,8 +288,11 @@ const grep: Tool = {
     let list = isFile ? [relative(base, path)] : await files(path)
     list.sort()
     if (str(args, "glob")) list = list.filter(matcher(str(args, "glob")))
-    const out: string[] = []
-    for (const rel of list) {
+    const matches: { path: string; line: number; text: string }[] = []
+    const limit = Math.min(matchLimit, Math.max(1, Math.floor(num(args, "limit") ?? matchLimit)))
+    let truncated = false
+    let searched = 0
+    scan: for (const rel of list) {
       signal?.throwIfAborted()
       if (secret(rel)) continue
       const full = await resolve(dir, join(base, rel)).catch(() => undefined)
@@ -242,16 +300,30 @@ const grep: Tool = {
       const b = await contents(full).catch(() => undefined)
       if (!b || b.length > 2 * 1024 * 1024 || b.subarray(0, 8192).includes(0)) continue
       const shown = relative(root, join(base, rel))
+      searched++
       const lines = b.toString("utf8").split("\n")
       for (let i = 0; i < lines.length; i++) {
         if (!re.test(lines[i])) continue
-        if (out.length === matchLimit) return out.join("\n") + "\n[more matches not shown; narrow the pattern or path]"
+        if (matches.length === limit) { truncated = true; break scan }
         const line = lines[i].length > 300 ? lines[i].slice(0, 300) + "…" : lines[i]
-        out.push(`${shown}:${i + 1}:${line}`)
+        matches.push({ path: shown, line: i + 1, text: line })
       }
     }
-    return out.length ? out.join("\n") : "(no matches; try a shorter pattern, another spelling, or a wider path)"
+    const text = matches.length
+      ? matches.map(({ path, line, text }) => `${path}:${line}:${text}`).join("\n") + (truncated ? "\n[more matches not shown; narrow the pattern or path]" : "")
+      : isFile ? `(no matches in ${relative(root, path)})` : nothing(searched, relative(root, path), str(args, "glob"))
+    return result(args, text + note, { matches, truncated })
   },
+}
+
+/**
+ * What an empty search says: how much was searched, so that nothing found in the whole working
+ * directory can be taken as an answer, and what a narrower search left out.
+ */
+function nothing(files: number, path: string, glob: string): string {
+  const count = `${files} file${files === 1 ? "" : "s"}`
+  if (!path && !glob) return `(no matches in the ${count} of the working directory)`
+  return `(no matches in ${count}${path ? ` under ${path}` : ""}${glob ? ` matching ${glob}` : ""}; the rest of the working directory was not searched)`
 }
 
 const writeTool: Tool = {
@@ -289,12 +361,13 @@ const edit: Tool = {
 
 const shell: Tool = {
   name: "shell",
-  description: "Run a shell command in the working directory, with no input, and return its exit status and output: for building, testing and running things. To look at files, read, list and grep are faster. Long output keeps its start and end. Default timeout 120 seconds, at most 600.",
+  description: "Run a shell command in the working directory, with no input: for building, testing and running things. It prints the exit status, then the output. To look at files, read, list and grep are faster. Long output keeps its start and end. Default timeout 120 seconds, at most 600.",
   parameters: schema(
     { command: { type: "string" }, timeout: { type: "integer", description: "Seconds before the command is stopped" } },
     ["command"],
   ),
   readonly: false,
+  structured: "{ exitCode: number | null, stdout: string, stderr: string }",
   run(args, { dir, signal, sandbox }) {
     const command = str(args, "command")
     if (!command.trim()) return Promise.reject(new Error("command is required"))
@@ -317,6 +390,7 @@ const shell: Tool = {
       const timer = setTimeout(() => kill(`timed out after ${seconds} seconds`), seconds * 1000)
       const abort = () => kill("stopped")
       signal?.addEventListener("abort", abort, { once: true })
+      if (signal?.aborted) abort()
       child.on("error", (err) => {
         ended ||= `cannot run sh: ${err.message}`
       })
@@ -328,7 +402,7 @@ const shell: Tool = {
         const e = stderr.text(outputLimit / 2)
         if (o) out += o.endsWith("\n") ? o : o + "\n"
         if (e) out += `stderr:\n${e}`
-        done(out)
+        done(result(args, out, { exitCode: ended || sig ? null : code, stdout: o, stderr: e }))
       })
     })
   },

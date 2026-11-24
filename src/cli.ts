@@ -90,8 +90,12 @@ async function read(): Promise<string> {
 }
 
 export async function main(argv: string[]): Promise<number> {
-  const h = home()
   const [first, ...rest] = argv
+  if (first === "__execute") {
+    await (await import("./sandbox/evaluate.ts")).main()
+    return 0
+  }
+  const h = home()
   if (first === "__tool") {
     process.stdout.write(await toolMain(rest[0], await read()))
     return 0

@@ -12,12 +12,13 @@ import { ago, heading, spinner, style, text } from "../base/term.ts"
 import { harnesses, settings } from "../harnesses/extensions.ts"
 import { broken } from "../harnesses/harness.ts"
 import { support } from "../sandbox/confine.ts"
+import { runCode } from "../agent/code.ts"
 import { check } from "./settings.ts"
 import { positional } from "./command.ts"
 
 export const summary = "Check your setup"
 export const about = `Check that ask can run tasks: its runtime, its home folder, the model catalog, the default
-model and its key, each harness and extension, the background worker and git. Anything broken comes with how to fix it.`
+model and its key, each harness and extension, Code Mode, the background worker and git. Anything broken comes with how to fix it.`
 export const usage = "ask doctor"
 
 type Line = { mark: "ok" | "warn" | "fail"; name: string; detail: string; fix?: string }
@@ -54,11 +55,13 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   }
 
   const cfg = readJSON<Config>(h.config, {})
+  let usesHarness = false
   if (c) {
     if (!cfg.model) add({ mark: "fail", name: "Model", detail: "no default model", fix: "ask settings" })
     else {
       try {
         const m = find(c, cfg.model)
+        usesHarness = m.protocol === "harness"
         add({ mark: "ok", name: "Model", detail: cfg.model })
         const cred = credential(h, m.provider, m.env)
         if (m.protocol === "harness") {
@@ -88,10 +91,18 @@ export async function run(h: Home, argv: string[]): Promise<number> {
   }
   for (const [name, why] of broken) add({ mark: "warn", name: "Extension", detail: `${name} doesn't load: ${why}`, fix: `fix it, or ask remove ${name}` })
 
-  if (cfg.sandbox === false) add({ mark: "warn", name: "Sandbox", detail: "disabled in config.json; task processes have normal account access" })
+  const box = support()
+  if (cfg.sandbox === false) add({ mark: "warn", name: "Sandbox", detail: "disabled in config.json; task tools outside the evaluator have normal account access" })
   else {
-    const box = support()
     add(box.ok ? { mark: "ok", name: "Sandbox", detail: box.detail } : { mark: "fail", name: "Sandbox", detail: `${box.detail}; built-in tasks are refused`, fix: box.fix })
+  }
+  if (!box.ok) {
+    add({ mark: usesHarness ? "warn" : "fail", name: "Code Mode", detail: `${box.detail}; scripts are refused`, fix: box.fix })
+  } else {
+    const probe = await runCode('{"code":"return 42"}', [], { dir: process.cwd(), signal: AbortSignal.timeout(5_000) }, () => {})
+    add(probe === "42"
+      ? { mark: "ok", name: "Code Mode", detail: "confined JavaScript evaluator works" }
+      : { mark: usesHarness ? "warn" : "fail", name: "Code Mode", detail: probe, fix: "check OS confinement and reinstall ask if the evaluator is missing" })
   }
 
   const cli = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../cli.ts" : "../cli.js", import.meta.url))

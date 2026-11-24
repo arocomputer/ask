@@ -36,7 +36,7 @@ could take for a flag are refused.
 | Codex | Commands read the folder and system, not your home; write nothing; no network | Commands also write the folder and temp folders; no network |
 
 These are the default confined policies. Config-only `"sandbox": false` disables OS confinement
-for all three backends; see [settings](settings.md#sandbox). Harness command/argument overrides and
+for task tools and harnesses, but not the Code Mode evaluator itself; see [settings](settings.md#sandbox). Harness command/argument overrides and
 extensions are trusted executable configuration and can change those guarantees. Tool-level read
 selection is not OS-enforced read-only access when confinement is disabled.
 
@@ -134,9 +134,10 @@ while still cleaning up the others. Open a new caller session to pick up the cha
 
 ## Turning tools off, and replacing them
 
-ask's own loop gives a subagent `read`, `list`, `grep`, `git`, `fetch` and `search`, plus
-`write`, `edit` and `shell` in a write task. `ask tools` lists them, where each comes from, and whether
-it is on:
+Inside [Code Mode](sessions.md#code-mode-and-tool-permissions), ask's own loop gives a subagent
+`read`, `list`, `grep`, `git`, `fetch` and `search`, plus `write`, `edit` and `shell` in a write
+task. `execute` is the fixed model interface, not a configurable capability. `ask tools` lists
+the capabilities, where each comes from, and whether it is on:
 
 ```sh
 ask tools               # every tool, built-in or from an extension
@@ -150,6 +151,13 @@ swap ask's `search` for another engine, or `fetch` for one that renders pages. A
 only takes read-only tools, so a replacement for `read`, `list`, `grep`, `git`, `fetch` or
 `search` must say `readonly: true`. These are tools for ask's own loop; Claude Code and Codex use their
 own.
+
+Callers can also narrow access for one task with the [request's `tools` list](requests.md#start).
+Tool authors can put fields on a tool's result: name them in `structured`, as a type like
+`"{ rows: object[], total: number }"`, and when `run` receives `format: "json"` return JSON
+`{ text, data }` with the text the result prints as and an object holding those fields. Code Mode
+decodes it inside the sandbox. A `paths` field makes the result the array of those paths in a
+script. Keep the default text response for ordinary calls.
 
 ## Installing an extension
 

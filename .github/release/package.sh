@@ -84,6 +84,8 @@ for os in linux darwin; do
         if [ "$os/$arch" = "$host_os/$host_arch" ]; then
             got=$("$unpack/ask" --version)
             [ "$got" = "ask version $version" ] || fail "$target says \"$got\", not ask version $version"
+            got=$(printf '%s\n' '{"code":"return 42","names":[]}' | "$unpack/ask" __execute)
+            [ "$got" = '{"type":"done","output":"42"}' ] || fail "$target could not start its bundled Code Mode evaluator"
             if [ "$os" = linux ]; then "$unpack/ask.sandbox" --abi >/dev/null || fail "$target's ask.sandbox doesn't run"; fi
             if [ "$os" = linux ]; then "$unpack/ask.bwrap" --version | grep -qx 'bubblewrap 0.13.1' || fail 'wrong bundled bubblewrap'; fi
         fi

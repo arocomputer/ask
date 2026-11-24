@@ -4,7 +4,7 @@
 // Git metadata protected at execution time. Also the environment commands run in.
 
 import { spawnSync } from "node:child_process"
-import { existsSync, realpathSync, readdirSync, lstatSync } from "node:fs"
+import { existsSync, realpathSync, readdirSync, lstatSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 
@@ -17,6 +17,8 @@ export type Policy = {
   write: string[]
   /** Existing Git metadata, including nested repositories, made read-only by the OS. */
   protected: string[]
+  /** Evaluators need runtime files and pipes, not command or workspace access. */
+  compute?: boolean
 }
 
 const home = homedir()
@@ -64,6 +66,41 @@ export function gitDir(dir: string): string | undefined {
 function system(): string[] {
   if (process.platform === "darwin") return ["/usr", "/bin", "/sbin", "/System", "/Library/Developer", "/Library/Frameworks", "/dev", "/private/etc", "/private/var/select", "/private/var/db/xcode_select_link"]
   return ["/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/opt", "/proc", "/sys", "/dev", "/run/systemd/resolve", "/nix/store", "/snap"]
+}
+
+/** Runtime loader files only; no project, home, command PATH, or Git grants. */
+export function computation(tmp: string, executable: string): Policy {
+  const runtime = realpathSync(executable)
+  const installation = dirname(dirname(runtime))
+  const libs = process.platform === "darwin"
+    ? ["/System/Library", "/usr/lib", "/dev/null", "/dev/urandom", ...brewLibs(dirname(dirname(installation)))]
+    : ["/usr/lib", "/lib", "/lib64", "/lib32", "/libx32", "/etc/ld.so.cache", "/etc/localtime", "/usr/share/zoneinfo",
+      "/dev/null", "/dev/urandom", "/proc/self", "/sys/devices/system/cpu", ...mappedLibraries()]
+  return { dir: tmp, tmp, read: [tmp, runtime, ...libs], write: [], protected: [], compute: true }
+}
+
+/** Linuxbrew and other relocated runtimes can depend on specific DSOs outside system paths. */
+function mappedLibraries(): string[] {
+  try {
+    const maps = readFileSync("/proc/self/maps", "utf8")
+    return [...new Set(maps.split("\n").flatMap((line) => {
+      const at = line.indexOf(" /")
+      const file = at < 0 ? "" : line.slice(at + 1)
+      return /\.so(?:\.[^\s/]+)?$/.test(file) ? [file] : []
+    }))]
+  } catch { return [] }
+}
+
+/** macOS Homebrew runtimes load libraries through sibling Cellar installations. */
+const brewReads = new Map<string, string[]>()
+function brewLibs(cellar: string): string[] {
+  if (basename(cellar) !== "Cellar" || !existsSync(cellar)) return []
+  const saved = brewReads.get(cellar)
+  if (saved) return saved
+  const dirs = (dir: string) => readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => join(dir, e.name))
+  const libs = [join(dirname(cellar), "lib"), ...dirs(cellar).flatMap(dirs).map((d) => join(d, "lib")).filter(existsSync)]
+  brewReads.set(cellar, libs)
+  return libs
 }
 
 /** Git includes inside the writable tree are metadata too, even if currently conditional. */

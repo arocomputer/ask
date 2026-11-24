@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+- Make Code Mode forgiving of how models write JavaScript. `console.log` output is returned; a
+  script that returns nothing shows what its calls returned; every tool result reads as text and
+  also carries fields like `matches`, `content`, `stdout` and `exitCode`, replacing the
+  `format: "json"` switch; returned text comes back as labeled blocks instead of escaped JSON;
+  and errors name the line, the tool's signature or the available tools, and the calls that had
+  already completed. `print` and `text` work like `console.log`. A script that ends in an
+  expression returns its value. A script may make 128 nested calls, up from 32. A `list` result is
+  the array of its paths, given from the working directory so each can go straight to `read`. A
+  field returned whole, like `r.content` or `r.matches`, shows the result with its line numbers.
+  `grep` takes `(?i)` and searches for the text of a pattern that is not a regular expression.
+  Scripts sent together in a read-only task run together. Call arguments a model cut off or
+  left markup on are repaired before they run and before they are replayed to the provider, and
+  a call with an empty or malformed tool name is replayed under a name the provider accepts.
+
+- An empty `grep` now says how many files it searched and what a narrower search left out,
+  and the subagent briefing says a whole-directory search that finds nothing is the answer.
+  Subagents asked about something that isn't there stop looking sooner. The briefing also puts
+  the caller's requested format ahead of its own answer layout, so an answer asked for as JSON
+  only comes back without the evidence section.
+
+- Give likely diff reviews a short Code Mode recipe for inspecting the requested change without
+  gathering unrelated evidence. Benchmark traces now record each script, its nested actions and
+  the start of what it returned.
+
+- Add per-task capability allowlists for the built-in loop, paged discovery for large tool
+  catalogs, and structured Code Mode results for file reads, `grep`, `git`, and web search.
+
+- Make Code Mode the only tool interface in ask's built-in loop. Subagents can combine reads,
+  edits, commands and extension capabilities in confined JavaScript, and send only selected
+  results back to the model. Existing tool permissions still apply. `ask show` records nested
+  actions locally and marks interrupted actions as uncertain; ask never replays a script on restart.
+
 - Shorten the ask skill and install it in OpenCode as well as Claude Code and Codex.
   `ask install skill --prefer-ask` disables native delegation in their user settings;
   `ask remove skill` undoes ask's changes without enabling a previously disabled tool.

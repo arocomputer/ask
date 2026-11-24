@@ -4,6 +4,8 @@ import { execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseArgs } from "node:util"
+import type { Message } from "../../src/providers/stream.ts"
+import type { Action } from "../../src/agent/steps.ts"
 import { tasks, type Task } from "../fixtures/tasks.ts"
 import { goModel, pick, pool, type Suite } from "../suite.ts"
 
@@ -54,28 +56,56 @@ function ask(checkout: string, env: NodeJS.ProcessEnv, dir: string, request: obj
   })
 }
 
-async function one(checkout: string, env: NodeJS.ProcessEnv, scratch: string, model: string, t: Task, rep: number) {
+/**
+ * What a turn did, for reading afterwards: each script as the model wrote it, its nested
+ * actions, and the start of what came back. Whether a script was wasted (an error, nothing
+ * returned, a field that wasn't there) shows only in its text and its result, so both are kept.
+ */
+export function trace(messages: Message[], actions: Action[]) {
+  return messages.flatMap((message, at): object[] => {
+    if (message.role === "tool")
+      return [{ result: message.name, chars: message.output.length, error: message.output.startsWith("error:"), head: message.output.slice(0, 300) }]
+    if (message.role === "assistant") return message.calls.map((call, script) => {
+      let args: Record<string, unknown> = {}
+      try { args = JSON.parse(call.arguments) } catch {}
+      if (call.name !== "execute") return { call: call.name, arguments: call.arguments.slice(0, 300), chars: call.arguments.length }
+      return {
+        call: call.name, chars: call.arguments.length, code: typeof args.code === "string" ? args.code : call.arguments,
+        actions: actions.filter((a) => a.at === at && a.script === script).map(({ label, state }) => ({ label, state })),
+      }
+    })
+    return []
+  })
+}
+
+async function one(checkout: string, env: NodeJS.ProcessEnv, scratch: string, model: string, t: Task, rep: number, timeout: number, traces?: string) {
   const dir = mkdtempSync(join(scratch, `subagent-${t.id}-`))
   const began = Date.now()
   try {
     prepare(t, dir, scratch, env)
-    const r = await ask(checkout, env, dir, { start: [{ prompt: t.prompt, model, write: t.write ?? false }], wait: 900 })
+    const r = await ask(checkout, env, dir, { start: [{ prompt: t.prompt, model, write: t.write ?? false, timeout }], wait: timeout + 10 })
     const result = r.tasks?.[0] ?? { state: "failed", error: r.error }
     const answer: string = result.answer ?? ""
     const seconds = (Date.now() - began) / 1000
-    let steps = 0, input = 0, output = 0
+    let steps = 0, input = 0, output = 0, cached = 0
     try {
-      const turn = JSON.parse(readFileSync(join(env.ASK_HOME!, "sessions", result.id, "session.json"), "utf8")).turns[0]
+      const session = join(env.ASK_HOME!, "sessions", result.id)
+      const turn = JSON.parse(readFileSync(join(session, "session.json"), "utf8")).turns[0]
       steps = turn.steps ?? 0
       input = turn.usage?.input ?? 0
       output = turn.usage?.output ?? 0
+      cached = turn.usage?.cached ?? 0
+      if (traces && /^[a-z0-9]+$/.test(result.id) && existsSync(join(session, "transcript.json"))) {
+        const messages = JSON.parse(readFileSync(join(session, "transcript.json"), "utf8"))
+        writeFileSync(join(traces, `${result.id}.json`), JSON.stringify({ task: t.id, model, rep, steps: trace(messages, turn.actions ?? []) }, null, 2) + "\n", { mode: 0o600 })
+      }
     } catch {}
-    const base = { group: model, case: t.id, model, kind: t.kind, rep, steps, input, output, seconds, chars: answer.length, answer }
+    const base = { group: model, case: t.id, model, kind: t.kind, rep, steps, input, output, cached, seconds, chars: answer.length, answer }
     if (result.state !== "succeeded") {
       if (result.id) await ask(checkout, env, dir, { stop: [result.id] })
       return { ...base, error: `${result.state}: ${result.error?.message ?? "ask did not complete"}`.slice(0, 200) }
     }
-    return { ...base, ...t.grade(answer, dir) }
+    return { ...base, ...await t.grade(answer, dir) }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -87,19 +117,21 @@ export const suite: Suite = {
   compareFiles: [import.meta.filename, join(here, "../fixtures/tasks.ts")],
   repetitions: 3,
   select(args, reps) {
-    const { values } = parseArgs({ args, options: { models: { type: "string" }, tasks: { type: "string" } } })
+    const { values } = parseArgs({ args, options: { models: { type: "string" }, tasks: { type: "string" }, timeout: { type: "string" } } })
     const models = (values.models ?? goModel).split(",")
     if (models.some((m) => !/^[^/\s]+\/\S+$/.test(m)) || new Set(models).size !== models.length)
       throw new Error("--models expects distinct provider/model IDs")
     const ids = pick(values.tasks, tasks.map((t) => t.id), "--tasks")
+    const timeout = Number(values.timeout ?? 900)
+    if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 900) throw new Error("--timeout must be seconds in 1..900")
     const chosen = tasks.filter((t) => ids.includes(t.id))
     const cases = models.flatMap((model) => chosen.flatMap((t) => Array.from({ length: reps }, (_, rep) => ({ model, t, rep }))))
     return {
-      inputs: { models, tasks: ids, repositories: { ask: askCommit, requests: requestsTag } },
+      inputs: { models, tasks: ids, timeout, repositories: { ask: askCommit, requests: requestsTag } },
       count: cases.length,
       async run(ctx) {
         await pool(cases, ctx.parallel, async ({ model, t, rep }) => {
-          try { ctx.record(await one(ctx.checkout, ctx.env, ctx.scratch, model, t, rep)) }
+          try { ctx.record(await one(ctx.checkout, ctx.env, ctx.scratch, model, t, rep, timeout, ctx.traces)) }
           catch (err) { ctx.record({ group: model, case: t.id, rep, error: (err as Error).message }) }
         })
       },

@@ -40,6 +40,13 @@ A task takes:
 | `effort` | Reasoning effort, like `low`, `medium` or `high` |
 | `schema` | A JSON Schema its answer must match |
 | `timeout` | Seconds before it is stopped; default: `timeout` in config.json, else 900 |
+| `tools` | Optional list of capability names allowed in this task. `[]` allows none; omitted uses all otherwise permitted tools. Built-in ask models only. |
+
+For example, `{"prompt":"Fix the typo","write":true,"tools":["read","edit"]}` allows reading and
+editing, not shell or web tools. This list can only narrow access: tools turned off in settings
+stay off, and a read-only task still cannot edit. Unknown or unavailable names do not grant anything.
+The list limits which tools can be called, not what an allowed tool can do. For example, an
+allowed shell command can still read files under the shell sandbox's policy.
 
 ## collect
 
@@ -61,6 +68,9 @@ Gives a finished session its next prompt. The subagent keeps the whole conversat
 and the worktree. It takes a task's fields except `dir` and `worktree`, and keeps the last turn's
 model unless it names another. Any model will do, including a move between ask's own loop and a
 [harness](extensions.md) like `claude/` or `codex/`: the new model gets the conversation so far.
+If the last turn had a `tools` allowlist, a follow-up inherits it unless it supplies a replacement.
+A session with an allowlist cannot switch to an external harness; start a separate task instead.
+Narrowing a follow-up's allowlist doesn't erase tool results already in the conversation.
 
 Without a prompt, `{"continue": "k3f9a2"}` resumes a stopped or failed turn where it left off. A
 running session can't be continued; collect it first.
@@ -79,8 +89,9 @@ Stops sessions. A stopped session can be continued or resumed.
 {"show": "k3f9a2"}
 ```
 
-The session's latest turn, with `steps`: every tool call it made, like `read src/auth.ts:40` or
-`shell npm test`, and any that failed.
+The session's latest turn, with `steps`: short tool action summaries, including nested Code Mode
+actions like `read src/auth.ts` or `shell`. A recorded start without a result is marked
+`outcome unknown`; check what happened before retrying it.
 
 ## sessions
 

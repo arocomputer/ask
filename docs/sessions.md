@@ -22,9 +22,54 @@ its own session.
 A turn is `running`, then `succeeded`, `failed` or `stopped`; it is `retrying` while the provider
 keeps failing and ask tries again. A session's state is its latest turn's.
 
+## Code Mode and tool permissions
+
+Ask's built-in loop exposes one tool to the model: `execute`. A script can combine capabilities,
+branch on results, and return only the relevant data:
+
+```js
+const [hits, tests] = await Promise.all([
+  tools.grep({ pattern: "timeout", glob: "*.ts", limit: 10 }),
+  tools.list({ path: "test" }),
+]);
+return { files: [...new Set(hits.matches.map((m) => m.path))], tests };
+```
+
+Each script starts fresh. It has no imports, timers, direct filesystem access, or direct network
+access. It runs in an always-confined process with CPU, memory, wall-time, and output limits and
+can invoke up to 128 nested calls. Independent reads can run in parallel; mutations run one at a
+time and don't overlap other calls. Await every call you need. Ask never automatically retries an
+interrupted script: some of its actions may already have taken effect. `ask show` lists nested
+actions locally, separately from what goes to the model. There is no direct-tool fallback.
+
+A tool result prints as text and works where a string does (`split`, `includes`, `+`,
+template strings), and `.text` is that text. Some tools also put fields on it, so a script
+doesn't parse what it printed: `read` has `content` (the text without line numbers, for
+parsing), `nextLine` (where to continue, or `null`) and `clipped` (one line was too large to
+return whole); `grep` has `matches` (`{ path, line, text }` each) and `truncated`; `git` and
+`shell` have `stdout`, `stderr` and `exitCode`; `search` has `results`. A `list` result is the
+array of its paths, each relative to the working directory, so `for (const path of await
+tools.list({ pattern: "*.json" }))` works and `length` counts files. Returning a field whole,
+as in `return r.content` or `return r.matches`, shows the result itself, with its line numbers.
+
+The runtime is forgiving where a mistake would otherwise cost the model a turn. A script that
+ends in an expression returns its value, as a REPL would. `console.log`
+output is returned with the script's value, as is `print` or `text`, which some models write. A script that returns nothing shows what each of its
+calls returned. An object or array holding results or multi-line text comes back as labeled
+blocks rather than text escaped inside JSON. A call with a wrong argument name or type fails
+with the tool's signature; an unknown tool with the list of tools; a script error with its line,
+the calls that had completed, and the output so far.
+
+In a read-only task, scripts the model sends in one step run at the same time.
+
+With a large extension catalog, some schemas are shown only on demand. Scripts can call
+`await discover({ query: "keywords", limit: 5 })` and return the relevant entries. Discovery
+only sees capabilities permitted for the current task. Omit `query` to browse; when `next`
+is not `null`, pass it as `offset` for the next page.
+
 ## Read and write
 
-A read-only task (the default) gets `read`, `list` and `grep` for files, `git` to see what
+A read-only task (the default) can call `tools.read`, `tools.list` and `tools.grep` for files, `tools.git` to see what
 changed and why (`status`, `diff`, `log`, `show`, `blame`, which can't run anything a
 repository's config names), and `fetch` and `search` for the web. It has no way to change a
 file or run a command. That is how ask enforces read-only.
@@ -42,7 +87,7 @@ extraction says to fetch the page directly rather than presenting partial text a
 And `search`, ask's own web search: it returns each result's title, address and snippet, for
 `fetch` to read in full. It is free and needs no key or provider: it asks DuckDuckGo, then
 DuckDuckGo's lite page, Mwmbl's open API, then Wikipedia's, so one engine turning a busy machine away
-doesn't stop the task. Like `fetch`, it runs in ask itself, not in the task's sandbox. `ask tools` turns any tool off,
+doesn't stop the task. Like `fetch`, it runs in ask itself, not in the task's sandbox. `ask tools` turns nested capabilities off,
 and an extension can replace any of them; see
 [turning tools off](extensions.md#turning-tools-off-and-replacing-them).
 
@@ -72,7 +117,7 @@ These restrictions apply by default; see [settings](settings.md#sandbox) to disa
 On macOS, ask uses the system's Seatbelt sandbox. Harnesses use their own sandboxes.
 Older Linux kernels get less: before 7.1, commands can't use
 Unix sockets at all, so Python's process pools need one worker. Where there is no sandbox at
-all, built-in filesystem tools and write tasks are refused, with why; `ask doctor` shows what this machine has. Claude Code
+all, Code Mode scripts are always refused, and by default so are built-in tasks. `ask doctor` shows what this machine has. Claude Code
 and Codex keep to their own sandboxes; see
 [what a harness can reach](extensions.md#what-a-harness-can-reach). When the folder is in a git repository, the result lists every file the turn
 added, modified or deleted, including those in commits it made, and how many commits.

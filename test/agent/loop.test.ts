@@ -5,9 +5,10 @@ import { join } from "node:path"
 import { describe, test } from "node:test"
 import { connect, type Model } from "../../src/providers/catalog.ts"
 import { interrupted, run, toolset, type Checkpoint } from "../../src/agent/loop.ts"
+import { catalog } from "../../src/agent/code.ts"
 import type { Message, Protocol } from "../../src/providers/stream.ts"
 import { responses } from "../../src/providers/responses.ts"
-import { serve } from "../fake.ts"
+import { code, serve, use } from "../fake.ts"
 
 function project(): string {
   const dir = mkdtempSync(join(tmpdir(), "ask-loop-"))
@@ -21,12 +22,20 @@ function model(protocol: Protocol, url: string): Model {
 
 describe("loop", () => {
   for (const protocol of ["responses", "chat", "anthropic"] as const) {
-    test(`${protocol}: a tool call's output reaches the model and the answer comes back`, async () => {
-      const fake = await serve(protocol, [{ calls: [{ name: "read", args: { path: "port.txt" } }] }, { text: "It is 7341." }])
+    test(`${protocol}: execute alone is offered and only the script's return reaches the model`, async () => {
+      const fake = await serve(protocol, [{ calls: [code(`
+        const { matches: [hit] } = await tools.grep({ pattern: "service-" + "alpha" });
+        const text = await tools.read({ path: hit.path, line: hit.line });
+        return { port: Number(text.match(/\\d+$/m)[0]) };
+      `)] }, { text: "It is 7341." }])
       try {
-        const r = await run({ provider: connect(model(protocol, fake.url), "k"), model: "m", dir: project(), prompt: "Which port?" })
+        const actions: string[] = []
+        const r = await run({ provider: connect(model(protocol, fake.url), "k"), model: "m", dir: project(), prompt: "Which port?", onAction: (action) => actions.push(`${action.label}: ${action.state}`) })
+        assert.deepEqual(fake.requests[0].tools.map((t: any) => t.function?.name ?? t.name), ["execute"])
         assert.equal(r.answer, "It is 7341.")
-        assert.match(JSON.stringify(fake.requests[1]), /1\\tservice-alpha listens on 7341/)
+        assert.deepEqual(r.messages.find((m) => m.role === "tool"), { role: "tool", id: "call_1_0", name: "execute", output: '{"port":7341}' })
+        assert.doesNotMatch(JSON.stringify(fake.requests[1]), /service-alpha|read port.txt/)
+        assert.deepEqual(actions, ["grep: started", "grep: finished", "read port.txt:1: started", "read port.txt:1: finished"])
         assert.deepEqual(r.usage, { input: 200, output: 20, cached: 0 })
       } finally {
         await fake.close()
@@ -36,12 +45,13 @@ describe("loop", () => {
 
   test("an extension's tool runs in the loop, and a read-only task gets only read-only ones", async () => {
     const tool = (name: string, readonly: boolean) => ({ name, description: name, parameters: { type: "object", properties: {} }, readonly, run: async () => `${name} ran` })
-    const fake = await serve("chat", [{ calls: [{ name: "weather", args: {} }] }, { text: "Sunny." }])
+    const fake = await serve("chat", [{ calls: [use("weather")] }, { text: "Sunny." }])
     try {
       const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Weather?", extra: [tool("weather", true), tool("deploy", false)] })
       assert.equal(r.answer, "Sunny.")
-      const offered = fake.requests[0].tools.map((t: any) => t.function.name)
-      assert.ok(offered.includes("weather") && !offered.includes("deploy"))
+      const offered = fake.requests[0].messages[0].content
+      assert.match(offered, /tools\.weather\(/)
+      assert.doesNotMatch(offered, /tools\.deploy\(/)
       assert.match(JSON.stringify(fake.requests[1]), /weather ran/)
     } finally {
       await fake.close()
@@ -49,14 +59,43 @@ describe("loop", () => {
   })
 
   test("search is offered, even read-only, only when there is an engine to search with", async () => {
-    const fake = await serve("chat", [{ calls: [{ name: "search", args: { query: "bun release" } }] }, { text: "Done." }, { text: "Done." }])
+    const fake = await serve("chat", [{ calls: [code('const { results: [hit] } = await tools.search({ query: "bun release" }); return hit.title')] }, { text: "Done." }, { text: "Done." }])
     try {
       const engine = async (q: string) => [{ title: `found ${q}`, url: "https://example.com/", snippet: "" }]
       await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Look it up", search: engine })
-      assert.ok(fake.requests[0].tools.some((t: any) => t.function.name === "search"))
+      assert.match(fake.requests[0].messages[0].content, /tools\.search\(/)
       assert.match(JSON.stringify(fake.requests[1]), /found bun release/)
       await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Again" })
-      assert.ok(!fake.requests[2].tools.some((t: any) => t.function.name === "search"))
+      assert.doesNotMatch(fake.requests[2].messages[0].content, /tools\.search\(/)
+    } finally {
+      await fake.close()
+    }
+  })
+
+  test("large tool schemas stay out of the prompt and can be discovered on demand", () => {
+    const extra = Array.from({ length: 50 }, (_, i) => ({ name: `extension-${i}`, description: "marker".repeat(300), parameters: {}, readonly: true, run: async () => "" }))
+    const prompt = catalog(toolset({ extra }))
+    assert.match(prompt, /tools\.read\(/)
+    assert.match(prompt, /await discover/)
+    assert.doesNotMatch(prompt, /extension-49/)
+  })
+
+  test("the review recipe is only shown when the task calls for a diff and git is available", () => {
+    const prompt = "Review the uncommitted changes for bugs"
+    assert.match(catalog(toolset({}), prompt), /For a simple diff review/)
+    assert.doesNotMatch(catalog(toolset({}), "Total the daily data"), /For a simple diff review/)
+    assert.doesNotMatch(catalog(toolset({ off: ["git"] }), prompt), /For a simple diff review/)
+  })
+
+  test("scripts sent together in a read-only turn run together", { timeout: 10_000 }, async () => {
+    let started = 0
+    const both = Promise.withResolvers<void>()
+    const gate = { name: "gate", description: "gate", parameters: {}, readonly: true, run: async () => { if (++started === 2) both.resolve(); await both.promise; return "open" } }
+    const fake = await serve("chat", [{ calls: [use("gate"), use("gate")] }, { text: "Done." }])
+    try {
+      const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Go", extra: [gate] })
+      assert.equal(r.answer, "Done.")
+      assert.deepEqual(r.messages.filter((m) => m.role === "tool").map((m) => m.output), ["open", "open"])
     } finally {
       await fake.close()
     }
@@ -74,7 +113,7 @@ describe("loop", () => {
 
   test("a conversation started on one protocol continues on another", async () => {
     const dir = project()
-    const first = await serve("chat", [{ calls: [{ name: "read", args: { path: "port.txt" } }] }, { text: "7341" }])
+    const first = await serve("chat", [{ calls: [use("read", { path: "port.txt" })] }, { text: "7341" }])
     const second = await serve("anthropic", [{ text: "Still 7341." }])
     try {
       const a = await run({ provider: connect(model("chat", first.url), "k"), model: "m", dir, prompt: "Which port?" })
@@ -93,8 +132,8 @@ describe("loop", () => {
     const dir = project()
     writeFileSync(join(dir, "big.txt"), "x".repeat(5000))
     const fake = await serve(protocol, [
-      { calls: [{ name: "read", args: { path: "big.txt" } }] },
-      { text: "", calls: [{ name: "list", args: {} }] },
+      { calls: [use("read", { path: "big.txt" })] },
+      { text: "", calls: [use("list")] },
       { status: 400, error: "This model's maximum context length is 1000 tokens" },
       { text: "Goal: Go. The file contained x's." },
       { text: "done" },
@@ -120,8 +159,8 @@ describe("loop", () => {
     writeFileSync(join(dir, "big.txt"), "x".repeat(5000))
     const overflow = { status: 400, error: "This model's maximum context length is 1000 tokens" }
     const fake = await serve("chat", [
-      { calls: [{ name: "read", args: { path: "big.txt" } }] },
-      { calls: [{ name: "list", args: {} }] },
+      { calls: [use("read", { path: "big.txt" })] },
+      { calls: [use("list")] },
       overflow, overflow, overflow,
       { text: "Goal: Go; reread big.txt if needed." },
       { text: "done" },
@@ -142,8 +181,8 @@ describe("loop", () => {
     const dir = project()
     writeFileSync(join(dir, "big.txt"), "x".repeat(5000))
     const fake = await serve("chat", [
-      { calls: [{ name: "read", args: { path: "big.txt" } }] },
-      { calls: [{ name: "list", args: {} }] },
+      { calls: [use("read", { path: "big.txt" })] },
+      { calls: [use("list")] },
       { status: 400, error: "This model's maximum context length is 1000 tokens" },
       { text: "" },
     ])
@@ -160,8 +199,8 @@ describe("loop", () => {
     const dir = project()
     writeFileSync(join(dir, "big.txt"), "x".repeat(5000))
     const fake = await serve("chat", [
-      { calls: [{ name: "read", args: { path: "big.txt" } }] },
-      { calls: [{ name: "list", args: {} }] },
+      { calls: [use("read", { path: "big.txt" })] },
+      { calls: [use("list")] },
       { status: 400, error: "This model's maximum context length is 1000 tokens" },
       { text: "Goal: Go." }, { text: "done" }, { text: "continued" }, { text: "again" },
     ])
@@ -239,10 +278,12 @@ describe("loop", () => {
   })
 
   test("a read-only task is offered no way to write or run commands", async () => {
-    const fake = await serve("chat", [{ text: "ok" }])
+    const fake = await serve("chat", [{ calls: [code('return ["write", "edit", "shell", "read"].map((name) => name in tools);')] }, { text: "ok" }])
     try {
       await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Look" })
-      assert.deepEqual(fake.requests[0].tools.map((t: any) => t.function.name), ["read", "list", "grep", "git", "fetch"])
+      const prompt = fake.requests[0].messages[0].content
+      assert.doesNotMatch(prompt, /tools\.(write|edit|shell)\(/)
+      assert.equal(fake.requests[1].messages.at(-1).content, "[false,false,false,true]")
     } finally {
       await fake.close()
     }
@@ -254,14 +295,14 @@ describe("loop", () => {
     const fake = await serve("chat", [{ text: "ok" }])
     try {
       await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir, prompt: "Look" })
-      assert.match(fake.requests[0].messages[0].content, /# Project instructions\n\nIndent with tabs\.$/)
+      assert.match(fake.requests[0].messages[0].content, /# Project instructions\n\nIndent with tabs\./)
     } finally {
       await fake.close()
     }
   })
 
   test("requests store nothing upstream, and sealed reasoning replays on the next step", async () => {
-    const fake = await serve("responses", [{ reasoning: { encrypted: "sealed" }, calls: [{ name: "list", args: {} }] }, { text: "done" }])
+    const fake = await serve("responses", [{ reasoning: { encrypted: "sealed" }, calls: [use("list")] }, { text: "done" }])
     try {
       await run({ provider: responses({ baseURL: fake.url, key: "k" }, true), model: "m", dir: project(), prompt: "Look" })
       assert.equal(fake.requests[0].store, false)
@@ -273,7 +314,7 @@ describe("loop", () => {
   })
 
   test("a gateway's unsealed reasoning is not sent back", async () => {
-    const fake = await serve("responses", [{ reasoning: {}, calls: [{ name: "list", args: {} }] }, { text: "done" }])
+    const fake = await serve("responses", [{ reasoning: {}, calls: [use("list")] }, { text: "done" }])
     try {
       await run({ provider: connect(model("responses", fake.url), "k"), model: "m", dir: project(), prompt: "Look" })
       assert.equal(fake.requests[0].include, undefined)
@@ -305,23 +346,49 @@ describe("loop", () => {
     }
   })
 
-  test("a call to a missing tool, or with arguments that aren't JSON, goes back to the model as an error", async () => {
-    const fake = await serve("chat", [{ calls: [{ name: "delete_everything", args: {} }] }, { text: "ok" }])
+  test("direct dispatch is rejected even for enabled capabilities; malformed execute fails", async () => {
+    const fake = await serve("chat", [{ calls: [{ name: "read", args: { path: "port.txt" } }] }, { text: "ok" }])
     try {
       const r = await run({ provider: connect(model("chat", fake.url), "k"), model: "m", dir: project(), prompt: "Go" })
       assert.equal(r.answer, "ok")
-      assert.match(fake.requests[1].messages.at(-1).content, /^error: no tool named delete_everything; the tools are read, list, grep, git, fetch$/)
+      assert.equal(fake.requests[1].messages.at(-1).content, 'error: read is not callable directly. Call execute with this code instead: return await tools["read"]({"path":"port.txt"})')
     } finally {
       await fake.close()
     }
     const bad = await run({
-      provider: { complete: async () => ({ message: { role: "assistant", text: "", calls: [{ id: "c", name: "read", arguments: "{not json" }] }, usage: { input: 0, output: 0, cached: 0 } }) },
+      provider: { complete: async () => ({ message: { role: "assistant", text: "", calls: [{ id: "c", name: "execute", arguments: "{not json" }] }, usage: { input: 0, output: 0, cached: 0 } }) },
       model: "m",
       dir: project(),
       prompt: "Go",
       maxSteps: 1,
     })
-    assert.equal((bad.messages.at(-1) as { output: string }).output, "error: arguments must be a JSON object")
+    assert.equal((bad.messages.at(-1) as { output: string }).output, 'error: execute takes one JSON object, {"code": "..."}, with the script as a string')
+    assert.equal((bad.messages.at(-2) as { calls: { arguments: string }[] }).calls[0].arguments, '{"malformed":"{not json"}')
+  })
+
+  test("a call with no name or a name no provider would issue is kept under one it will accept", async () => {
+    const r = await run({
+      provider: { complete: async () => ({ message: { role: "assistant", text: "", calls: [{ id: "a", name: "", arguments: "{}" }, { id: "b", name: 'tools.list({path: ""})</arg_value>', arguments: "" }] }, usage: { input: 0, output: 0, cached: 0 } }) },
+      model: "m",
+      dir: project(),
+      prompt: "Go",
+      maxSteps: 1,
+    })
+    assert.deepEqual((r.messages.at(-3) as { calls: { name: string }[] }).calls.map((c) => c.name), ["unknown", "tools_list__path________arg_value_"])
+    assert.match((r.messages.at(-1) as { output: string }).output, /^error: tools\.list\(\{path: ""\}\)<\/arg_value> is not callable directly/)
+  })
+
+  test("arguments cut off inside the script, markup and all, still run and are kept as valid JSON", async () => {
+    const cut = '{"code": "return 1 + 1;\\n</function></tool_call>'
+    const r = await run({
+      provider: { complete: async () => ({ message: { role: "assistant", text: "", calls: [{ id: "c", name: "execute", arguments: cut }] }, usage: { input: 0, output: 0, cached: 0 } }) },
+      model: "m",
+      dir: project(),
+      prompt: "Go",
+      maxSteps: 1,
+    })
+    assert.equal((r.messages.at(-1) as { output: string }).output, "2")
+    assert.equal((r.messages.at(-2) as { calls: { arguments: string }[] }).calls[0].arguments, '{"code":"return 1 + 1;\\n"}')
   })
 
   test("a reply cut off at the output limit is a failure, not an answer", async () => {
@@ -338,7 +405,7 @@ describe("loop", () => {
   test("a call cut off by a stopped worker reaches the resumed model as interrupted", () => {
     const out = interrupted([
       { role: "user", text: "Deploy" },
-      { role: "assistant", text: "", calls: [{ id: "c1", name: "shell", arguments: '{"command":"git push"}' }] },
+      { role: "assistant", text: "", calls: [{ id: "c1", name: "execute", arguments: '{"code":"await tools.write({path:\'notes\',content:\'hello\'})"}' }] },
     ])
     assert.equal(out.length, 3)
     assert.match((out[2] as { output: string }).output, /^error: this call was interrupted.*check whether it took effect/)

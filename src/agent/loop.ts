@@ -1,7 +1,6 @@
-// ask's agent loop: send the conversation to a provider, run the tools the model calls, feed
-// back their results, and stop at a final answer or a limit. The transcript is the record of
-// everything visible: `onUpdate` hears it after every model turn and every tool result, so a
-// caller can save it and show progress from it.
+// ask's agent loop: send the conversation to a provider, run its Code Mode scripts, and stop at
+// a final answer or a limit. `onUpdate` records the model-visible transcript; `onAction` records
+// nested actions separately so intermediate tool output isn't replayed to the provider.
 
 import { overflowed, ProviderError, type Message, type Provider, type Usage } from "../providers/stream.ts"
 import { createHash } from "node:crypto"
@@ -9,7 +8,9 @@ import { instructions } from "./system.ts"
 import type { Sandbox } from "../sandbox/confine.ts"
 import type { Models } from "./context.ts"
 import { search, type Engine } from "./search.ts"
-import { tools as builtIn, type Args, type Tool } from "./tools.ts"
+import { tools as builtIn, type Tool } from "./tools.ts"
+import { catalog, execute, runCode, wellFormed } from "./code.ts"
+import type { Action } from "./steps.ts"
 
 export type RunOptions = {
   provider: Provider
@@ -28,7 +29,7 @@ export type RunOptions = {
   effort?: string
   /** A JSON Schema the final answer must match. */
   schema?: object
-  /** Replaces the system prompt `system.ts` builds. */
+  /** Replaces the task briefing; the Code Mode catalog is always appended. */
   instructions?: string
   /** Turn execution context; omission means tools establish their own enabled sandbox. */
   sandbox?: Sandbox
@@ -39,8 +40,10 @@ export type RunOptions = {
   models?: Models
   /** How the search tool searches the web; without one, there is no search tool. */
   search?: Engine
-  /** Names of tools to leave out, built-in or added. */
+  /** Names of nested capabilities to leave out, built-in or added. */
   off?: string[]
+  /** If present, use only these capabilities, without overriding off or read-only restrictions. */
+  allow?: string[]
   /** Tools added after the built-in ones, such as installed extensions'; only read-only ones in a read-only task. */
   extra?: Tool[]
   maxOutput?: number
@@ -56,6 +59,8 @@ export type RunOptions = {
   session?: string
   signal?: AbortSignal
   onUpdate?: (messages: Message[], usage: Usage) => void
+  /** Local activity only; receives a start and then an update when that nested call returns. */
+  onAction?: (action: Action) => void
 }
 
 /** Why a turn ended without an answer, and what the caller can do about it. */
@@ -85,7 +90,9 @@ export async function run(o: RunOptions): Promise<RunResult> {
   let context = restore(messages, o.checkpoint)
   const usage: Usage = { input: 0, output: 0, cached: 0, ...o.initialUsage }
   const tools = toolset(o)
-  const system = o.instructions ?? await instructions(o.dir, o.write ?? false, !!o.schema, o.sandbox?.limits, tools.some((t) => t.name === "shell"), o.sandbox)
+  const briefing = o.instructions ?? await instructions(o.dir, o.write ?? false, !!o.schema, o.sandbox?.limits, tools.some((t) => t.name === "shell"), o.sandbox)
+  const task = messages.findLast((m) => m.role === "user")?.text
+  const system = `${briefing}\n\n${catalog(tools, task)}`
   // The turn's models answer inside the turn, and their tokens belong to it.
   const models = o.models
     ? {
@@ -126,14 +133,14 @@ export async function run(o: RunOptions): Promise<RunResult> {
     let res
     try {
       const length = JSON.stringify(context).length
-      const estimate = measured ? measured + Math.max(0, length - measuredLength) / 4 : (length + system.length + JSON.stringify(tools.map((t) => t.parameters)).length) / 4
+      const estimate = measured ? measured + Math.max(0, length - measuredLength) / 4 : (length + system.length + JSON.stringify(execute).length) / 4
       const reserve = o.contextLimit ? Math.min(o.contextLimit / 2, Math.max(o.contextLimit * 0.15, o.maxOutput ?? 0)) : 0
       if (o.contextLimit && estimate >= o.contextLimit - reserve && compactions === 0 && await shorten(true)) compactions++
       res = await o.provider.complete({
         model: o.model,
         instructions: system,
         messages: context,
-        tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters })),
+        tools: [execute],
         effort: o.effort,
         schema: o.schema,
         maxOutput: o.maxOutput,
@@ -157,6 +164,13 @@ export async function run(o: RunOptions): Promise<RunResult> {
       return end({ error: describe(err) }, step)
     }
     compactions = 0
+    // Before the message is kept: it is replayed to the provider on every later step, and a
+    // provider refuses arguments it cannot parse or a tool name it could not have issued.
+    const asked = res.message.calls.map((c) => c.name)
+    for (const c of res.message.calls) {
+      c.arguments = wellFormed(c.arguments)
+      c.name = c.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) || "unknown"
+    }
     measured = res.usage.input
     measuredLength = JSON.stringify(context).length
     messages.push(res.message)
@@ -172,12 +186,15 @@ export async function run(o: RunOptions): Promise<RunResult> {
       const answer = res.message.text.trim()
       return end(answer ? { answer } : { error: { message: "the model gave no answer", hint: "continue the session to ask again" } }, step)
     }
-    const parallel = calls.every((c) => tools.find((t) => t.name === c.name)?.readonly)
-    const outputs: string[] = []
-    if (parallel) outputs.push(...(await Promise.all(calls.map((c) => call(tools, c.name, c.arguments, o, models)))))
-    for (const [i, c] of calls.entries()) {
+    const at = messages.length - 1
+    const script = (c: (typeof calls)[number], n: number) => c.name === execute.name
+      ? runCode(c.arguments, tools, { dir: o.dir, signal: o.signal, sandbox: o.sandbox, models }, (notice) => o.onAction?.({ ...notice, at, script: n }))
+      : Promise.resolve(direct(asked[n], c.arguments, tools))
+    // Scripts sent together run together only when nothing they can reach writes.
+    const together = calls.length > 1 && tools.every((t) => t.readonly) ? await Promise.all(calls.map(script)) : undefined
+    for (const [n, c] of calls.entries()) {
       if (o.signal?.aborted) return end({ error: { message: "stopped" } }, step)
-      const output = parallel ? outputs[i] : await call(tools, c.name, c.arguments, o, models)
+      const output = together ? together[n] : await script(c, n)
       const result: Message = { role: "tool", id: c.id, name: c.name, output }
       messages.push(result)
       context.push(result)
@@ -185,6 +202,16 @@ export async function run(o: RunOptions): Promise<RunResult> {
     }
   }
   return end({ error: { message: `hit the ${maxSteps}-step limit without answering`, hint: "continue the session to let it go on, or split the task" } }, maxSteps)
+}
+
+/** What a model hears when it calls a tool by name: only execute is callable, and how to make this call through it. */
+function direct(name: string, args: string, tools: Tool[]): string {
+  const tool = tools.find((t) => t.name === name.replace(/^tools\./, ""))
+  let given: unknown
+  try { given = JSON.parse(args.trim() || "{}") } catch {}
+  if (!tool || !given || typeof given !== "object") return `error: ${name.slice(0, 80)} is not callable directly; use execute with the Code Mode catalog`
+  const code = `return await tools[${JSON.stringify(tool.name)}](${JSON.stringify(given)})`
+  return `error: ${tool.name} is not callable directly. Call execute with this code instead: ${code.length > 2000 ? code.slice(0, 2000) + "…" : code}`
 }
 
 const cut = "error: this call was interrupted before it finished, so its result is unknown. If it could have changed something, check whether it took effect before running it again."
@@ -240,33 +267,15 @@ export function interrupted(messages: Message[]): Message[] {
 }
 
 /**
- * The tools a turn offers: the built-in ones, then added ones, which replace a built-in of the
+ * The capabilities inside execute: the built-in ones, then added ones, which replace a built-in of the
  * same name; a read-only turn only gets read-only ones, so a replacement must be read-only to
- * replace a read-only tool there. Tools named in `off` are left out.
+ * replace a read-only tool there. `off` denies tools; `allow`, when present, can only narrow.
  */
-export function toolset(o: Pick<RunOptions, "write" | "search" | "extra" | "off">): Tool[] {
+export function toolset(o: Pick<RunOptions, "write" | "search" | "extra" | "off" | "allow">): Tool[] {
   const byName = new Map<string, Tool>()
   for (const t of [...builtIn(o.write ?? false), ...(o.search ? [search(o.search)] : [])]) byName.set(t.name, t)
   for (const t of o.extra ?? []) if (o.write || t.readonly) byName.set(t.name, t)
-  return [...byName.values()].filter((t) => !o.off?.includes(t.name))
-}
-
-/** Runs one tool call and returns what the model sees, errors included. */
-async function call(tools: Tool[], name: string, text: string, o: RunOptions, models: Models | undefined): Promise<string> {
-  const tool = tools.find((t) => t.name === name)
-  if (!tool) return `error: no tool named ${name}; the tools are ${tools.map((t) => t.name).join(", ")}`
-  let args: Args
-  try {
-    args = text.trim() ? JSON.parse(text) : {}
-  } catch {
-    return "error: arguments must be a JSON object"
-  }
-  if (!args || typeof args !== "object" || Array.isArray(args)) return "error: arguments must be a JSON object"
-  try {
-    return await tool.run(args, { dir: o.dir, signal: o.signal, sandbox: o.sandbox, models })
-  } catch (err) {
-    return `error: ${(err as Error).message}`
-  }
+  return [...byName.values()].filter((t) => !o.off?.includes(t.name) && (o.allow === undefined || o.allow.includes(t.name)))
 }
 
 /**

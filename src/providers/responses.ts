@@ -23,7 +23,7 @@ export function responses(endpoint: Endpoint, reasoning = false, namespace?: str
       if (req.effort) body.reasoning = { effort: req.effort }
       if (req.tools.length) {
         const functions = req.tools.map((t) => ({ type: "function", name: t.name, description: t.description, parameters: t.parameters }))
-        body.tools = namespace ? [{ type: "namespace", name: namespace, description: "Tools for working in the task's folder.", tools: functions }] : functions
+        body.tools = namespace ? [{ type: "namespace", name: namespace, description: "Code Mode for working on the task.", tools: functions }] : functions
       }
       if (req.schema) body.text = { format: { type: "json_schema", name: "answer", schema: req.schema } }
       const res = await send(endpoint, "/responses", (key) => ({ authorization: `Bearer ${key}` }), req, body)
@@ -47,7 +47,7 @@ function encode(m: Message): unknown[] {
   }
 }
 
-/** A tool's own name, whether a namespaced call reports it as "ask.read" or plain "read". */
+/** A tool's own name, whether a namespaced call reports it as "ask.execute" or plain "execute". */
 function bare(name: string): string {
   return name.replace(/^[A-Za-z0-9_-]+[.:/]/, "")
 }

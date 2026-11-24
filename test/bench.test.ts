@@ -6,6 +6,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test, type TestContext } from "node:test"
+import { trace } from "../bench/suites/subagents.ts"
 
 /** Copy the runner so the test can verify what it writes next to itself. */
 function setup(t: TestContext) {
@@ -27,6 +28,27 @@ test("planning does not write results or opt in to live model calls", (t) => {
   assert.equal(denied.status, 1)
   assert.match(denied.stderr, /pass --live/)
   assert.ok(!existsSync(runs))
+})
+
+test("a subagent run pins the same per-task deadline in both arms", (t) => {
+  const { runs, run } = setup(t)
+  const plan = run("plan", "subagents", "--tasks", "compose-rollout", "--timeout", "90", "--reps", "1")
+  assert.equal(plan.status, 0, plan.stderr)
+  assert.equal(JSON.parse(plan.stdout).inputs.timeout, 90)
+  assert.match(run("plan", "subagents", "--timeout", "0").stderr, /seconds in 1\.\.900/)
+  assert.ok(!existsSync(runs))
+})
+
+test("subagent traces keep each script, its nested actions and the start of its result", () => {
+  const output = "error: " + "x".repeat(400)
+  const result = trace([
+    { role: "assistant", text: "", calls: [{ id: "one", name: "execute", arguments: '{"code":"return r.text"}' }] },
+    { role: "tool", id: "one", name: "execute", output },
+  ], [{ at: 0, script: 0, id: 1, label: "git diff", state: "finished" }])
+  assert.deepEqual(result, [
+    { call: "execute", chars: '{"code":"return r.text"}'.length, code: "return r.text", actions: [{ label: "git diff", state: "finished" }] },
+    { result: "execute", chars: output.length, error: true, head: output.slice(0, 300) },
+  ])
 })
 
 test("comparison preserves saved grades and warns about mismatched workloads", (t) => {

@@ -19,7 +19,8 @@ const allArms = ["none", "skill", "deny"] as const
 const allDrivers = ["claude", "codex", "opencode"] as const
 const callerModels = { claude: "claude-haiku-5-5", codex: "gpt-6-luna", opencode: "opencode/deepseek-v4.1-flash-free" }
 
-type Job = { id: string; prompt: string; files: Record<string, string>; after?: Record<string, string>; grade(answer: string, dir: string): { pass: boolean; notes: string } }
+type Grade = { pass: boolean; notes: string }
+type Job = { id: string; prompt: string; files: Record<string, string>; after?: Record<string, string>; grade(answer: string, dir: string): Grade | Promise<Grade> }
 type Arm = typeof allArms[number]
 
 const fix = subagentTasks.find((t) => t.id === "fix-dates")!
@@ -41,8 +42,8 @@ const jobs: Job[] = [
     id: "delegated-fix",
     prompt: "report.overdue('2026-01-31') crashes with 'month must be in 1..12'. Have a subagent fix it, check the fix, and tell me what was wrong.",
     files: files(fix).files,
-    grade: (answer, dir) => {
-      const g = fix.grade(answer, dir)
+    grade: async (answer, dir) => {
+      const g = await fix.grade(answer, dir)
       return { pass: g.pass, notes: g.notes }
     },
   },
@@ -51,8 +52,8 @@ const jobs: Job[] = [
     prompt: "Get a review of the uncommitted changes in this repository from a subagent, and tell me which bugs it found.",
     files: files(review).files,
     after: files(review).after,
-    grade: (answer) => {
-      const g = review.grade(answer, "")
+    grade: async (answer) => {
+      const g = await review.grade(answer, "")
       return { pass: g.score >= 2 / 3, notes: g.notes }
     },
   },
@@ -283,7 +284,7 @@ export const suite: Suite = {
             const { ids: sessions, ...u } = usage(home)
             await stop(sessions, bin, dir, env)
             const route = t.error ? null : u.sessions ? (t.native ? "mixed" : "ask") : t.native ? "native" : "self"
-            const grade = t.error ? {} : j.grade(t.answer, dir)
+            const grade = t.error ? {} : await j.grade(t.answer, dir)
             ctx.record({ ...base, route, ...grade, ...u, ...t, input: t.tokens })
           } catch (err) {
             ctx.record({ ...base, error: (err as Error).message })

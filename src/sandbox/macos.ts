@@ -37,12 +37,14 @@ export function profile(p: Policy): string {
     ...(inside.length
       ? [`(allow file-read* ${inside.map((x) => `(subpath ${q(x)})`).join(" ")})`, `(allow file-read-metadata ${[...new Set(inside.flatMap(ancestors))].map((x) => `(literal ${q(x)})`).join(" ")})`]
       : []),
-    `(allow file-write* ${writable.map((x) => `(subpath ${q(x)})`).join(" ")})`,
+    ...(writable.length ? [`(allow file-write* ${writable.map((x) => `(subpath ${q(x)})`).join(" ")})`] : []),
     ...p.protected.map((x) => `(deny file-write* (subpath ${q(x)}))`),
     // Renaming an ancestor must not move a protected subtree outside its path-based rule.
     ...[...new Set(p.protected.flatMap(ancestors))].map((x) => `(deny file-write-unlink (literal ${q(x)}))`),
-    '(allow file-write-data file-ioctl (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (regex #"^/dev/ttys[0-9]+$"))',
-    `(allow network-outbound (remote unix-socket ${writable.map((x) => `(subpath ${q(x)})`).join(" ")}))`,
+    ...(!p.compute ? [
+      '(allow file-write-data file-ioctl (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (regex #"^/dev/ttys[0-9]+$"))',
+      `(allow network-outbound (remote unix-socket ${writable.map((x) => `(subpath ${q(x)})`).join(" ")}))`,
+    ] : []),
   ].join("\n")
 }
 

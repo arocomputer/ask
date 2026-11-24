@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { after, describe, test } from "node:test"
-import { serve, type Fake, type Reply } from "./fake.ts"
+import { code, serve, use, type Fake, type Reply } from "./fake.ts"
 
 const cli = join(import.meta.dirname, "..", "src", "cli.ts")
 const fakes: Fake[] = []
@@ -111,7 +111,7 @@ describe("cli", () => {
   })
 
   test("a started task is collected with its answer", async () => {
-    const { ask } = await setup([{ calls: [{ name: "read", args: { path: "port.txt" } }] }, { text: "Port 7341." }])
+    const { ask } = await setup([{ calls: [use("read", { path: "port.txt" })] }, { text: "Port 7341." }])
     const started = await ask({ start: [{ prompt: "Which port?" }] })
     assert.equal(started.tasks[0].state, "running")
     const done = await ask({ collect: [started.tasks[0].id] })
@@ -147,7 +147,7 @@ describe("cli", () => {
 
   test("a restarted worker preserves the turn's previously recorded usage", { timeout: 15_000 }, async () => {
     const { ask, home, fake } = await setup([
-      { calls: [{ name: "read", args: { path: "port.txt" } }] },
+      { calls: [use("read", { path: "port.txt" })] },
       { text: "late", delay: 3_000 },
       { text: "done" },
     ])
@@ -210,19 +210,21 @@ describe("cli", () => {
 
   test("a killed write worker retains changes made before its restart", { timeout: 15_000 }, async () => {
     const { ask, home, project, fake } = await setup([
-      { calls: [{ name: "write", args: { path: "added.txt", content: "before crash" } }] },
-      { text: "late", delay: 3_000 },
+      { calls: [code(`await tools.shell({ command: "printf 'once\\\\n' >> added.txt; sleep 60" });`)] },
       { text: "done" },
     ])
     execFileSync("git", ["init", "-q"], { cwd: project })
     const { tasks } = await ask({ start: [{ prompt: "Task", write: true }] })
-    while (fake.requests.length < 2) await new Promise((done) => setTimeout(done, 20))
+    while (!existsSync(join(project, "added.txt"))) await new Promise((done) => setTimeout(done, 20))
     const folder = join(home, "sessions", tasks[0].id)
     const { pid } = JSON.parse(readFileSync(join(folder, "lock"), "utf8"))
     process.kill(pid, "SIGKILL")
     const result = await ask({ collect: [tasks[0].id], wait: 10 })
     assert.equal(result.tasks[0].state, "succeeded")
     assert.deepEqual(result.tasks[0].changes, [{ path: "added.txt", change: "added" }])
+    assert.equal(readFileSync(join(project, "added.txt"), "utf8"), "once\n")
+    assert.match(JSON.stringify(fake.requests[1]), /interrupted before it finished/)
+    assert.match((await ask({ show: tasks[0].id })).tasks[0].steps.join("\n"), /shell \(outcome unknown\)/)
   })
 
   test("once a task has been restarted, collect waits for all of them", async () => {
@@ -267,10 +269,25 @@ describe("cli", () => {
   })
 
   test("a write task lists the files it changed", async () => {
-    const { ask, project } = await setup([{ calls: [{ name: "write", args: { path: "new.txt", content: "hi" } }] }, { text: "Done." }])
+    const { ask, project } = await setup([{ calls: [use("write", { path: "new.txt", content: "hi" })] }, { text: "Done." }])
     execFileSync("git", ["init", "-q"], { cwd: project })
     const r = await ask({ start: [{ prompt: "Add a file", write: true }], wait: 30 })
     assert.deepEqual(r.tasks[0].changes, [{ path: "new.txt", change: "added" }])
+    assert.deepEqual((await ask({ show: r.tasks[0].id })).tasks[0].steps, ["write new.txt"])
+  })
+
+  test("a task allowlist narrows access and stays in force on follow-up", async () => {
+    const { ask, fake, home } = await setup([
+      { calls: [code('return Object.keys(tools).sort()')] }, { text: "first" },
+      { calls: [code('return Object.keys(tools).sort()')] }, { text: "second" },
+    ])
+    writeFileSync(join(home, "config.json"), JSON.stringify({ model: "fake/m", tools: { shell: false } }))
+    const first = await ask({ start: [{ prompt: "Only edit", write: true, tools: ["edit", "shell"] }], wait: 15 })
+    assert.equal(first.tasks[0].answer, "first")
+    assert.equal(fake.requests[1].messages.at(-1).content, '["edit"]')
+    const second = await ask({ continue: first.tasks[0].id, prompt: "Check again", wait: 15 })
+    assert.equal(second.tasks[0].answer, "second")
+    assert.equal(fake.requests[3].messages.at(-1).content, "[]")
   })
 
   test("looking around creates nothing in the home folder", async () => {
@@ -295,7 +312,7 @@ describe("cli", () => {
   })
 
   test("dir sets where a task works", async () => {
-    const { ask, fake, project } = await setup([{ calls: [{ name: "read", args: { path: "other.txt" } }] }, { text: "ok" }])
+    const { ask, fake, project } = await setup([{ calls: [use("read", { path: "other.txt" })] }, { text: "ok" }])
     mkdirSync(join(project, "elsewhere"))
     writeFileSync(join(project, "elsewhere", "other.txt"), "found it\n")
     await ask({ start: [{ prompt: "Read it", dir: join(project, "elsewhere") }], wait: 30 })
@@ -401,7 +418,7 @@ describe("cli", () => {
   })
 
   test("a worktree task works on its own branch and leaves the caller's files alone", async () => {
-    const { ask, project } = await setup([{ calls: [{ name: "write", args: { path: "new.txt", content: "hi" } }] }, { text: "Done." }])
+    const { ask, project } = await setup([{ calls: [use("write", { path: "new.txt", content: "hi" })] }, { text: "Done." }])
     for (const args of [["init", "-q"], ["add", "."], ["-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-qm", "start"]])
       execFileSync("git", ["-C", project, ...args], { stdio: "ignore" })
     const r = await ask({ start: [{ prompt: "Add a file", worktree: true }], wait: 30 })
@@ -414,7 +431,7 @@ describe("cli", () => {
 
   test("a later turn works in the session's worktree", async () => {
     const { ask, project, fake } = await setup([
-      { when: "Second", calls: [{ name: "write", args: { path: "second.txt", content: "2" } }] },
+      { when: "Second", calls: [use("write", { path: "second.txt", content: "2" })] },
       { text: "Done." },
     ])
     for (const args of [["init", "-q"], ["add", "."], ["-c", "user.email=t@e.com", "-c", "user.name=T", "commit", "-qm", "start"]])
@@ -440,6 +457,6 @@ describe("cli", () => {
     const { run } = await setup([{ text: "unused" }])
     const r = await run([], JSON.stringify({ start: [{ prompt: "x", modle: "fake/m" }] }))
     assert.equal(r.code, 2)
-    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, model, write, worktree, dir, effort, schema, timeout" })
+    assert.deepEqual(JSON.parse(r.stdout).error, { message: "start[0] has unknown key modle", hint: "it takes prompt, model, write, worktree, dir, effort, schema, timeout, tools" })
   })
 })

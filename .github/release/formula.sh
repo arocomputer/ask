@@ -87,6 +87,7 @@ class Ask < Formula
 
   def install
     bin.install "ask"
+    pkgshare.install "LICENSE"
     # Landlock/seccomp enforcement inside bubblewrap for commands and filesystem tools.
     bin.install "ask.sandbox" if OS.linux?
     if OS.linux?

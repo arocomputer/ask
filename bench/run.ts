@@ -60,7 +60,8 @@ function hash(files: string[]) {
 /** Use a committed snapshot so builds and toolchain probes never write to the tested checkout. */
 function checkout(source: string, target: string): string {
   const git = (...args: string[]) => execFileSync("git", args, {
-    cwd: source, env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), GIT_OPTIONAL_LOCKS: "0" },
+    cwd: source, maxBuffer: 16 * 1024 * 1024,
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_"))), GIT_OPTIONAL_LOCKS: "0" },
   })
   const revision = git("rev-parse", "--verify", "HEAD").toString().trim()
   if (git("status", "--porcelain", "--", "src", "native", "package.json").length)

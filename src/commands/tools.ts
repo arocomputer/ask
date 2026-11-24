@@ -1,4 +1,4 @@
-// ask tools: the tools ask's own loop gives a subagent, where each comes from, and turning
+// ask tools: the capabilities available inside Code Mode, where each comes from, and turning
 // one off or on. A tool is off when config.json's "tools" sets it to false. An extension's tool
 // with a built-in's name replaces it. Claude Code and Codex use their own tools, not these.
 
@@ -10,8 +10,8 @@ import { active } from "../harnesses/extensions.ts"
 import { positional, Usage } from "./command.ts"
 
 export const summary = "Manage task tools"
-export const about = `List the tools ask's own loop gives a subagent: where each comes from, whether read-only tasks
-get it, and whether it is on. Turn one off, or back on, by name.
+export const about = `List the capabilities ask's subagents can call inside Code Mode: where each comes from, whether
+read-only tasks get it, and whether it is on. Turn one off, or back on, by name.
 
 An extension's tool with a built-in's name replaces the built-in; ask install adds extensions.
 Claude Code and Codex use their own tools, not these.`

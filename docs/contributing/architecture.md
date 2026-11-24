@@ -11,8 +11,8 @@ which `test/rules.test.ts` checks. `test/` mirrors `src/`, one file per area.
 | --- | --- |
 | `base/` | Nothing particular to ask: `home` (the folder, its files and their shapes), `term`, `input`, `git`, `version` |
 | `providers/` | Reaching models: `catalog` (models.dev), `stream` (the transcript format, server-sent events, errors, retries), `responses`, `chat`, `anthropic` (one client per protocol), `chatgpt` (the ChatGPT sign-in) |
-| `sandbox/` | Confining tools: `policy` (what they may touch), `linux` (ask.sandbox and bubblewrap), `macos` (Seatbelt), `address` (public-address checks), `confine` (per-turn execution) |
-| `agent/` | ask's own loop: `loop`, `tools`, `fetch`, `search` (ask's own web search: DuckDuckGo, its lite page, Mwmbl, Wikipedia), `system` (the prompt), `steps` (a turn's steps in a few words) |
+| `sandbox/` | Confinement: `policy`, `linux` (ask.sandbox and bubblewrap), `macos` (Seatbelt), `address` (public-address checks), `confine` (process launch), `evaluate` and `wire` (the QuickJS child and its message frames) |
+| `agent/` | ask's own loop: `loop`, `code` (Code Mode catalog and broker), `tools`, `fetch`, `search` (ask's own web search), `system` (the prompt), `steps` (a turn's actions in a few words) |
 | `harnesses/` | Other agents: `harness` (the contract, running a CLI, history handoff, loading extensions), `claude`, `codex`, `extensions` (what is on, the calling conversation), `skill` |
 | `sessions/` | A request's life: `protocol` (the agent interface), `store` (session folders, turns, the lock), `worker` (running a turn, detached), `models` (which model and key a task uses) |
 | `commands/` | What people run: `settings`, `doctor`, `models`, `sessions`, `show`, `legacy`, `tools`, `install`, `remove`, and `command`, their shared shape |
@@ -31,11 +31,11 @@ ask < request.json                         cli.ts reads it; sessions/protocol.ts
   │  worker      launch: a detached `ask __worker FOLDER`, its pid in the lock
   ▼
 ask __worker FOLDER                         sessions/worker.ts, in its own session of the system
-  ├─ loop        provider ⇄ tools, until an answer or a limit; saves after every step
+   ├─ loop        provider ⇄ execute, until an answer or a limit; saves model messages
   │    catalog       models.dev: which protocol and endpoint each model uses
   │    responses, chat, anthropic   one client per protocol, over provider.ts
-  │    tools         read, list, grep, fetch, search; write, edit, shell in a write turn
-  │    sandbox       tools and commands: ask.sandbox/bubblewrap or Seatbelt
+   │    code          child ⇄ broker ⇄ filtered tools; saves nested action summaries locally
+   │    sandbox       a narrow evaluator policy and separate tool/command policies
   │    system        the system prompt and the project's AGENTS.md
   └─ git         what a write turn changed; worktrees
   ▼
@@ -50,12 +50,27 @@ restart with an atomic folder create. Continue and stop use the same generation-
 records are re-read under a claim. A live transition owner prevents another caller from taking
 over, and abandoned claims use immutable retry slots. Per-turn raw-file baselines survive worker
 death, so a restarted write turn reports changes made before the crash too.
+An interrupted `execute` call gets an unknown-outcome result, not a replay. Nested starts are
+persisted before dispatch, so the local activity record can show which actions may have run.
+The Code Mode broker builds its catalog from the same filtered set it dispatches. `discover()`
+uses that set too; it never exposes a capability unavailable to the current turn. A result
+crosses the bridge as bounded text, with a tool's fields beside it when it declares any, and
+becomes one value in the evaluator that reads as the text and carries the fields. The guest
+side is deliberately forgiving (console output, a fallback when nothing is returned, errors
+with lines and signatures), because the transcripts in `bench/reports` showed about one script
+in five lost to a mistake the runtime could absorb or explain.
+Inline entries use compact argument signatures; discovery returns the full JSON Schema.
+For a likely diff review, the catalog adds a short recipe only if Git is permitted.
+This follows the catalog-and-permission split in
+[OpenCode Code Mode](https://opencode.ai/docs/tools/#execute), without a direct-tool fallback or
+an ambient HTTP client in the evaluator.
 
 ## Rules the layout keeps
 
 [`test/rules.test.ts`](../../test/rules.test.ts) checks these on every change:
 
-- **No runtime dependencies.** `package.json` lists only development tools.
+- **No runtime dependencies.** `package.json` lists only development/build tools. The pinned
+  QuickJS Wasm engine ships as a generated bundle, including for source, npm, and standalone use.
 - **Only Node's built-ins.** The engine imports `node:` modules and its own files, and nothing
   that is particular to Bun, so it runs on both.
 - **Each harness in one place.** ask ships two harnesses, Claude Code and Codex, and how each
@@ -78,6 +93,10 @@ bun install
 bun src/cli.ts doctor      # or node src/cli.ts
 npm run check && npm test  # the typecheck, then the tests under Node and Bun
 ```
+
+Only changing the engine needs `npm run bundle:quickjs` (after `bun install`); review the lockfile
+and license notices when updating it. The host policy and broker are reviewed and tested separately
+from this dependency.
 
 Set `ASK_HOME` to a scratch folder to keep a development build away from your sessions.
 `npm test` ignores global/system Git configuration so fixture worktrees do not inherit user or

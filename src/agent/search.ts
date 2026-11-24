@@ -8,6 +8,7 @@
 
 import { download, text } from "./fetch.ts"
 import type { Tool } from "./tools.ts"
+import { result } from "./context.ts"
 
 /** One search result. */
 export type Result = { title: string; url: string; snippet: string }
@@ -108,13 +109,14 @@ export function search(engine: Engine = web): Tool {
       "Search the web, such as for documentation, error messages or recent releases. Returns results with their title, address and a snippet; read one in full with fetch.",
     parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false },
     readonly: true,
+    structured: "{ results: { title: string, url: string, snippet: string }[] }",
     async run(args, { signal }) {
       const query = String(args.query ?? "").trim()
       if (!query) throw new Error("query is required")
       const seen = new Set<string>()
       const found = (await engine(query, signal)).filter((r) => !seen.has(r.url) && seen.add(r.url)).slice(0, most)
-      if (!found.length) return "No results; try other words."
-      return found.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ""}`).join("\n")
+      const text = found.length ? found.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ""}`).join("\n") : "No results; try other words."
+      return result(args, text, { results: found })
     },
   }
 }

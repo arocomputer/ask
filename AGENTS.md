@@ -7,7 +7,7 @@ or Bun.
 ## Commands
 
 ```sh
-bun install                              # once: TypeScript and Node's types, for development
+bun install                              # development/build tools only
 npm run check                            # the typecheck
 npm test                                 # every test, under Node and then Bun
 node --test test/cli.test.ts             # one area; --test-name-pattern="..." for one behavior
@@ -26,6 +26,8 @@ bun src/cli.ts doctor                    # run this checkout (node src/cli.ts wo
   [docs/contributing/architecture.md](docs/contributing/architecture.md).
 - `native/sandbox.c`: the Linux sandbox helper, the only C; its design is
   [docs/contributing/sandbox.md](docs/contributing/sandbox.md).
+- `src/sandbox/engine.cjs`: the generated QuickJS bundle; regenerate with `npm run bundle:quickjs`.
+  Its pinned dependencies are build-only.
 - `test/`: mirrors `src/`, tests against a fake provider (`test/fake.ts`); `cli.test.ts` runs
   the real command and its detached workers.
 - `bench/`: `bun bench/run.ts list` shows the suites for subagents, caller delegation,
@@ -40,8 +42,8 @@ bun src/cli.ts doctor                    # run this checkout (node src/cli.ts wo
 - Fewest moving parts. No runtime dependencies, no daemon, no configuration beyond what a change
   needs.
 - One word per file and folder; `.test` is the only suffix.
-- The engine imports only Node's built-ins and its own files. It ships two harnesses, Claude
-  Code and Codex, and how each is run lives in its own file (`src/claude.ts`, `src/codex.ts`);
+- The engine imports only Node's built-ins and its own files, including the bundled evaluator.
+  It ships two harnesses, Claude Code and Codex, and how each is run lives in its own file (`src/harnesses/claude.ts`, `src/harnesses/codex.ts`);
   other agents come as extensions. `test/rules.test.ts` checks these.
 - Grow by need: a new tool, request field or setting only when a real use needs it. New request
   fields are free; changing or removing one breaks every agent that uses it.

@@ -5,6 +5,7 @@
 // writes a file (--output) or reads outside the repository (--no-index).
 
 import { execFile } from "node:child_process"
+import { result } from "./context.ts"
 import type { Tool } from "./tools.ts"
 
 const commands = ["status", "diff", "log", "show", "blame"]
@@ -34,10 +35,11 @@ export const git: Tool = {
     additionalProperties: false,
   },
   readonly: true,
+  structured: "{ stdout: string, stderr: string, exitCode: number, truncated: boolean }",
   run(input, { dir, signal }) {
     const args = Array.isArray(input.args) ? input.args.map(String) : []
     const [command, ...rest] = args
-    if (!commands.includes(command)) return Promise.reject(new Error(`git takes one of ${commands.join(", ")}`))
+    if (!commands.includes(command)) return Promise.reject(new Error(`git takes one of ${commands.join(", ")}; search file contents with grep and find files with list`))
     const bad = rest.find((a) => refused.test(a))
     if (bad) return Promise.reject(new Error(`${bad} isn't allowed here`))
     return new Promise((done) =>
@@ -46,9 +48,11 @@ export const git: Tool = {
         [...safety, command, ...off[command], ...rest],
         { cwd: dir, signal, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", GIT_PAGER: "cat", GIT_EXTERNAL_DIFF: "", GIT_TERMINAL_PROMPT: "0" } },
         (err, stdout, stderr) => {
+          const exitCode = err && typeof err.code === "number" ? err.code : err ? 1 : 0
           let out = stdout || (err ? "" : "(no output)")
           if (out.length > limit) out = `${out.slice(0, limit)}\n[cut at ${limit / 1024} KiB of ${Math.round(stdout.length / 1024)}; narrow it with a path, --stat or -n]`
-          done(err ? `exit ${(err as { code?: number }).code ?? 1}\n${out}${stderr ? `stderr:\n${stderr.slice(0, 4000)}` : ""}` : out)
+          const text = err ? `exit ${exitCode}\n${out}${stderr ? `stderr:\n${stderr.slice(0, 4000)}` : ""}` : out
+          done(result(input, text, { stdout: stdout.slice(0, limit), stderr: stderr.slice(0, 4000), exitCode, truncated: stdout.length > limit || stderr.length > 4000 }))
         },
       ),
     )

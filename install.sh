@@ -92,8 +92,8 @@ fi
 
 # The Linux helper is ask.sandbox; older archives used sandybox or had no helper.
 members=ask
+tar -tzf "$work/$archive" > "$work/members"
 if [ "$os" = linux ]; then
-  tar -tzf "$work/$archive" > "$work/members"
   if grep -qx 'ask.sandbox' "$work/members"; then members="ask ask.sandbox"
   elif grep -qx 'sandybox' "$work/members"; then members="ask sandybox"
   fi
@@ -112,11 +112,19 @@ got=$("$work/ask" --version 2>/dev/null || true)
 if [ "$os" = linux ] && [ "$got" != "$version" ] && [ "$members" = ask ]; then
   fail "$archive has no sandbox helper"
 fi
+if grep -qx 'LICENSE' "$work/members"; then
+  tar -xzf "$work/$archive" -C "$work" LICENSE
+  if [ ! -f "$work/LICENSE" ] || [ -L "$work/LICENSE" ]; then
+    fail "$archive has an invalid license file"
+  fi
+  mv "$work/LICENSE" "$work/ask.LICENSE"
+  members="$members ask.LICENSE"
+fi
 
 mkdir -p "$dir"
 for m in $members; do
   cp "$work/$m" "$dir/.$m.next"
-  case $m in *.tar.gz) chmod 644 "$dir/.$m.next" ;; *) chmod 755 "$dir/.$m.next" ;; esac
+  case $m in *.tar.gz | *.LICENSE) chmod 644 "$dir/.$m.next" ;; *) chmod 755 "$dir/.$m.next" ;; esac
   mv -f "$dir/.$m.next" "$dir/$m"
 done
 echo "Installed $dir/ask"

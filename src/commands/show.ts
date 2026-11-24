@@ -29,7 +29,7 @@ export async function run(h: Home, argv: string[]): Promise<number> {
     out(clean(t.prompt))
     for (const line of details(t)) out(st.gray(line))
     end(t, st, out)
-    const done = steps(messages, i + 1)
+    const done = steps(messages, i + 1, t.actions)
     if (done.length) { out(); out(st.bold("Activity")) }
     for (const step of done) out(`  ${clean(step)}`)
     if (t.changes?.length) { out(); out(st.bold("Changes")) }

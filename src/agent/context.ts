@@ -5,6 +5,14 @@ import type { Sandbox } from "../sandbox/confine.ts"
 import type { ToolSpace } from "./tools.ts"
 import type { Usage } from "../providers/stream.ts"
 
+/**
+ * A structured tool's reply: its text for ordinary callers or, when Code Mode asked with
+ * `format: "json"`, that text together with the fields scripts read from the result.
+ */
+export function result(args: Record<string, unknown>, text: string, data: object): string {
+  return args.format === "json" ? JSON.stringify({ text, data }) : text
+}
+
 export type Context = ToolSpace & {
   dir: string
   signal?: AbortSignal
