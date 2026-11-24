@@ -13,7 +13,8 @@
   field returned whole, like `r.content` or `r.matches`, shows the result with its line numbers.
   `grep` takes `(?i)` and searches for the text of a pattern that is not a regular expression.
   Scripts sent together in a read-only task run together. Call arguments a model cut off or
-  left markup on are repaired before they run and before they are replayed to the provider.
+  left markup on are repaired before they run and before they are replayed to the provider, and
+  a call with an empty or malformed tool name is replayed under a name the provider accepts.
 
 - An empty `grep` now says how many files it searched and what a narrower search left out,
   and the subagent briefing says a whole-directory search that finds nothing is the answer.

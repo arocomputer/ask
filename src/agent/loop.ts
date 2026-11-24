@@ -164,8 +164,13 @@ export async function run(o: RunOptions): Promise<RunResult> {
       return end({ error: describe(err) }, step)
     }
     compactions = 0
-    // Before the message is kept: it is replayed to the provider on every later step.
-    for (const c of res.message.calls) c.arguments = wellFormed(c.arguments)
+    // Before the message is kept: it is replayed to the provider on every later step, and a
+    // provider refuses arguments it cannot parse or a tool name it could not have issued.
+    const asked = res.message.calls.map((c) => c.name)
+    for (const c of res.message.calls) {
+      c.arguments = wellFormed(c.arguments)
+      c.name = c.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) || "unknown"
+    }
     measured = res.usage.input
     measuredLength = JSON.stringify(context).length
     messages.push(res.message)
@@ -184,7 +189,7 @@ export async function run(o: RunOptions): Promise<RunResult> {
     const at = messages.length - 1
     const script = (c: (typeof calls)[number], n: number) => c.name === execute.name
       ? runCode(c.arguments, tools, { dir: o.dir, signal: o.signal, sandbox: o.sandbox, models }, (notice) => o.onAction?.({ ...notice, at, script: n }))
-      : Promise.resolve(direct(c.name, c.arguments, tools))
+      : Promise.resolve(direct(asked[n], c.arguments, tools))
     // Scripts sent together run together only when nothing they can reach writes.
     const together = calls.length > 1 && tools.every((t) => t.readonly) ? await Promise.all(calls.map(script)) : undefined
     for (const [n, c] of calls.entries()) {

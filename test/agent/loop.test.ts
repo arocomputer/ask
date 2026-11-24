@@ -366,6 +366,18 @@ describe("loop", () => {
     assert.equal((bad.messages.at(-2) as { calls: { arguments: string }[] }).calls[0].arguments, '{"malformed":"{not json"}')
   })
 
+  test("a call with no name or a name no provider would issue is kept under one it will accept", async () => {
+    const r = await run({
+      provider: { complete: async () => ({ message: { role: "assistant", text: "", calls: [{ id: "a", name: "", arguments: "{}" }, { id: "b", name: 'tools.list({path: ""})</arg_value>', arguments: "" }] }, usage: { input: 0, output: 0, cached: 0 } }) },
+      model: "m",
+      dir: project(),
+      prompt: "Go",
+      maxSteps: 1,
+    })
+    assert.deepEqual((r.messages.at(-3) as { calls: { name: string }[] }).calls.map((c) => c.name), ["unknown", "tools_list__path________arg_value_"])
+    assert.match((r.messages.at(-1) as { output: string }).output, /^error: tools\.list\(\{path: ""\}\)<\/arg_value> is not callable directly/)
+  })
+
   test("arguments cut off inside the script, markup and all, still run and are kept as valid JSON", async () => {
     const cut = '{"code": "return 1 + 1;\\n</function></tool_call>'
     const r = await run({
