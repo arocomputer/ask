@@ -1,5 +1,66 @@
 # Code Mode evaluation — November 2026
 
+## The branch as it ships
+
+Both arms ran at the same time on 24 November, so the provider's load and speed fell on them
+alike: direct tools (`45eeae9`, main) against Code Mode at `f30d135`. Three repetitions on
+Claude Haiku 5.5, GPT-6 Luna, DeepSeek V4.1 Flash and GLM-5.3-Flash for the first two rows,
+two on MiniMax M3.1 Flash and MiMo V2.6 Flash for the third. The sections below are how the
+branch got here.
+
+| Tasks | Runs an arm | Passed, direct → Code Mode | Turns, mean | Input tokens, mean | Seconds, mean |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Six on a private Go repository | 72 | 70 → 71 | 7.3 → 5.2 | 75,177 → 38,491 | 37.9 → 27.5 |
+| This suite's seven | 84 | 74 → 81 | 6.4 → 5.1 | 40,260 → 24,806 | 27.9 → 20.2 |
+| The same seven, two slower models | 28 | 20 → 22 | 10.1 → 9.1 | 107,938 → 85,624 | 94.1 → 82.2 |
+
+| Model, mean turns, direct → Code Mode | Private repository | This suite |
+| --- | ---: | ---: |
+| Claude Haiku 5.5 | 4.6 → 3.4 | 5.3 → 3.4 |
+| GPT-6 Luna | 4.5 → 4.0 | 5.1 → 4.6 |
+| DeepSeek V4.1 Flash | 13.7 → 8.2 | 9.1 → 8.1 |
+| GLM-5.3-Flash | 6.4 → 5.4 | 6.1 → 4.3 |
+
+Code Mode took fewer turns on every model in every row, fewer tokens on all but GPT-6 Luna
+on the repository, where they were level, and passed at least as often in every row. The pass differences are small enough to be chance (74 against 81 of 84 is
+p ≈ 0.08); the turn and token differences are not close. Medians moved less than means, 5.0
+to 4.0 turns on the repository and 5.5 to 4.0 on the suite, because part of the mean is
+direct tools' long runs. Scripts spent on a mistake the runtime could have absorbed were 7 of
+308, 15 of 351 and 18 of 313. On the two slower models every failure but one was the
+150-second limit, on both arms; the one that wasn't was a tool call with no name, which the
+provider then refused to see replayed, fixed after this run in `cdd5e9d`.
+
+What a script costs on its own, on this machine, 30 samples each: starting one and returning
+a value is 77 ms at the median (104 ms at the 95th percentile); one `read` through a script
+is 120 ms against 40 ms called directly; 33 reads in a loop are 1.4 s, and 0.33 s with
+`Promise.all`. The suite's `sandbox` measurements are unchanged from main, and `compaction`
+kept its facts in 3 of 3 runs on both. `extraction` passed 36 of 36 on main and 35 of 36
+here; the miss was a helper reply cut short, in `fetch`, which this branch does not change.
+The `callers` suite, which measures whether other agents choose ask, was not run: nothing
+it measures changed.
+
+**One model reviews worse in Code Mode.** GPT-6 Luna, asked to review a diff with three
+planted bugs, found all three in 24 of 30 reviews with direct tools and 13 of 30 in Code
+Mode, each time missing the same one after reading the same files. The other three models
+found all three in every completed review on both arms (17 of 17 and 72 of 72). Five more
+arms of 30 looked for the cause:
+
+| GPT-6 Luna, 30 reviews an arm | Found all three |
+| --- | ---: |
+| Direct tools | 24 |
+| Direct tools, this branch's briefing | 21 |
+| Code Mode | 13 |
+| Code Mode, main's briefing | 17 |
+| Code Mode, no "return only the evidence you need" | 18 |
+| Code Mode, no review recipe | 21 |
+| Code Mode, neither | 18 |
+
+The briefing is not it: swapping it moved neither arm. No one sentence of the catalog is
+it either. What is left is the interface: 45 of 60 with direct tools against 87 of 150 in
+Code Mode (p ≈ 0.03). Dropping the review recipe is the only change that came near direct
+tools, at 21, and against 13 that is p ≈ 0.07, with a turn more a review and 20k more
+tokens. The recipe stays until that is settled, and this is the branch's known regression.
+
 ## Where it stands
 
 Seven tasks (two lookups, a symbol that doesn't exist, two fixes, a diff review and an
